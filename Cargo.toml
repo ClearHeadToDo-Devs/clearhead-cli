@@ -5,3 +5,13 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
+tree-sitter = { version = "*" }
+tree-sitter-actions = { version = "*" }
+autosurgeon = { version = "*" }
+ratatui = { version = "*" }
+chrono = { version = "*" }
+rrule = { version = "*" }
+config-rs = { version = "*" }
+directories = { version = "5.0.0" }
+toml = { version = "*", features = ["display"] }
+serde = { version = "*" }

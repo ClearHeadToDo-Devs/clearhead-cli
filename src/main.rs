@@ -1,3 +1,5 @@
+pub mod config;
+
 fn main() {
-    println!("Hello, world!");
+    config::save_default_settings();
 }
