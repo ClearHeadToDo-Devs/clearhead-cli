@@ -11,7 +11,7 @@ autosurgeon = { version = "*" }
 ratatui = { version = "*" }
 chrono = { version = "*" }
 rrule = { version = "*" }
-config-rs = { version = "*" }
+config = { version = "*" }
 directories = { version = "5.0.0" }
 toml = { version = "*", features = ["display"] }
 serde = { version = "*" }

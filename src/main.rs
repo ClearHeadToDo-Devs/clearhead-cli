@@ -1,5 +1,12 @@
-pub mod config;
+pub mod model;
+pub mod settings;
+use std::collections::HashMap;
 
 fn main() {
-    config::save_default_settings();
+    let config = settings::generate_settings();
+
+    println!(
+        "{:?}",
+        config.try_deserialize::<HashMap<String, String>>().unwrap()
+    );
 }
