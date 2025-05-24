@@ -1,0 +1,14 @@
+[Unit]
+Description=Babashka nREPL Server
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bb nrepl-server 0.0.0.0:7888
+WorkingDirectory=%Y
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

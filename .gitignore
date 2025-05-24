@@ -1,5 +1,5 @@
 /target
 /config/*
-.clj-kondo/
-.cpcache/
-.lsp/
+.clj-kondo/*
+.cpcache/*
+.lsp/*
