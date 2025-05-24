@@ -2,8 +2,7 @@
 Description=Babashka nREPL Server
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/bb nrepl-server 0.0.0.0:7888
+ExecStart=/usr/bin/bb nrepl-server 7888
 WorkingDirectory=%Y
 StandardOutput=journal
 StandardError=journal
