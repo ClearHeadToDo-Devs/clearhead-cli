@@ -1,6 +1,0 @@
-[Unit]
-Description=Babashka nREPL Socket
-
-[Socket]
-ListenStream=7888
-Accept=false
