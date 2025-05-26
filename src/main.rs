@@ -2,12 +2,11 @@ use std::collections::HashMap;
 
 mod argparser;
 use argparser::get_cli_map;
-use cliche::parse_actions;
 pub mod environment_reader;
 use environment_reader::get_config_map;
 
 pub mod config;
-use config::{CommandHashValue, ConfigHashValue};
+use config::CommandHashValue;
 
 fn main() {
     let cli = get_cli_map();
