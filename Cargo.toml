@@ -10,3 +10,5 @@ repository = "https://github.com/ClearHeadToDo-Devs/tree-sitter-actions.git"
 [dependencies]
 serde = "*"
 clap = {version= "*", features = ["derive"]}
+config = "*"
+dirs = "*"
