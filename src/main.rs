@@ -3,8 +3,11 @@ use std::collections::HashMap;
 mod argparser;
 use argparser::get_cli_map;
 use cliche::parse_actions;
-mod settings;
-use settings::get_config_map;
+pub mod environment_reader;
+use environment_reader::get_config_map;
+
+pub mod config;
+use config::{CommandHashValue, ConfigHashValue};
 
 fn main() {
     let cli = get_cli_map();
@@ -23,13 +26,12 @@ fn main() {
         _ => println!("Don't be crazy"),
     }
 
-    let cli_command: HashMap<String, argparser::CommandHashValue> =
-        cli.get("command").unwrap().into();
+    let cli_command: HashMap<String, CommandHashValue> = cli.get("command").unwrap().into();
 
     let command_name: String = cli_command.get("Read").unwrap().into();
 
     match command_name.as_str() {
-        "Read" => {
+        "read" => {
             let all = cli_command.get("all").unwrap().into();
             if all {
                 println!("Reading all actions");
