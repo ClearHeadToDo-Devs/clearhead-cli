@@ -1,42 +1,21 @@
-use std::path::PathBuf;
+use clap::Parser;
+use std::collections::HashMap;
 
-use clap::{Parser, Subcommand};
-
-#[derive(Parser)]
-#[command(version, about, long_about = None)]
-struct Cli {
-    /// Optional name to operate on
-    name: Option<String>,
-
-    /// Sets a custom config file
-    #[arg(short, long, value_name = "FILE")]
-    config: Option<PathBuf>,
-
-    /// Turn debugging information on
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    debug: u8,
-
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// does testing things
-    Test {
-        /// lists test values
-        #[arg(short, long)]
-        list: bool,
-    },
-}
+mod argparser;
+use argparser::{Cli, Commands};
+use cliche::parse_actions;
 
 fn main() {
     let cli = Cli::parse();
+    let example_config = HashMap::from([
+        ("key1".to_string(), "value1".to_string()),
+        ("key2".to_string(), "value2".to_string()),
+    ]);
 
-    // You can check the value provided by positional arguments, or option arguments
-    if let Some(name) = cli.name.as_deref() {
-        println!("Value for name: {name}");
-    }
+    let example_actions = HashMap::from([
+        ("action1".to_string(), "value1".to_string()),
+        ("action2".to_string(), "value2".to_string()),
+    ]);
 
     if let Some(config_path) = cli.config.as_deref() {
         println!("Value for config: {}", config_path.display());
@@ -54,9 +33,12 @@ fn main() {
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
     match &cli.command {
-        Some(Commands::Test { list }) => {
-            if *list {
-                println!("Printing testing lists...");
+        Some(Commands::Read { all }) => {
+            if *all {
+                println!(
+                    "{:?}",
+                    parse_actions(example_config, example_actions).unwrap()
+                )
             } else {
                 println!("Not printing testing lists...");
             }
