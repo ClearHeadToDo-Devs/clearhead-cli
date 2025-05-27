@@ -13,3 +13,4 @@ clap = {version= "*", features = ["derive"]}
 config = "*"
 dirs = "*"
 serde_json = "*"
+rpds = "*"
