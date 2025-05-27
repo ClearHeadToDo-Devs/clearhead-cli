@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 mod argparser;
 use argparser::get_cli_map;
+
 pub mod environment_reader;
 use environment_reader::get_config_map;
 

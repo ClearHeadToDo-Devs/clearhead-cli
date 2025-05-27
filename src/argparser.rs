@@ -1,14 +1,15 @@
 use clap::{Parser, Subcommand};
 use std::{collections::HashMap, path::PathBuf};
 
-use super::config::{CommandHashValue, ConfigHashValue};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
-pub fn get_cli_map() -> HashMap<String, ConfigHashValue> {
+pub fn get_cli_map() -> HashMap<String, Value> {
     let cli = Cli::parse();
-    return cli.into();
+    return Result::expect(cli.try_into(), "Failed to parse CLI arguments");
 }
 
-#[derive(Parser)]
+#[derive(Parser, Serialize, Deserialize)]
 #[command(version, about, long_about = None)]
 struct Cli {
     /// Sets a custom config file
@@ -23,7 +24,7 @@ struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Serialize, Deserialize)]
 enum Commands {
     Read {
         #[arg(short, long)]
@@ -31,29 +32,15 @@ enum Commands {
     },
 }
 
-impl Into<HashMap<String, ConfigHashValue>> for Cli {
-    fn into(self) -> HashMap<String, ConfigHashValue> {
+impl Into<HashMap<String, Value>> for Cli {
+    fn into(self) -> HashMap<String, Value> {
         return HashMap::from([
-            ("config".to_string(), ConfigHashValue::Path(self.config)),
-            ("debug".to_string(), ConfigHashValue::Int(self.debug)),
+            ("config".to_string(), json!(self.config)),
+            ("debug".to_string(), json!(self.debug)),
             (
                 "command".to_string(),
-                ConfigHashValue::HashMap(self.command.into()),
+                serde_json::to_value(self.command).unwrap(),
             ),
         ]);
-    }
-}
-
-impl Into<HashMap<String, CommandHashValue>> for Commands {
-    fn into(self) -> HashMap<String, CommandHashValue> {
-        match self {
-            Commands::Read { all } => HashMap::from([
-                (
-                    "name".to_string(),
-                    CommandHashValue::String("read".to_string()),
-                ),
-                ("all".to_string(), CommandHashValue::Bool(all)),
-            ]),
-        }
     }
 }

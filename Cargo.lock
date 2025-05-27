@@ -147,6 +147,7 @@ dependencies = [
  "config",
  "dirs",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,9 +1,10 @@
 use dirs::config_dir;
+use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
 
 use config::Config;
 
-pub fn get_config_map(extra_config: Option<PathBuf>) -> HashMap<String, String> {
+pub fn get_config_map(extra_config: Option<PathBuf>) -> HashMap<String, Value> {
     let default_config_location = PathBuf::from(format!(
         "{}/cliche/settings.toml",
         config_dir().unwrap().display()
@@ -18,6 +19,6 @@ pub fn get_config_map(extra_config: Option<PathBuf>) -> HashMap<String, String> 
         .unwrap();
 
     return settings
-        .try_deserialize::<HashMap<String, String>>()
+        .try_deserialize::<HashMap<String, Value>>()
         .unwrap();
 }
