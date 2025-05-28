@@ -16,6 +16,26 @@ pub fn get_cli_map() -> Result<Args, String> {
     return Ok(args_map);
 }
 
+impl From<Cli> for Args {
+    fn from(cli: Cli) -> Self {
+        return HashTrieMap::new()
+            .insert(
+                "config".to_string(),
+                cli.config.map_or(Value::Null, |p| {
+                    Value::String(p.into_os_string().to_string_lossy().to_string())
+                }),
+            )
+            .insert(
+                "debug".to_string(),
+                Value::Number(serde_json::Number::from(cli.debug)),
+            )
+            .insert(
+                "command".to_string(),
+                serde_json::to_value(cli.command).unwrap(),
+            );
+    }
+}
+
 #[derive(Parser, Serialize, Deserialize)]
 #[command(version, about, long_about = None)]
 struct Cli {
