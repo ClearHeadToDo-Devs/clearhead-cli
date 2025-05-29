@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 mod argparser;
 use argparser::get_cli_map;
 
@@ -15,11 +15,10 @@ fn main() {
 
     let opts = merge_hashmaps(&config_map, &cli);
 
-    match opts.get("debug").unwrap().as_u64().unwrap() {
-        0 => println!("Debug mode is off"),
-        1 => println!("Debug mode is kind of on"),
-        2 => println!("Debug mode is on"),
-        _ => println!("Don't be crazy"),
+    if let Some(debug) = cli.get("debug") {
+        if debug.as_u64().unwrap_or(0) > 0 {
+            println!("Full config: {:#?}", opts);
+        }
     }
 
     process_subcommand(&opts);
@@ -31,6 +30,32 @@ fn merge_hashmaps(
 ) -> HashMap<String, Value> {
     let mut merged = config.clone();
     for (key, value) in args {
+        if value.is_null() {
+            continue; // Skip null values
+        }
+
+        // if the value is a map, we need to recursively merge it
+        if let Some(existing_value) = merged.get(key) {
+            if existing_value.is_object() && value.is_object() {
+                let existing_map = existing_value.as_object().unwrap();
+                let new_map = value.as_object().unwrap();
+                let merged_map = merge_hashmaps(
+                    &existing_map
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                    &new_map
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                );
+                merged.insert(
+                    key.clone(),
+                    Value::Object(serde_json::Map::from_iter(merged_map)),
+                );
+                continue;
+            }
+        }
         merged.insert(key.clone(), value.clone());
     }
     merged
