@@ -9,6 +9,13 @@ use argparser::get_cli_map;
 pub mod environment_reader;
 use environment_reader::get_config_map;
 
+use tree_sitter::Node;
+use tree_sitter::Parser;
+use tree_sitter::Tree;
+use tree_sitter_actions::LANGUAGE;
+
+type ActionTree = Tree;
+
 fn main() {
     let cli = get_cli_map().expect("Failed to parse CLI arguments");
 
@@ -46,4 +53,18 @@ fn process_subcommand(opts: &HashMap<String, Value>) {
     }
 }
 
-fn get_action_list(opts: &HashMap<String, Value>) -> String {}
+// this is the function where we actually use treesitter to parse the actions into the tree, and
+// translate that into a proper vector of hashmaps so that we are passing back plain data
+// fn get_action_list(opts: &HashMap<String, Value>, actions: String) -> Vec<HashMap<String, Value>> {
+//     let action_parser = tree_sitter::Parser::new();
+//
+//     action_parser
+//         .set_language(&tree_sitter_actions::LANGUAGE.into())
+//         .expect("Failed to set language for tree-sitter parser");
+//
+//     let tree = action_parser
+//         .parse(actions.into(), None)
+//         .expect("Failed to parse actions");
+//
+//     // Here we would traverse the tree and extract the actions into a vector of hashmaps.
+// }

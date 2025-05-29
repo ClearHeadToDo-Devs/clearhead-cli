@@ -15,3 +15,6 @@ dirs = "*"
 serde_json = "*"
 tree-sitter = "0.24"
 tree-sitter-actions = "*"
+
+[build-dependencies]
+cc = "*"
