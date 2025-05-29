@@ -1,5 +1,2 @@
-/target
-/config/*
-/.clj-kondo/*
-/.cpcache/*
-/.lsp/*
+Cargo.lock
+target/*

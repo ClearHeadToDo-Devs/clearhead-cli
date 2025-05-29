@@ -13,4 +13,5 @@ clap = {version= "*", features = ["derive"]}
 config = "*"
 dirs = "*"
 serde_json = "*"
-rpds = "*"
+tree-sitter = "0.24"
+tree-sitter-actions = "*"

@@ -1,12 +1,11 @@
 use clap::{Parser, Subcommand};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
-use rpds::HashTrieMap;
-
-type Args = HashTrieMap<String, Value>;
+type Args = HashMap<String, Value>;
 
 pub fn get_cli_map() -> Result<Args, String> {
     let cli = Cli::parse();
@@ -18,21 +17,27 @@ pub fn get_cli_map() -> Result<Args, String> {
 
 impl From<Cli> for Args {
     fn from(cli: Cli) -> Self {
-        return HashTrieMap::new()
-            .insert(
+        return HashMap::from([
+            (
                 "config".to_string(),
                 cli.config.map_or(Value::Null, |p| {
                     Value::String(p.into_os_string().to_string_lossy().to_string())
                 }),
-            )
-            .insert(
+            ),
+            (
                 "debug".to_string(),
                 Value::Number(serde_json::Number::from(cli.debug)),
-            )
-            .insert(
+            ),
+            (
                 "command".to_string(),
-                serde_json::to_value(cli.command).unwrap(),
-            );
+                match cli.command {
+                    Commands::Read { all } => Value::Object(serde_json::Map::from_iter(vec![
+                        ("name".to_string(), Value::String("read".to_string())),
+                        ("all".to_string(), Value::Bool(all)),
+                    ])),
+                },
+            ),
+        ]);
     }
 }
 

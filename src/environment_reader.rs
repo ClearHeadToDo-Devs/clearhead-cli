@@ -1,10 +1,12 @@
 use dirs::config_dir;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::path::PathBuf;
 
 use config::Config as ConfigBuilder;
 
-type Config = Map<String, Value>;
+use std::collections::HashMap;
+
+type Config = HashMap<String, Value>;
 
 pub fn get_config_map(extra_config: Option<PathBuf>) -> Config {
     let default_config_location = PathBuf::from(format!(
@@ -20,5 +22,7 @@ pub fn get_config_map(extra_config: Option<PathBuf>) -> Config {
         .build()
         .unwrap();
 
-    return settings.try_deserialize::<Config>().unwrap();
+    return settings
+        .try_deserialize::<HashMap<String, Value>>()
+        .unwrap();
 }
