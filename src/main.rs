@@ -12,11 +12,14 @@ use environment_reader::get_config_map;
 fn main() {
     let cli = get_cli_map().expect("Failed to parse CLI arguments");
 
-    let config_map = get_config_map(cli["config"].as_str().map(|s| PathBuf::from(s)));
+    let config_map = get_config_map(match cli.get("config") {
+        Some(Value::String(path)) => Some(PathBuf::from(path)),
+        _ => None,
+    });
 
     let opts = merge_hashmaps(&config_map, &cli);
 
-    if let Some(debug) = cli.get("debug") {
+    if let Some(debug) = opts.get("debug") {
         if debug.as_u64().unwrap_or(0) > 0 {
             println!("Full opts Map: {:#?}", opts);
         }

@@ -1,0 +1,4 @@
+# Default configuration file for the application
+# Uncomment and modify the following lines as needed
+# We default to non-debug mode for visual clarity
+# debug = 0 
