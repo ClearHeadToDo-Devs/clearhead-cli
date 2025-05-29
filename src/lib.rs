@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-//
-
 // Merges two hashmaps using json as Values.
 // // If a key exists in both, the value from `args` will overwrite the value from `config`.
 pub fn merge_hashmaps(

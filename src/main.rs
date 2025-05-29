@@ -45,3 +45,5 @@ fn process_subcommand(opts: &HashMap<String, Value>) {
         }
     }
 }
+
+fn get_action_list(opts: &HashMap<String, Value>) -> String {}

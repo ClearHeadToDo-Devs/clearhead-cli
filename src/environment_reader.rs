@@ -1,4 +1,4 @@
-use dirs::config_dir;
+use dirs::{config_dir, data_dir};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -13,29 +13,21 @@ pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
         "{}/cliche/settings.toml",
         config_dir().unwrap().display()
     ));
+    let default_action_location = format!("{}/clhd/active.action", data_dir().unwrap().display());
 
-    if custom_config_loc.is_none() && !default_config_location.exists() {
-        // first, check if the default config directory exists
-        if !default_config_location.parent().unwrap().exists() {
-            // if it doesn't, create the parent directory
-            std::fs::create_dir_all(default_config_location.parent().unwrap())
-                .expect("Failed to create config directory");
-
-            // then copy the default config file from the examples directory in-repo
-            let example_config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("examples")
-                .join("default")
-                .join("settings.toml");
-            std::fs::copy(example_config_path, &default_config_location)
-                .expect("Failed to copy default config file");
-        }
+    if custom_config_loc.is_none() {
+        ensure_path_exists(&default_config_location);
     }
+
+    ensure_path_exists(&PathBuf::from(&default_action_location));
 
     let settings = ConfigBuilder::builder()
         .add_source(config::Environment::with_prefix("CLICHE"))
         .add_source(config::File::from(
             custom_config_loc.unwrap_or(default_config_location),
         ))
+        .set_default("action_path", default_action_location)
+        .unwrap()
         .build()
         .unwrap_or_else(|e| {
             panic!("Failed to build configuration: {}", e);
@@ -44,4 +36,15 @@ pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
     return settings
         .try_deserialize::<HashMap<String, Value>>()
         .unwrap();
+}
+
+fn ensure_path_exists(path: &PathBuf) {
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).expect("Failed to create parent directory");
+            }
+        }
+        std::fs::File::create(path).expect("Failed to create file");
+    }
 }
