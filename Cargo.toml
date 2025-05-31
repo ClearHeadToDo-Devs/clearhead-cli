@@ -15,6 +15,8 @@ dirs = "*"
 serde_json = "*"
 tree-sitter = "0.24"
 tree-sitter-actions = "*"
+chrono = { version = "*", features = ["serde"] }
+
 
 [build-dependencies]
 cc = "*"
