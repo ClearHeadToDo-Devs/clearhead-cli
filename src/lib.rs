@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use serde_json::Value;
 use tree_sitter::Tree;
 
+mod entities;
+
 // this is the function where we actually use treesitter to parse the actions into the tree, and
 // translate that into a proper vector of hashmaps so that we are passing back plain data
 fn get_action_list(
@@ -27,7 +29,7 @@ fn get_action_list(
         .collect())
 }
 
-fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
+pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     let mut action_parser = tree_sitter::Parser::new();
 
     action_parser
@@ -38,6 +40,10 @@ fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
         Some(tree) => Ok(tree),
         None => Err("Failed to parse actions".to_string()),
     };
+}
+
+fn get_tree_sexp(tree: &Tree) -> String {
+    return tree.root_node().to_sexp();
 }
 
 fn node_to_map(node: tree_sitter::Node, source: &str) -> HashMap<String, Value> {
