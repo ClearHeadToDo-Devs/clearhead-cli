@@ -1,6 +1,84 @@
 use std::collections::HashMap;
 
 use serde_json::Value;
+use tree_sitter::Tree;
+
+// this is the function where we actually use treesitter to parse the actions into the tree, and
+// translate that into a proper vector of hashmaps so that we are passing back plain data
+fn get_action_list(
+    opts: &HashMap<String, Value>,
+    actions: String,
+) -> Result<Vec<HashMap<String, Value>>, String> {
+    let tree = match get_action_list_tree(&actions) {
+        Ok(tree) => tree,
+        Err(e) => {
+            return Err(format!("Failed to parse actions: {}", e));
+        }
+    };
+
+    let root = tree.root_node();
+
+    let mut cursor = root.walk();
+
+    Ok(root
+        .children(&mut cursor)
+        .filter(|n| n.kind() == "root_action")
+        .map(|n| node_to_map(n, &actions))
+        .collect())
+}
+
+fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
+    let mut action_parser = tree_sitter::Parser::new();
+
+    action_parser
+        .set_language(&tree_sitter_actions::LANGUAGE.into())
+        .expect("Failed to set language for tree-sitter parser");
+
+    return match action_parser.parse(actions, None) {
+        Some(tree) => Ok(tree),
+        None => Err("Failed to parse actions".to_string()),
+    };
+}
+
+fn node_to_map(node: tree_sitter::Node, source: &str) -> HashMap<String, Value> {
+    let mut map = HashMap::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        let kind = child.kind();
+        let val = match child.child_count() {
+            0 => Value::String(
+                child
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            ),
+            _ => {
+                // For lists or nested actions, recurse
+                if kind.ends_with("_list") {
+                    let mut arr = Vec::new();
+                    let mut list_cursor = child.walk();
+                    for n in child.children(&mut list_cursor) {
+                        arr.push(serde_json::to_value(node_to_map(n, source)).unwrap());
+                    }
+                    Value::Array(arr)
+                } else {
+                    serde_json::to_value(node_to_map(child, source)).unwrap()
+                }
+            }
+        };
+        // Insert, handling duplicate keys as arrays
+        if let Some(existing) = map.get_mut(kind) {
+            match existing {
+                Value::Array(arr) => arr.push(val),
+                old => *old = Value::Array(vec![old.take(), val]),
+            }
+        } else {
+            map.insert(kind.to_string(), val);
+        }
+    }
+    map
+}
 
 // Merges two hashmaps using json as Values.
 // // If a key exists in both, the value from `args` will overwrite the value from `config`.
@@ -46,80 +124,4 @@ pub fn merge_hashmaps(
         merged.insert(key.clone(), value.clone());
     }
     merged
-}
-
-// this is the function where we actually use treesitter to parse the actions into the tree, and
-// translate that into a proper vector of hashmaps so that we are passing back plain data
-fn get_action_list(opts: &HashMap<String, Value>, actions: String) -> Vec<HashMap<String, Value>> {
-    let mut action_parser = tree_sitter::Parser::new();
-
-    action_parser
-        .set_language(&tree_sitter_actions::LANGUAGE.into())
-        .expect("Failed to set language for tree-sitter parser");
-
-    let tree = action_parser
-        .parse(actions.as_bytes(), None)
-        .expect("Failed to parse actions");
-
-    let root_node = tree.root_node();
-}
-
-struct RootAction {
-    core: CoreActionProperties,
-    story: Option<String>,
-    children: Vec<ChildAction>,
-}
-
-struct ChildAction {
-    core: CoreActionProperties,
-    grandchildren: Vec<GrandChildAction>,
-}
-
-struct GrandChildAction {
-    core: CoreActionProperties,
-    great_grandchildren: Vec<GrandChildAction>,
-}
-
-struct GreatGrandChildAction {
-    core: CoreActionProperties,
-    great_great_grandchildren: Vec<GrandChildAction>,
-}
-
-struct DoubleGreatGrandChildAction {
-    core: CoreActionProperties,
-    leaf_actions: Vec<LeafAction>,
-}
-
-struct LeafAction {
-    core: CoreActionProperties,
-}
-
-struct CoreActionProperties {
-    name: String,
-    state: ActionState,
-    description: String,
-    priority: u8,
-    context_list: Vec<String>,
-    do_date: Option<chrono::DateTime<chrono::Utc>>,
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActionState {
-    NotStarted,
-    Completed,
-    InProgress,
-    BlockedorAwaiting,
-    Cancelled,
-}
-
-struct ExtendedDateTime<Tz: chrono::TimeZone> {
-    date: chrono::DateTime<Tz>,
-    recurrance: Option<Recurrance>,
-}
-
-enum Recurrance {
-    None,
-    Daily,
-    Weekly,
-    Monthly,
-    Yearly,
 }
