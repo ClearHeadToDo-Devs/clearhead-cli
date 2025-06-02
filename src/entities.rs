@@ -90,7 +90,7 @@ pub struct CoreActionProperties {
     state: ActionState,
     description: Option<String>,
     priority: Option<u8>,
-    context_list: ContextList,
+    context_list: Option<ContextList>,
 }
 
 type ContextList = Vec<String>;
@@ -108,22 +108,24 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CoreActionProperties {
                     let state_node = child.try_into();
                 }
                 "description" => {
-                    properties.description =
-                        let description_text_node = child.child(0
-                        Some(child.child(1).utf8_text(&node.source).unwrap().to_string())
+                    let description_text_node = child.child(0).unwrap();
+
+                    properties.description = Some(
+                        node.source
+                            [description_text_node.start_byte()..description_text_node.end_byte()]
+                            .to_string(),
+                    );
                 }
                 "priority" => {
+                    let priority_text_node = child.child(1).unwrap();
+
                     properties.priority = Some(
-                        child
-                            .child(1)
-                            .unwrap()
-                            .utf8_text(&node.source)
-                            .unwrap()
+                        node.source[priority_text_node.start_byte()..priority_text_node.end_byte()]
                             .parse()
-                            .unwrap(),
-                    )
+                            .map_err(|_| "Failed to parse priority")?,
+                    );
                 }
-                "context_list" => properties.context_list = child.try_into(),
+                "context_list" => properties.context_list = Some(child.try_into().unwrap()),
                 _ => return Err("Unknown core action property"),
             }
         }
@@ -131,14 +133,18 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CoreActionProperties {
     }
 }
 
-impl TryFrom<NodeWrapper> for ContextList {
+impl<'a> TryFrom<NodeWrapper<'a>> for ContextList {
     type Error = &'static str;
     fn try_from(node: NodeWrapper) -> Result<Self, Self::Error> {
         let mut contexts = Vec::new();
         for child in node.node.children(&mut node.node.walk()) {
             match child.kind() {
                 "context_icon" => continue,
-                "middle_context" => contexts.push(child.child(0).unwrap().utf8_text().unwrap()),
+                "middle_context" => {
+                    let node_text = child.child(1).unwrap();
+                    contexts
+                        .push(node.source[node_text.start_byte()..node_text.end_byte()].to_string())
+                }
                 "tail_context" => contexts.push(child.utf8_text(node.source).unwrap()),
 
                 _ => return Err("Unknown context property"),
