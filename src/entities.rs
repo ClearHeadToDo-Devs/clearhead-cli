@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use serde_json::Value;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 pub fn create_tree_wrapper(tree: Tree, source: String) -> TreeWrapper {
@@ -43,17 +45,22 @@ pub struct RootAction {
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
-    fn try_from(node: NodeWrapper) -> Result<Self, &'static str> {
+    type Error = &'static str;
+    
+    fn try_from(node: NodeWrapper) -> Result<Self, Self::Error> {
         let mut root_action = RootAction::default();
         for child in node.node.children(&mut node.node.walk()) {
             match child.kind() {
-                "core_action" => root_action.core = child.try_into().unwrap(),
+                "core_action" => {
+                    let wrapped_child = create_node_wrapper(child, node.source.clone());
+                    root_action.core = wrapped_child.try_into()?;
+                }
                 "story" => {
                     root_action.story =
                         Some(node.source[child.start_byte()..child.end_byte()].to_string());
                 }
                 "child_action_list" => continue,
-                _ => return Err("test"),
+                _ => return Err("Unknown root action child"),
             }
         }
         return Ok(root_action);
@@ -105,7 +112,8 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CoreActionProperties {
                     properties.name = node.source[child.start_byte()..child.end_byte()].to_string()
                 }
                 "state" => {
-                    let state_node = child.try_into();
+                    let wrapped_child = create_node_wrapper(child, node.source.clone());
+                    properties.state = wrapped_child.try_into()?;
                 }
                 "description" => {
                     let description_text_node = child.child(0).unwrap();
@@ -125,7 +133,10 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CoreActionProperties {
                             .map_err(|_| "Failed to parse priority")?,
                     );
                 }
-                "context_list" => properties.context_list = Some(child.try_into().unwrap()),
+                "context_list" => {
+                    let wrapped_child = create_node_wrapper(child, node.source.clone());
+                    properties.context_list = Some(wrapped_child.try_into()?);
+                }
                 _ => return Err("Unknown core action property"),
             }
         }
@@ -145,12 +156,13 @@ impl<'a> TryFrom<NodeWrapper<'a>> for ContextList {
                     contexts
                         .push(node.source[node_text.start_byte()..node_text.end_byte()].to_string())
                 }
-                "tail_context" => contexts.push(child.utf8_text(node.source).unwrap()),
-
+                "tail_context" => {
+                    contexts.push(child.utf8_text(node.source.as_bytes()).unwrap().to_string());
+                }
                 _ => return Err("Unknown context property"),
             }
-            Ok(contexts)
         }
+        Ok(contexts)
     }
 }
 
@@ -189,4 +201,35 @@ pub enum Recurrance {
     Weekly,
     Monthly,
     Yearly,
+}
+
+impl RootAction {
+    pub fn to_hashmap(&self) -> HashMap<String, Value> {
+        let mut map = HashMap::new();
+        
+        // Add core properties
+        map.insert("name".to_string(), Value::String(self.core.name.clone()));
+        map.insert("state".to_string(), Value::String(format!("{:?}", self.core.state)));
+        
+        if let Some(ref description) = self.core.description {
+            map.insert("description".to_string(), Value::String(description.clone()));
+        }
+        
+        if let Some(priority) = self.core.priority {
+            map.insert("priority".to_string(), Value::Number(priority.into()));
+        }
+        
+        if let Some(ref context_list) = self.core.context_list {
+            let contexts: Vec<Value> = context_list.iter()
+                .map(|c| Value::String(c.clone()))
+                .collect();
+            map.insert("context_list".to_string(), Value::Array(contexts));
+        }
+        
+        if let Some(ref story) = self.story {
+            map.insert("story".to_string(), Value::String(story.clone()));
+        }
+        
+        map
+    }
 }

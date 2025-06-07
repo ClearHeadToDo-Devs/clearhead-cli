@@ -4,11 +4,12 @@ use serde_json::Value;
 use tree_sitter::Tree;
 
 mod entities;
+use entities::{create_tree_wrapper, ActionList};
 
 // this is the function where we actually use treesitter to parse the actions into the tree, and
 // translate that into a proper vector of hashmaps so that we are passing back plain data
-fn get_action_list(
-    opts: &HashMap<String, Value>,
+pub fn get_action_list(
+    _opts: &HashMap<String, Value>,
     actions: String,
 ) -> Result<Vec<HashMap<String, Value>>, String> {
     let tree = match get_action_list_tree(&actions) {
@@ -18,15 +19,11 @@ fn get_action_list(
         }
     };
 
-    let root = tree.root_node();
+    let tree_wrapper = create_tree_wrapper(tree, actions);
+    let action_list: ActionList = tree_wrapper.try_into()
+        .map_err(|e| format!("Failed to convert tree to actions: {}", e))?;
 
-    let mut cursor = root.walk();
-
-    Ok(root
-        .children(&mut cursor)
-        .filter(|n| n.kind() == "root_action")
-        .map(|n| node_to_map(n, &actions))
-        .collect())
+    Ok(action_list.into_iter().map(|action| action.to_hashmap()).collect())
 }
 
 pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
