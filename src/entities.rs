@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 pub fn create_tree_wrapper(tree: Tree, source: String) -> TreeWrapper {
@@ -27,7 +27,7 @@ pub type ActionList = Vec<RootAction>;
 
 impl TryFrom<TreeWrapper> for ActionList {
     type Error = &'static str;
-    
+
     fn try_from(tree: TreeWrapper) -> Result<Self, Self::Error> {
         let mut actions = Vec::new();
         for node in tree.tree.root_node().children(&mut tree.tree.walk()) {
@@ -48,7 +48,7 @@ pub struct RootAction {
 
 impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
     type Error = &'static str;
-    
+
     fn try_from(node: NodeWrapper) -> Result<Self, Self::Error> {
         let mut root_action = RootAction::default();
         for child in node.node.children(&mut node.node.walk()) {
@@ -208,30 +208,37 @@ pub enum Recurrance {
 impl RootAction {
     pub fn to_hashmap(&self) -> HashMap<String, Value> {
         let mut map = HashMap::new();
-        
+
         // Add core properties
         map.insert("name".to_string(), Value::String(self.core.name.clone()));
-        map.insert("state".to_string(), Value::String(format!("{:?}", self.core.state)));
-        
+        map.insert(
+            "state".to_string(),
+            Value::String(format!("{:?}", self.core.state)),
+        );
+
         if let Some(ref description) = self.core.description {
-            map.insert("description".to_string(), Value::String(description.clone()));
+            map.insert(
+                "description".to_string(),
+                Value::String(description.clone()),
+            );
         }
-        
+
         if let Some(priority) = self.core.priority {
             map.insert("priority".to_string(), Value::Number(priority.into()));
         }
-        
+
         if let Some(ref context_list) = self.core.context_list {
-            let contexts: Vec<Value> = context_list.iter()
+            let contexts: Vec<Value> = context_list
+                .iter()
                 .map(|c| Value::String(c.clone()))
                 .collect();
             map.insert("context_list".to_string(), Value::Array(contexts));
         }
-        
+
         if let Some(ref story) = self.story {
             map.insert("story".to_string(), Value::String(story.clone()));
         }
-        
+
         map
     }
 }
