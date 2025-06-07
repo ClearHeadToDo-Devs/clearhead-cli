@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde_json::Value;
-use tree_sitter::{Node, Tree, TreeCursor};
+use tree_sitter::{Node, Tree};
 
 pub fn create_tree_wrapper(tree: Tree, source: String) -> TreeWrapper {
     TreeWrapper { tree, source }
@@ -23,10 +23,12 @@ pub struct NodeWrapper<'a> {
     source: String,
 }
 
-type ActionList = Vec<RootAction>;
+pub type ActionList = Vec<RootAction>;
 
 impl TryFrom<TreeWrapper> for ActionList {
-    fn try_from(tree: TreeWrapper) -> Result<Self, &'static str> {
+    type Error = &'static str;
+    
+    fn try_from(tree: TreeWrapper) -> Result<Self, Self::Error> {
         let mut actions = Vec::new();
         for node in tree.tree.root_node().children(&mut tree.tree.walk()) {
             let wrapped_node = create_node_wrapper(node, tree.source.clone());
