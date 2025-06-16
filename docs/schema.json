@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClearHead Action List",
+  "description": "Schema for representing Action List in ClearHead Methodlogy",
+  "name": "Action List",
+  "type": "array",
+  "items": {
+    "name": "Root Action",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "state": {
+        "enum": [
+          "Not Started",
+          "Completed",
+          "In-Progress",
+          "Blocked/Awaiting",
+          "Cancelled"
+        ]
+      },
+      "priority": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": {
+        "type": "string"
+      }
+    }
+  }
+}
