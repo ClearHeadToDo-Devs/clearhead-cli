@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
+use chrono::DateTime;
 use serde_json::Value;
 use tree_sitter::Tree;
 
 mod entities;
 use entities::{ActionList, create_tree_wrapper};
 
+use uuid::Uuid;
+
+use tree_sitter::Node;
 // this is the function where we actually use treesitter to parse the actions into the tree, and
 // translate that into a proper vector of hashmaps so that we are passing back plain data
 pub fn get_action_list(
@@ -43,10 +47,38 @@ fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     };
 }
 
-// fn get_action_list_map(content: &str, tree: Tree) -> Result<HashMap<String, Value>, String> {
-//     let root = tree.root_node();
-//
-//     let root_action_iterator = root.children(&mut tree.walk());
-//
-//     let root_action_list = root_action_iterator.map(None);
-// }
+fn get_action_list_map(
+    content: &str,
+    tree: Tree,
+) -> Result<Vec<HashMap<String, ActionProperty>>, String> {
+    let root = tree.root_node();
+
+    let mut binding = tree.walk();
+    let root_action_iterator = root.children(&mut binding);
+
+    root_action_iterator
+        .map(|root_action| get_action_map(content, &root_action, true))
+        .collect()
+}
+
+fn get_action_map(content: &str, node: &Node) -> Result<HashMap<String, ActionProperty>, String> {}
+enum ActionProperty {
+    Name(String),
+    Story(String),
+    Description(String),
+    Priority(usize),
+    State(ActionState),
+    Context(Vec<String>),
+    ID(Uuid),
+    Children(Vec<HashMap<String, ActionProperty>>),
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionState {
+    #[default]
+    NotStarted,
+    Completed,
+    InProgress,
+    BlockedorAwaiting,
+    Cancelled,
+}

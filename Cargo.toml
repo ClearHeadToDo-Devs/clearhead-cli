@@ -17,6 +17,13 @@ tree-sitter = "0.24"
 tree-sitter-actions = "*"
 chrono = { version = "*", features = ["serde"] }
 
+[dependencies.uuid]
+version = "*"
+# Lets you generate random UUIDs
+features = [
+    "v7",
+]
 
 [build-dependencies]
 cc = "*"
+
