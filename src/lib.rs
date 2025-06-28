@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{array, collections::HashMap};
 
 use chrono::DateTime;
 use serde_json::Value;
@@ -15,23 +15,12 @@ use tree_sitter::Node;
 pub fn get_action_list(
     _opts: &HashMap<String, Value>,
     actions: String,
-) -> Result<Vec<HashMap<String, Value>>, String> {
-    let tree = match get_action_list_tree(&actions) {
-        Ok(tree) => tree,
-        Err(e) => {
-            return Err(format!("Failed to parse actions: {}", e));
-        }
-    };
+) -> Result<Vec<HashMap<String, ActionProperty>>, String> {
+    let tree = get_action_list_tree(&actions)?;
 
-    let tree_wrapper = create_tree_wrapper(tree, actions);
-    let action_list: ActionList = tree_wrapper
-        .try_into()
-        .map_err(|e| format!("Failed to convert tree to actions: {}", e))?;
+    let root_node = tree.root_node();
 
-    Ok(action_list
-        .into_iter()
-        .map(|action| action.to_hashmap())
-        .collect())
+    return get_action_list_vec(&actions, &root_node);
 }
 
 fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
@@ -41,27 +30,45 @@ fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
         .set_language(&tree_sitter_actions::LANGUAGE.into())
         .expect("Failed to set language for tree-sitter parser");
 
-    return match action_parser.parse(actions, None) {
-        Some(tree) => Ok(tree),
-        None => Err("Failed to parse actions".to_string()),
-    };
+    action_parser
+        .parse(actions, None)
+        .ok_or("Failed to parse tree".to_string())
 }
 
-fn get_action_list_map(
+fn get_action_list_vec(
     content: &str,
-    tree: Tree,
+    list: &Node,
 ) -> Result<Vec<HashMap<String, ActionProperty>>, String> {
-    let root = tree.root_node();
-
-    let mut binding = tree.walk();
-    let root_action_iterator = root.children(&mut binding);
+    let mut binding = list.walk();
+    let root_action_iterator = list.children(&mut binding);
 
     root_action_iterator
-        .map(|root_action| get_action_map(content, &root_action, true))
+        .map(|root_action| get_action_map(content, &root_action))
         .collect()
 }
 
-fn get_action_map(content: &str, node: &Node) -> Result<HashMap<String, ActionProperty>, String> {}
+fn get_action_map(content: &str, node: &Node) -> Result<HashMap<String, ActionProperty>, String> {
+    let mut binding = node.walk();
+    let action_property_iterator = node.children(&mut binding);
+
+    let mut action_map = HashMap::new();
+
+    action_property_iterator.for_each(|action_property| {
+        add_action_property(&mut action_map, content, &action_property).unwrap()
+    });
+
+    Ok(action_map)
+}
+
+fn add_action_property(
+    map: &mut HashMap<String, ActionProperty>,
+    content: &str,
+    node: &Node,
+) -> Result<(), String> {
+    match node.kind() {
+        _ => todo!(),
+    }
+}
 enum ActionProperty {
     Name(String),
     Story(String),
