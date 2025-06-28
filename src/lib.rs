@@ -66,8 +66,27 @@ fn add_action_property(
     node: &Node,
 ) -> Result<(), String> {
     match node.kind() {
+        "core action" => add_core_action_properties(map, content, node),
         _ => todo!(),
     }
+}
+
+fn add_core_action_properties(
+    map: &mut HashMap<String, ActionProperty>,
+    content: &str,
+    node: &Node,
+) -> Result<(), String> {
+    let mut binding = node.walk();
+    let action_property_iterator = node.children(&mut binding);
+
+    action_property_iterator.for_each(|property| {
+        map.insert(
+            node.kind().to_string(),
+            get_action_core_property_from_node(&property, content).expect("unable to convert node"),
+        );
+    });
+
+    Ok(())
 }
 enum ActionProperty {
     Name(String),
@@ -80,6 +99,26 @@ enum ActionProperty {
     Children(Vec<HashMap<String, ActionProperty>>),
 }
 
+fn get_action_core_property_from_node(
+    node: &Node,
+    content: &str,
+) -> Result<ActionProperty, String> {
+    match node.kind() {
+        "state" => match node.child(0).unwrap().kind() {
+            "not_started" => Ok(ActionProperty::State(ActionState::NotStarted)),
+            "completed" => Ok(ActionProperty::State(ActionState::Completed)),
+            "in_progress" => Ok(ActionProperty::State(ActionState::InProgress)),
+            "blocked" => Ok(ActionProperty::State(ActionState::BlockedorAwaiting)),
+            "cancelled" => Ok(ActionProperty::State(ActionState::Cancelled)),
+            _ => Err("new or malformed state".to_string()),
+        },
+        "name" => Ok(ActionProperty::Name(get_node_value(node, content))),
+        "description" => Ok(ActionProperty::Description(get_node_value(node, content))),
+        "story" => Ok(ActionProperty::Story(get_node_value(node, content))),
+        _ => todo!(),
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionState {
     #[default]
@@ -88,4 +127,8 @@ pub enum ActionState {
     InProgress,
     BlockedorAwaiting,
     Cancelled,
+}
+
+fn get_node_value(node: &Node, content: &str) -> String {
+    content[node.start_byte()..node.end_byte()].to_string()
 }
