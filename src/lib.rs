@@ -115,6 +115,11 @@ fn get_action_core_property_from_node(
         "name" => Ok(ActionProperty::Name(get_node_value(node, content))),
         "description" => Ok(ActionProperty::Description(get_node_value(node, content))),
         "story" => Ok(ActionProperty::Story(get_node_value(node, content))),
+        "priority" => Ok(ActionProperty::Priority(
+            get_node_value(node, content)
+                .parse::<usize>()
+                .expect("failed to parse priority properly"),
+        )),
         _ => todo!(),
     }
 }
