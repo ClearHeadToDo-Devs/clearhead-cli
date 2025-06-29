@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local};
-use tree_sitter::{Node, Tree};
+use tree_sitter::{Node, Tree, TreeCursor};
 use uuid::Uuid;
 
 pub fn create_tree_wrapper(tree: Tree, source: String) -> TreeWrapper {
@@ -25,10 +25,41 @@ pub struct NodeWrapper<'a> {
 
 pub type ActionList = Vec<RootAction>;
 
+impl TryFrom<TreeWrapper> for ActionList {
+    type Error = &'static str;
+    fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
+        let root_wrapper = create_node_wrapper(value.tree.root_node(), value.source.clone());
+        let mut action_list: ActionList = Vec::new();
+        let mut binding = root_wrapper.node.walk();
+
+        let root_action_iterator = root_wrapper.node.children(&mut binding);
+
+        root_action_iterator.for_each(|action_node| {
+            action_list.push(
+                create_node_wrapper(action_node, value.source.clone())
+                    .try_into()
+                    .expect("failed to properly build action list"),
+            )
+        });
+
+        return Ok(action_list);
+    }
+}
+
 pub struct RootAction {
     common: CommonActionProperties,
     story: Option<Story>,
     children: Option<ChildActionList>,
+}
+
+impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
+    type Error = &'static str;
+    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
+        let node_wrapper = create_node_wrapper(value.node, value.source.clone());
+        let binding = node_wrapper.node.walk();
+
+        let child_iterator = value.node.children(&mut binding)
+    }
 }
 type ChildActionList = Vec<ChildAction>;
 
