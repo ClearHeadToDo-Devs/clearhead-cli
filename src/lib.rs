@@ -5,7 +5,7 @@ use serde_json::Value;
 use tree_sitter::Tree;
 
 mod entities;
-use entities::{ActionList, create_tree_wrapper};
+use entities::{ActionList, ActionState, create_tree_wrapper};
 
 use uuid::Uuid;
 
@@ -122,16 +122,6 @@ fn get_action_core_property_from_node(
         )),
         _ => todo!(),
     }
-}
-
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActionState {
-    #[default]
-    NotStarted,
-    Completed,
-    InProgress,
-    BlockedorAwaiting,
-    Cancelled,
 }
 
 fn get_node_value(node: &Node, content: &str) -> String {
