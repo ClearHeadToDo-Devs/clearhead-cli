@@ -58,7 +58,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
         let node_wrapper = create_node_wrapper(value.node, value.source.clone());
         let binding = node_wrapper.node.walk();
 
-        let child_iterator = value.node.children(&mut binding)
+        let child_iterator = value.node.children(&mut binding);
     }
 }
 type ChildActionList = Vec<ChildAction>;
