@@ -4,6 +4,43 @@ use chrono::DateTime;
 use serde_json::Value;
 use tree_sitter::Tree;
 
+pub fn merge_hashmaps(
+    left: &HashMap<String, Value>,
+    right: &HashMap<String, Value>,
+) -> HashMap<String, Value> {
+    let mut result = left.clone();
+    
+    for (key, right_value) in right {
+        match (result.get(key), right_value) {
+            // If both values are objects, merge them recursively
+            (Some(Value::Object(left_obj)), Value::Object(right_obj)) => {
+                let left_map: HashMap<String, Value> = left_obj.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                let right_map: HashMap<String, Value> = right_obj.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                
+                let merged_map = merge_hashmaps(&left_map, &right_map);
+                let merged_obj: serde_json::Map<String, Value> = merged_map.into_iter().collect();
+                result.insert(key.clone(), Value::Object(merged_obj));
+            }
+            // If both values are arrays, concatenate them (right overwrites/extends left)
+            (Some(Value::Array(left_arr)), Value::Array(right_arr)) => {
+                let mut merged_arr = left_arr.clone();
+                merged_arr.extend(right_arr.clone());
+                result.insert(key.clone(), Value::Array(merged_arr));
+            }
+            // For all other cases, right value overwrites left value
+            _ => {
+                result.insert(key.clone(), right_value.clone());
+            }
+        }
+    }
+    
+    result
+}
+
 mod entities;
 use entities::{ActionList, ActionState, create_tree_wrapper};
 
