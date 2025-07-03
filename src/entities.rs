@@ -59,6 +59,15 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
         let binding = node_wrapper.node.walk();
 
         let child_iterator = value.node.children(&mut binding);
+
+        Ok(RootAction {
+            common: child_iterator
+                .find(|action| action.kind() == "core_action")
+                .expect("no structure")
+                .into(),
+            story: (),
+            children: (),
+        })
     }
 }
 type ChildActionList = Vec<ChildAction>;
@@ -113,6 +122,27 @@ type ContextList = Vec<String>;
 type ActionId = Uuid;
 type ActionDoDateTime = DateTime<Local>;
 type ActionCompletedDateTime = DateTime<Local>;
+
+impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
+    type Error = &'static str;
+    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
+        let node_wrapper = create_node_wrapper(value.node, value.source.clone());
+        let binding = node_wrapper.node.walk();
+
+        let child_iterator = value.node.children(&mut binding);
+
+        Ok(CommonActionProperties {
+            state: (),
+            name: (),
+            description: (),
+            priority: (),
+            context_list: (),
+            id: (),
+            do_date_time: (),
+            completed_date_time: (),
+        })
+    }
+}
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionState {
