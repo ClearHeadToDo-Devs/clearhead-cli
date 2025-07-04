@@ -73,24 +73,30 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
 }
 type ChildActionList = Vec<ChildAction>;
 
-impl<'a> TryFrom<NodeWrapper<'a>> for ChildActionList {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut child_list: ChildActionList = Vec::new();
-        for child in child_iterator {
-            if child.kind() == "child_action" {
-                let child_wrapper = create_node_wrapper(child, value.source.clone());
-                child_list.push(
-                    child_wrapper
-                        .try_into()
-                        .expect("failed to convert child action"),
-                );
+impl_action_list_try_from!(
+    ChildActionList,
+    "child_action",
+    "failed to convert child action"
+);
+
+macro_rules! impl_action_list_try_from {
+    ($list_type:ty, $child_kind:literal, $expect_msg:literal) => {
+        impl<'a> TryFrom<NodeWrapper<'a>> for $list_type {
+            type Error = &'static str;
+            fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
+                let mut binding = value.node.walk();
+                let child_iterator = value.node.children(&mut binding);
+                let mut list: $list_type = Vec::new();
+                for child in child_iterator {
+                    if child.kind() == $child_kind {
+                        let wrapper = create_node_wrapper(child, value.source.clone());
+                        list.push(wrapper.try_into().expect($expect_msg));
+                    }
+                }
+                Ok(list)
             }
         }
-        Ok(child_list)
-    }
+    };
 }
 
 macro_rules! impl_action_node_try_from {
@@ -137,25 +143,11 @@ impl_action_node_try_from!(ChildAction, grandchildren, "grandchild_action_list")
 
 type GrandChildActionList = Vec<GrandChildAction>;
 
-impl<'a> TryFrom<NodeWrapper<'a>> for GrandChildActionList {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut great_grandchildren: GrandChildActionList = Vec::new();
-        for child in child_iterator {
-            if child.kind() == "grand_child_action" {
-                let great_grandchild_wrapper = create_node_wrapper(child, value.source.clone());
-                great_grandchildren.push(
-                    great_grandchild_wrapper
-                        .try_into()
-                        .expect("failed to convert grand child action"),
-                );
-            }
-        }
-        Ok(great_grandchildren)
-    }
-}
+impl_action_list_try_from!(
+    GrandChildActionList,
+    "grand_child_action",
+    "failed to convert grand child action"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GrandChildAction {
@@ -171,27 +163,11 @@ impl_action_node_try_from!(
 
 type GreatGrandChildActionList = Vec<GreatGrandChildAction>;
 
-impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildActionList {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-
-        let mut great_grand_child_list: GreatGrandChildActionList = Vec::new();
-
-        for child in child_iterator {
-            if child.kind() == "great_grand_child_action" {
-                let great_grand_child_wrapper = create_node_wrapper(child, value.source.clone());
-                great_grand_child_list.push(
-                    great_grand_child_wrapper
-                        .try_into()
-                        .expect("failed to convert great grand child action"),
-                );
-            }
-        }
-        Ok(great_grand_child_list)
-    }
-}
+impl_action_list_try_from!(
+    GreatGrandChildActionList,
+    "great_grand_child_action",
+    "failed to convert great grand child action"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GreatGrandChildAction {
@@ -207,26 +183,11 @@ impl_action_node_try_from!(
 
 type GreatGreatGrandChildActionList = Vec<GreatGreatGrandChildAction>;
 
-impl<'a> TryFrom<NodeWrapper<'a>> for GreatGreatGrandChildActionList {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut great_great_grand_child_list: GreatGreatGrandChildActionList = Vec::new();
-        for child in child_iterator {
-            if child.kind() == "great_great_grand_child_action" {
-                let great_great_grand_child_wrapper =
-                    create_node_wrapper(child, value.source.clone());
-                great_great_grand_child_list.push(
-                    great_great_grand_child_wrapper
-                        .try_into()
-                        .expect("failed to convert great great grand child action"),
-                );
-            }
-        }
-        Ok(great_great_grand_child_list)
-    }
-}
+impl_action_list_try_from!(
+    GreatGreatGrandChildActionList,
+    "great_great_grand_child_action",
+    "failed to convert great great grand child action"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GreatGreatGrandChildAction {
@@ -238,25 +199,11 @@ impl_action_node_try_from!(GreatGreatGrandChildAction, leaf_children, "leaf_acti
 
 type LeafActionList = Vec<LeafAction>;
 
-impl<'a> TryFrom<NodeWrapper<'a>> for LeafActionList {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut leaf_list: LeafActionList = Vec::new();
-        for child in child_iterator {
-            if child.kind() == "leaf_action" {
-                let leaf_wrapper = create_node_wrapper(child, value.source.clone());
-                leaf_list.push(
-                    leaf_wrapper
-                        .try_into()
-                        .expect("failed to convert leaf action"),
-                );
-            }
-        }
-        Ok(leaf_list)
-    }
-}
+impl_action_list_try_from!(
+    LeafActionList,
+    "leaf_action",
+    "failed to convert leaf action"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LeafAction {
