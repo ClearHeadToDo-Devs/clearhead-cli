@@ -265,7 +265,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
 
         for child in child_iterator {
             match child.kind() {
-                "state" => match child.child(0).unwrap().kind() {
+                "state" => match child.child(1).unwrap().kind() {
                     "not_started" => state = ActionState::NotStarted,
                     "completed" => state = ActionState::Completed,
                     "in_progress" => state = ActionState::InProgress,

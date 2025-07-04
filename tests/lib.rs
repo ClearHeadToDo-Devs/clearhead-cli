@@ -10,7 +10,7 @@ fn convert_basic_action() {
     let derived_struct = get_action_list_struct(&test_config, test_action).unwrap();
     let expected_struct = vec![RootAction {
         common: CommonActionProperties {
-            state: ActionState::default(),
+            state: ActionState::Completed,
             name: "test".to_string(),
             description: None,
             priority: None,
