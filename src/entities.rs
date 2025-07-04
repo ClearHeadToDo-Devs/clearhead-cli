@@ -81,11 +81,11 @@ macro_rules! impl_action_node_try_from {
     };
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct RootAction {
-    common: CommonActionProperties,
-    story: Option<Story>,
-    children: Option<ChildActionList>,
+    pub common: CommonActionProperties,
+    pub story: Option<Story>,
+    pub children: Option<ChildActionList>,
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
@@ -133,8 +133,8 @@ impl_action_list_try_from!(
     "failed to convert child action"
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ChildAction {
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct ChildAction {
     common: CommonActionProperties,
     grandchildren: Option<GrandChildActionList>,
 }
@@ -149,7 +149,7 @@ impl_action_list_try_from!(
     "failed to convert grand child action"
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct GrandChildAction {
     common: CommonActionProperties,
     great_grandchildren: Option<GreatGrandChildActionList>,
@@ -169,7 +169,7 @@ impl_action_list_try_from!(
     "failed to convert great grand child action"
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct GreatGrandChildAction {
     common: CommonActionProperties,
     great_great_grandchildren: Option<GreatGreatGrandChildActionList>,
@@ -189,7 +189,7 @@ impl_action_list_try_from!(
     "failed to convert great great grand child action"
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct GreatGreatGrandChildAction {
     common: CommonActionProperties,
     leaf_children: Option<LeafActionList>,
@@ -205,7 +205,7 @@ impl_action_list_try_from!(
     "failed to convert leaf action"
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct LeafAction {
     common: CommonActionProperties,
 }
@@ -227,16 +227,16 @@ impl<'a> TryFrom<NodeWrapper<'a>> for LeafAction {
         })
     }
 }
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct CommonActionProperties {
-    state: ActionState,
-    name: ActionName,
-    description: Option<ActionDescription>,
-    priority: Option<ActionPriority>,
-    context_list: Option<ContextList>,
-    id: Option<ActionId>,
-    do_date_time: Option<ActionDoDateTime>,
-    completed_date_time: Option<ActionCompletedDateTime>,
+#[derive(PartialEq, Default, Debug, Clone, Serialize, Deserialize)]
+pub struct CommonActionProperties {
+    pub state: ActionState,
+    pub name: ActionName,
+    pub description: Option<ActionDescription>,
+    pub priority: Option<ActionPriority>,
+    pub context_list: Option<ContextList>,
+    pub id: Option<ActionId>,
+    pub do_date_time: Option<ActionDoDateTime>,
+    pub completed_date_time: Option<ActionCompletedDateTime>,
 }
 
 type Story = String;

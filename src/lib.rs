@@ -10,7 +10,6 @@ use entities::{ActionList, ActionState};
 
 use uuid::Uuid;
 
-use std::path::PathBuf;
 use tree_sitter::Node;
 
 // merging json hashmaps as our universal structure
@@ -24,6 +23,18 @@ pub fn merge_hashmaps(left: &Value, right: &Value) -> Result<Value, String> {
     } else {
         return Err("Both values must be JSON objects".to_string());
     }
+}
+
+pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList, String> {
+    let tree = get_action_list_tree(actions)?;
+
+    let tree_wrapper = treesitter::TreeWrapper {
+        tree,
+        source: actions.to_string(),
+    };
+    let action_list: ActionList = tree_wrapper.try_into()?;
+
+    return Ok(action_list);
 }
 // this is the function where we actually use treesitter to parse the actions into the tree, and
 // translate that into a proper vector of hashmaps so that we are passing back plain data
