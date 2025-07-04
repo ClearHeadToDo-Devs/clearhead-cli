@@ -25,6 +25,3 @@ features = [
     "v7",
 ]
 
-[build-dependencies]
-cc = "*"
-

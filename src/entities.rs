@@ -40,7 +40,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
 
-        let mut common = None;
+        let mut common = CommonActionProperties::default();
         let mut story: Option<Story> = None;
         let mut children: Option<ChildActionList> = None;
 
@@ -48,21 +48,24 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
             match child.kind() {
                 "core_action" => {
                     let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = Some(core_wrapper.try_into()?);
+                    common = core_wrapper.try_into()?;
                 }
                 "story" => {
                     story = Some(get_node_text(&child, &value.source));
                 }
                 "child_actions" => {
                     // TODO: Implement child action parsing
-                    children = None;
+                    children = Some(ChildActionList::try_from(create_node_wrapper(
+                        child,
+                        value.source.clone(),
+                    ))?);
                 }
                 _ => {}
             }
         }
 
         Ok(RootAction {
-            common: common.ok_or("Missing core action properties")?,
+            common,
             story,
             children,
         })
@@ -93,7 +96,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for ChildActionList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChildAction {
     common: CommonActionProperties,
-    children: Option<GrandChildActionList>,
+    grandchildren: Option<GrandChildActionList>,
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for ChildAction {
@@ -101,16 +104,16 @@ impl<'a> TryFrom<NodeWrapper<'a>> for ChildAction {
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
-        let mut common = None;
-        let mut children: Option<GrandChildActionList> = None;
+        let mut common: CommonActionProperties = CommonActionProperties::default();
+        let mut grandchildren: Option<GrandChildActionList> = None;
         for child in child_iterator {
             match child.kind() {
                 "core_action" => {
                     let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = Some(core_wrapper.try_into()?);
+                    common = core_wrapper.try_into()?;
                 }
-                "grand_child_actions" => {
-                    children = Some(GrandChildActionList::try_from(create_node_wrapper(
+                "grandchild_action_list" => {
+                    grandchildren = Some(GrandChildActionList::try_from(create_node_wrapper(
                         child,
                         value.source.clone(),
                     ))?);
@@ -119,8 +122,8 @@ impl<'a> TryFrom<NodeWrapper<'a>> for ChildAction {
             }
         }
         Ok(ChildAction {
-            common: common.ok_or("Missing core action properties")?,
-            children,
+            common,
+            grandchildren,
         })
     }
 }
@@ -132,25 +135,25 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GrandChildActionList {
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
-        let mut grand_child_list: GrandChildActionList = Vec::new();
+        let mut great_grandchildren: GrandChildActionList = Vec::new();
         for child in child_iterator {
             if child.kind() == "grand_child_action" {
-                let grand_child_wrapper = create_node_wrapper(child, value.source.clone());
-                grand_child_list.push(
-                    grand_child_wrapper
+                let great_grandchild_wrapper = create_node_wrapper(child, value.source.clone());
+                great_grandchildren.push(
+                    great_grandchild_wrapper
                         .try_into()
                         .expect("failed to convert grand child action"),
                 );
             }
         }
-        Ok(grand_child_list)
+        Ok(great_grandchildren)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GrandChildAction {
     common: CommonActionProperties,
-    children: GreatGrandChildActionList,
+    great_grandchildren: Option<GreatGrandChildActionList>,
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for GrandChildAction {
@@ -158,26 +161,28 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GrandChildAction {
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
-        let mut common = None;
-        let mut children: Option<GreatGrandChildActionList> = None;
+
+        let mut common: CommonActionProperties = CommonActionProperties::default();
+        let mut great_grandchildren: Option<GreatGrandChildActionList> = None;
+
         for child in child_iterator {
             match child.kind() {
                 "core_action" => {
                     let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = Some(core_wrapper.try_into()?);
+                    common = core_wrapper.try_into()?;
                 }
                 "great_grand_child_actions" => {
-                    children = Some(GreatGrandChildActionList::try_from(create_node_wrapper(
-                        child,
-                        value.source.clone(),
-                    ))?);
+                    great_grandchildren = Some(GreatGrandChildActionList::try_from(
+                        create_node_wrapper(child, value.source.clone()),
+                    )?);
                 }
                 _ => {}
             }
         }
+
         Ok(GrandChildAction {
-            common: common.ok_or("Missing core action properties")?,
-            children: children.ok_or("Missing great grand child actions")?,
+            common,
+            great_grandchildren,
         })
     }
 }
@@ -189,7 +194,9 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildActionList {
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
+
         let mut great_grand_child_list: GreatGrandChildActionList = Vec::new();
+
         for child in child_iterator {
             if child.kind() == "great_grand_child_action" {
                 let great_grand_child_wrapper = create_node_wrapper(child, value.source.clone());
@@ -207,7 +214,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildActionList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GreatGrandChildAction {
     common: CommonActionProperties,
-    children: Option<GreatGreatGrandChildActionList>,
+    great_great_grandchildren: Option<GreatGreatGrandChildActionList>,
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildAction {
@@ -215,16 +222,16 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildAction {
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
-        let mut common = None;
-        let mut children: Option<GreatGreatGrandChildActionList> = None;
+        let mut common: CommonActionProperties = CommonActionProperties::default();
+        let mut great_great_grandchildren: Option<GreatGreatGrandChildActionList> = None;
         for child in child_iterator {
             match child.kind() {
                 "core_action" => {
                     let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = Some(core_wrapper.try_into()?);
+                    common = core_wrapper.try_into()?;
                 }
                 "great_great_grand_child_actions" => {
-                    children = Some(GreatGreatGrandChildActionList::try_from(
+                    great_great_grandchildren = Some(GreatGreatGrandChildActionList::try_from(
                         create_node_wrapper(child, value.source.clone()),
                     )?);
                 }
@@ -232,8 +239,8 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildAction {
             }
         }
         Ok(GreatGrandChildAction {
-            common: common.ok_or("Missing core action properties")?,
-            children: children,
+            common,
+            great_great_grandchildren,
         })
     }
 }
@@ -264,7 +271,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGreatGrandChildActionList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GreatGreatGrandChildAction {
     common: CommonActionProperties,
-    children: Option<LeafActionList>,
+    leaf_children: Option<LeafActionList>,
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for GreatGreatGrandChildAction {
@@ -272,16 +279,16 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGreatGrandChildAction {
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
         let mut binding = value.node.walk();
         let child_iterator = value.node.children(&mut binding);
-        let mut common = None;
-        let mut children: Option<LeafActionList> = None;
+        let mut common: CommonActionProperties = CommonActionProperties::default();
+        let mut leaf_children: Option<LeafActionList> = None;
         for child in child_iterator {
             match child.kind() {
                 "core_action" => {
                     let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = Some(core_wrapper.try_into()?);
+                    common = core_wrapper.try_into()?;
                 }
                 "leaf_actions" => {
-                    children = Some(LeafActionList::try_from(create_node_wrapper(
+                    leaf_children = Some(LeafActionList::try_from(create_node_wrapper(
                         child,
                         value.source.clone(),
                     ))?);
@@ -290,8 +297,8 @@ impl<'a> TryFrom<NodeWrapper<'a>> for GreatGreatGrandChildAction {
             }
         }
         Ok(GreatGreatGrandChildAction {
-            common: common.ok_or("Missing core action properties")?,
-            children,
+            common,
+            leaf_children,
         })
     }
 }
@@ -340,7 +347,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for LeafAction {
         })
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct CommonActionProperties {
     state: ActionState,
     name: ActionName,
