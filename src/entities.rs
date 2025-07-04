@@ -27,58 +27,6 @@ impl TryFrom<TreeWrapper> for ActionList {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RootAction {
-    common: CommonActionProperties,
-    story: Option<Story>,
-    children: Option<ChildActionList>,
-}
-
-impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-
-        let mut common = CommonActionProperties::default();
-        let mut story: Option<Story> = None;
-        let mut children: Option<ChildActionList> = None;
-
-        for child in child_iterator {
-            match child.kind() {
-                "core_action" => {
-                    let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = core_wrapper.try_into()?;
-                }
-                "story" => {
-                    story = Some(get_node_text(&child, &value.source));
-                }
-                "child_actions" => {
-                    // TODO: Implement child action parsing
-                    children = Some(ChildActionList::try_from(create_node_wrapper(
-                        child,
-                        value.source.clone(),
-                    ))?);
-                }
-                _ => {}
-            }
-        }
-
-        Ok(RootAction {
-            common,
-            story,
-            children,
-        })
-    }
-}
-type ChildActionList = Vec<ChildAction>;
-
-impl_action_list_try_from!(
-    ChildActionList,
-    "child_action",
-    "failed to convert child action"
-);
-
 macro_rules! impl_action_list_try_from {
     ($list_type:ty, $child_kind:literal, $expect_msg:literal) => {
         impl<'a> TryFrom<NodeWrapper<'a>> for $list_type {
@@ -132,6 +80,58 @@ macro_rules! impl_action_node_try_from {
         }
     };
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RootAction {
+    common: CommonActionProperties,
+    story: Option<Story>,
+    children: Option<ChildActionList>,
+}
+
+impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
+    type Error = &'static str;
+    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
+        let mut binding = value.node.walk();
+        let child_iterator = value.node.children(&mut binding);
+
+        let mut common = CommonActionProperties::default();
+        let mut story: Option<Story> = None;
+        let mut children: Option<ChildActionList> = None;
+
+        for child in child_iterator {
+            match child.kind() {
+                "core_action" => {
+                    let core_wrapper = create_node_wrapper(child, value.source.clone());
+                    common = core_wrapper.try_into()?;
+                }
+                "story" => {
+                    story = Some(get_node_text(&child, &value.source));
+                }
+                "child_actions" => {
+                    // TODO: Implement child action parsing
+                    children = Some(ChildActionList::try_from(create_node_wrapper(
+                        child,
+                        value.source.clone(),
+                    ))?);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(RootAction {
+            common,
+            story,
+            children,
+        })
+    }
+}
+type ChildActionList = Vec<ChildAction>;
+
+impl_action_list_try_from!(
+    ChildActionList,
+    "child_action",
+    "failed to convert child action"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChildAction {
