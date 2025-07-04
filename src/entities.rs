@@ -144,29 +144,26 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
 
         for child in child_iterator {
             match child.kind() {
-                "action_state" => {
-                    let state_text = get_node_text(&child, &value.source);
-                    state = match state_text.trim() {
-                        "( )" => ActionState::NotStarted,
-                        "(x)" => ActionState::Completed,
-                        "(-)" => ActionState::InProgress,
-                        "(=)" => ActionState::BlockedorAwaiting,
-                        "(_)" => ActionState::Cancelled,
-                        _ => ActionState::NotStarted,
-                    };
-                }
-                "action_name" => {
+                "state" => match child.child(0).unwrap().kind() {
+                    "not_started" => state = ActionState::NotStarted,
+                    "completed" => state = ActionState::Completed,
+                    "in_progress" => state = ActionState::InProgress,
+                    "blocked" => state = ActionState::BlockedorAwaiting,
+                    "cancelled" => state = ActionState::Cancelled,
+                    _ => return Err("Unknown or malformed action state"),
+                },
+                "name" => {
                     name = get_node_text(&child, &value.source).trim().to_string();
                 }
-                "action_description" => {
+                "description" => {
                     description = Some(get_node_text(&child, &value.source).trim().to_string());
                 }
-                "action_priority" => {
+                "priority" => {
                     if let Ok(prio) = get_node_text(&child, &value.source).trim().parse::<usize>() {
                         priority = Some(prio);
                     }
                 }
-                "action_context" => {
+                "context_list" => {
                     let context_text = get_node_text(&child, &value.source);
                     let contexts: Vec<String> = context_text
                         .split_whitespace()
@@ -177,7 +174,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
                         context_list = Some(contexts);
                     }
                 }
-                "action_id" => {
+                "action" => {
                     if let Ok(uuid) = Uuid::parse_str(get_node_text(&child, &value.source).trim()) {
                         id = Some(uuid);
                     }
