@@ -1,17 +1,15 @@
 use clap::{Parser, Subcommand};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::{fmt::format, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-type Args = HashMap<String, Value>;
+type Args = Value;
 pub fn get_cli_map() -> Result<Args, String> {
     let cli = Cli::parse();
 
-    let args_map: Args = cli.into();
-
-    return Ok(args_map);
+    serde_json::to_value(cli)
+        .map_err(|e| format!("unable to translate cli args to a json value {}", e))
 }
 
 #[derive(Parser, Serialize, Deserialize)]
@@ -35,30 +33,4 @@ enum Commands {
         #[arg(short, long)]
         all: bool,
     },
-}
-
-impl From<Cli> for Args {
-    fn from(cli: Cli) -> Self {
-        return HashMap::from([
-            (
-                "config".to_string(),
-                cli.config.map_or(Value::Null, |p| {
-                    Value::String(p.into_os_string().to_string_lossy().to_string())
-                }),
-            ),
-            (
-                "debug".to_string(),
-                Value::Number(serde_json::Number::from(cli.debug)),
-            ),
-            (
-                "command".to_string(),
-                match cli.command {
-                    Commands::Read { all } => Value::Object(serde_json::Map::from_iter(vec![
-                        ("name".to_string(), Value::String("read".to_string())),
-                        ("all".to_string(), Value::Bool(all)),
-                    ])),
-                },
-            ),
-        ]);
-    }
 }

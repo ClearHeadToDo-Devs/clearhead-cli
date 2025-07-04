@@ -6,7 +6,7 @@ use config::Config as ConfigBuilder;
 
 use std::collections::HashMap;
 
-type Config = HashMap<String, Value>;
+type Config = Value;
 
 pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
     let default_config_location = PathBuf::from(format!(
@@ -33,9 +33,7 @@ pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
             panic!("Failed to build configuration: {}", e);
         });
 
-    return settings
-        .try_deserialize::<HashMap<String, Value>>()
-        .unwrap();
+    return settings.try_deserialize::<Value>().unwrap();
 }
 
 fn ensure_path_exists(path: &PathBuf) {

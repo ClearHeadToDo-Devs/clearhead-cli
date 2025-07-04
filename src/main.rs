@@ -25,7 +25,7 @@ fn main() {
         _ => None,
     });
 
-    let opts = merge_hashmaps(&config_map, &cli);
+    let opts = merge_hashmaps(&config_map, &cli).unwrap();
 
     if let Some(debug) = opts.get("debug") {
         if debug.as_u64().unwrap_or(0) > 0 {
@@ -36,7 +36,7 @@ fn main() {
     process_subcommand(&opts);
 }
 
-fn process_subcommand(opts: &HashMap<String, Value>) {
+fn process_subcommand(opts: &Value) {
     if let Some(command) = opts.get("command") {
         if let Some(name) = command.get("name").and_then(Value::as_str) {
             match name {

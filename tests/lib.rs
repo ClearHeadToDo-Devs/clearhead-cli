@@ -4,7 +4,7 @@ use cliche::*;
 #[test]
 fn convert_basic_action() {
     let test_action = "(x) test\n";
-    let test_tree = get_action_list_tree(test_action).unwrap();
+    let test_tree = get_action_list(test_action).unwrap();
     let expected_output = vec![RootAction {
         core: CoreActionProperties {
             name: "test".to_string(),
