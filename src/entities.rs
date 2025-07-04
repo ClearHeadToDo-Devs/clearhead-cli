@@ -93,40 +93,47 @@ impl<'a> TryFrom<NodeWrapper<'a>> for ChildActionList {
     }
 }
 
+macro_rules! impl_action_node_try_from {
+    ($struct_name:ty, $children_field:ident, $children_kind:literal) => {
+        impl<'a> TryFrom<NodeWrapper<'a>> for $struct_name {
+            type Error = &'static str;
+            fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
+                let mut binding = value.node.walk();
+                let child_iterator = value.node.children(&mut binding);
+
+                let mut common: CommonActionProperties = CommonActionProperties::default();
+                let mut $children_field = None;
+
+                for child in child_iterator {
+                    match child.kind() {
+                        "core_action" => {
+                            let core_wrapper = create_node_wrapper(child, value.source.clone());
+                            common = core_wrapper.try_into()?;
+                        }
+                        $children_kind => {
+                            $children_field =
+                                Some(create_node_wrapper(child, value.source.clone()).try_into()?);
+                        }
+                        _ => {}
+                    }
+                }
+
+                Ok(Self {
+                    common,
+                    $children_field,
+                })
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChildAction {
     common: CommonActionProperties,
     grandchildren: Option<GrandChildActionList>,
 }
 
-impl<'a> TryFrom<NodeWrapper<'a>> for ChildAction {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut common: CommonActionProperties = CommonActionProperties::default();
-        let mut grandchildren: Option<GrandChildActionList> = None;
-        for child in child_iterator {
-            match child.kind() {
-                "core_action" => {
-                    let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = core_wrapper.try_into()?;
-                }
-                "grandchild_action_list" => {
-                    grandchildren = Some(GrandChildActionList::try_from(create_node_wrapper(
-                        child,
-                        value.source.clone(),
-                    ))?);
-                }
-                _ => {}
-            }
-        }
-        Ok(ChildAction {
-            common,
-            grandchildren,
-        })
-    }
-}
+impl_action_node_try_from!(ChildAction, grandchildren, "grandchild_action_list");
 
 type GrandChildActionList = Vec<GrandChildAction>;
 
@@ -156,36 +163,11 @@ struct GrandChildAction {
     great_grandchildren: Option<GreatGrandChildActionList>,
 }
 
-impl<'a> TryFrom<NodeWrapper<'a>> for GrandChildAction {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-
-        let mut common: CommonActionProperties = CommonActionProperties::default();
-        let mut great_grandchildren: Option<GreatGrandChildActionList> = None;
-
-        for child in child_iterator {
-            match child.kind() {
-                "core_action" => {
-                    let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = core_wrapper.try_into()?;
-                }
-                "great_grand_child_actions" => {
-                    great_grandchildren = Some(GreatGrandChildActionList::try_from(
-                        create_node_wrapper(child, value.source.clone()),
-                    )?);
-                }
-                _ => {}
-            }
-        }
-
-        Ok(GrandChildAction {
-            common,
-            great_grandchildren,
-        })
-    }
-}
+impl_action_node_try_from!(
+    GrandChildAction,
+    great_grandchildren,
+    "great_grand_child_actions"
+);
 
 type GreatGrandChildActionList = Vec<GreatGrandChildAction>;
 
@@ -217,33 +199,11 @@ struct GreatGrandChildAction {
     great_great_grandchildren: Option<GreatGreatGrandChildActionList>,
 }
 
-impl<'a> TryFrom<NodeWrapper<'a>> for GreatGrandChildAction {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut common: CommonActionProperties = CommonActionProperties::default();
-        let mut great_great_grandchildren: Option<GreatGreatGrandChildActionList> = None;
-        for child in child_iterator {
-            match child.kind() {
-                "core_action" => {
-                    let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = core_wrapper.try_into()?;
-                }
-                "great_great_grand_child_actions" => {
-                    great_great_grandchildren = Some(GreatGreatGrandChildActionList::try_from(
-                        create_node_wrapper(child, value.source.clone()),
-                    )?);
-                }
-                _ => {}
-            }
-        }
-        Ok(GreatGrandChildAction {
-            common,
-            great_great_grandchildren,
-        })
-    }
-}
+impl_action_node_try_from!(
+    GreatGrandChildAction,
+    great_great_grandchildren,
+    "great_great_grand_child_actions"
+);
 
 type GreatGreatGrandChildActionList = Vec<GreatGreatGrandChildAction>;
 
@@ -274,34 +234,7 @@ struct GreatGreatGrandChildAction {
     leaf_children: Option<LeafActionList>,
 }
 
-impl<'a> TryFrom<NodeWrapper<'a>> for GreatGreatGrandChildAction {
-    type Error = &'static str;
-    fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
-        let mut binding = value.node.walk();
-        let child_iterator = value.node.children(&mut binding);
-        let mut common: CommonActionProperties = CommonActionProperties::default();
-        let mut leaf_children: Option<LeafActionList> = None;
-        for child in child_iterator {
-            match child.kind() {
-                "core_action" => {
-                    let core_wrapper = create_node_wrapper(child, value.source.clone());
-                    common = core_wrapper.try_into()?;
-                }
-                "leaf_actions" => {
-                    leaf_children = Some(LeafActionList::try_from(create_node_wrapper(
-                        child,
-                        value.source.clone(),
-                    ))?);
-                }
-                _ => {}
-            }
-        }
-        Ok(GreatGreatGrandChildAction {
-            common,
-            leaf_children,
-        })
-    }
-}
+impl_action_node_try_from!(GreatGreatGrandChildAction, leaf_children, "leaf_actions");
 
 type LeafActionList = Vec<LeafAction>;
 
