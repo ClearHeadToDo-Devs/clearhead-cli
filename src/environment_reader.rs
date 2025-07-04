@@ -4,8 +4,6 @@ use std::path::PathBuf;
 
 use config::Config as ConfigBuilder;
 
-use std::collections::HashMap;
-
 type Config = Value;
 
 pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
@@ -35,8 +33,7 @@ pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
 
     return settings.try_deserialize::<Value>().unwrap();
 }
-
-fn ensure_path_exists(path: &PathBuf) {
+pub fn ensure_path_exists(path: &PathBuf) {
     if !path.exists() {
         if let Some(parent) = path.parent() {
             if !parent.exists() {

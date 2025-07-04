@@ -1,21 +1,12 @@
 use cliche::merge_hashmaps;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde_json::Value;
 mod argparser;
 use argparser::get_cli_map;
-use chrono::DateTime;
 
 pub mod environment_reader;
 use environment_reader::get_config_map;
-
-use tree_sitter::Node;
-use tree_sitter::Parser;
-use tree_sitter::Tree;
-use tree_sitter_actions::LANGUAGE;
-
-type ActionTree = Tree;
 
 fn main() {
     let cli = get_cli_map().expect("Failed to parse CLI arguments");

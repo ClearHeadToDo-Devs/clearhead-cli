@@ -1,8 +1,17 @@
-use std::{array, collections::HashMap};
+use std::collections::HashMap;
 
-use chrono::DateTime;
 use serde_json::Value;
 use tree_sitter::Tree;
+
+pub mod treesitter;
+
+pub mod entities;
+use entities::{ActionList, ActionState};
+
+use uuid::Uuid;
+
+use std::path::PathBuf;
+use tree_sitter::Node;
 
 // merging json hashmaps as our universal structure
 pub fn merge_hashmaps(left: &Value, right: &Value) -> Result<Value, String> {
@@ -16,24 +25,19 @@ pub fn merge_hashmaps(left: &Value, right: &Value) -> Result<Value, String> {
         return Err("Both values must be JSON objects".to_string());
     }
 }
-
-mod entities;
-use entities::{ActionList, ActionState, create_tree_wrapper};
-
-use uuid::Uuid;
-
-use tree_sitter::Node;
 // this is the function where we actually use treesitter to parse the actions into the tree, and
 // translate that into a proper vector of hashmaps so that we are passing back plain data
-pub fn get_action_list(
-    _opts: &HashMap<String, Value>,
-    actions: String,
-) -> Result<Vec<HashMap<String, ActionProperty>>, String> {
+pub fn get_action_list(_opts: &Value, actions: String) -> Result<Value, String> {
     let tree = get_action_list_tree(&actions)?;
 
-    let root_node = tree.root_node();
+    let tree_wrapper = treesitter::TreeWrapper {
+        tree,
+        source: actions.clone(),
+    };
 
-    return get_action_list_vec(&actions, &root_node);
+    let action_list: ActionList = tree_wrapper.try_into()?;
+
+    return Ok(serde_json::to_value(&action_list).unwrap());
 }
 
 fn get_action_list_tree(actions: &str) -> Result<Tree, String> {

@@ -1,27 +1,8 @@
 use chrono::{DateTime, Local};
-use tree_sitter::{Node, Tree, TreeCursor};
+use serde::{Deserialize, Serialize};
+
+use crate::treesitter::{NodeWrapper, TreeWrapper, create_node_wrapper, get_node_text};
 use uuid::Uuid;
-
-pub fn create_tree_wrapper(tree: Tree, source: String) -> TreeWrapper {
-    TreeWrapper { tree, source }
-}
-
-// we need both the tree and the source to do our type conversions properly
-pub struct TreeWrapper {
-    tree: Tree,
-    source: String,
-}
-
-pub fn create_node_wrapper(node: Node, source: String) -> NodeWrapper {
-    NodeWrapper { node, source }
-}
-
-// same goes for the nodes, infact, we are going to be passing a cloned version of the string so
-// everything has what they need early
-pub struct NodeWrapper<'a> {
-    node: Node<'a>,
-    source: String,
-}
 
 pub type ActionList = Vec<RootAction>;
 
@@ -46,6 +27,7 @@ impl TryFrom<TreeWrapper> for ActionList {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RootAction {
     common: CommonActionProperties,
     story: Option<Story>,
@@ -88,6 +70,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
 }
 type ChildActionList = Vec<ChildAction>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChildAction {
     common: CommonActionProperties,
     children: Option<GrandChildActionList>,
@@ -95,6 +78,7 @@ struct ChildAction {
 
 type GrandChildActionList = Vec<GrandChildAction>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct GrandChildAction {
     common: CommonActionProperties,
     children: GreatGrandChildActionList,
@@ -102,6 +86,7 @@ struct GrandChildAction {
 
 type GreatGrandChildActionList = Vec<GreatGrandChildAction>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct GreatGrandChildAction {
     common: CommonActionProperties,
     children: Option<GreatGreatGrandChildActionList>,
@@ -109,6 +94,7 @@ struct GreatGrandChildAction {
 
 type GreatGreatGrandChildActionList = Vec<GreatGreatGrandChildAction>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct GreatGreatGrandChildAction {
     common: CommonActionProperties,
     children: Option<LeafActionList>,
@@ -116,9 +102,11 @@ struct GreatGreatGrandChildAction {
 
 type LeafActionList = Vec<LeafAction>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct LeafAction {
     common: CommonActionProperties,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CommonActionProperties {
     state: ActionState,
     name: ActionName,
@@ -151,8 +139,8 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
         let mut priority = None;
         let mut context_list = None;
         let mut id = None;
-        let mut do_date_time = None;
-        let mut completed_date_time = None;
+        let do_date_time = None;
+        let completed_date_time = None;
 
         for child in child_iterator {
             match child.kind() {
@@ -161,9 +149,9 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
                     state = match state_text.trim() {
                         "( )" => ActionState::NotStarted,
                         "(x)" => ActionState::Completed,
-                        "(~)" => ActionState::InProgress,
-                        "(-)" => ActionState::BlockedorAwaiting,
-                        "(c)" => ActionState::Cancelled,
+                        "(-)" => ActionState::InProgress,
+                        "(=)" => ActionState::BlockedorAwaiting,
+                        "(_)" => ActionState::Cancelled,
                         _ => ActionState::NotStarted,
                     };
                 }
@@ -211,11 +199,7 @@ impl<'a> TryFrom<NodeWrapper<'a>> for CommonActionProperties {
     }
 }
 
-fn get_node_text(node: &Node, source: &str) -> String {
-    source[node.start_byte()..node.end_byte()].to_string()
-}
-
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionState {
     #[default]
     NotStarted,
