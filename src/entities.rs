@@ -19,7 +19,7 @@ impl fmt::Display for ActionList {
 
 impl std::ops::Deref for ActionList {
     type Target = Vec<RootAction>;
-    
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -128,17 +128,17 @@ pub struct RootAction {
 impl fmt::Display for RootAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.common)?;
-        
+
         if let Some(story) = &self.story {
             write!(f, " *{}", story)?;
         }
-        
+
         if let Some(children) = &self.children {
             for child in children {
                 write!(f, " >{}", child)?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -197,13 +197,13 @@ pub struct ChildAction {
 impl fmt::Display for ChildAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.common)?;
-        
+
         if let Some(grandchildren) = &self.grandchildren {
             for grandchild in grandchildren {
                 write!(f, " >>{}", grandchild)?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -227,13 +227,13 @@ struct GrandChildAction {
 impl fmt::Display for GrandChildAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.common)?;
-        
+
         if let Some(great_grandchildren) = &self.great_grandchildren {
             for great_grandchild in great_grandchildren {
                 write!(f, " >>>{}", great_grandchild)?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -261,13 +261,13 @@ struct GreatGrandChildAction {
 impl fmt::Display for GreatGrandChildAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.common)?;
-        
+
         if let Some(great_great_grandchildren) = &self.great_great_grandchildren {
             for great_great_grandchild in great_great_grandchildren {
                 write!(f, " >>>>{}", great_great_grandchild)?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -295,13 +295,13 @@ struct GreatGreatGrandChildAction {
 impl fmt::Display for GreatGreatGrandChildAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.common)?;
-        
+
         if let Some(leaf_children) = &self.leaf_children {
             for leaf_child in leaf_children {
                 write!(f, " >>>>>{}", leaf_child)?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -360,39 +360,39 @@ impl fmt::Display for CommonActionProperties {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // State and name (required)
         write!(f, "({}) {}", self.state, self.name)?;
-        
+
         // Description (optional)
         if let Some(description) = &self.description {
             write!(f, " ${}", description)?;
         }
-        
+
         // Priority (optional)
         if let Some(priority) = &self.priority {
             write!(f, " !{}", priority)?;
         }
-        
+
         // Context list (optional)
         if let Some(context_list) = &self.context_list {
             for context in context_list {
                 write!(f, " +{}", context.trim_start_matches('@'))?;
             }
         }
-        
+
         // Do date time (optional)
         if let Some(do_date_time) = &self.do_date_time {
             write!(f, " @{}", do_date_time.format("%Y-%m-%dT%H:%M"))?;
         }
-        
+
         // Completed date time (optional)
         if let Some(completed_date_time) = &self.completed_date_time {
             write!(f, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M"))?;
         }
-        
+
         // ID (optional)
         if let Some(id) = &self.id {
             write!(f, " #{}", id)?;
         }
-        
+
         Ok(())
     }
 }

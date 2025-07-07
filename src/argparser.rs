@@ -10,7 +10,7 @@ pub fn get_cli_map() -> Result<Args, String> {
 
     let value = serde_json::to_value(cli)
         .map_err(|e| format!("unable to translate cli args to a json value {}", e))?;
-    
+
     serde_json::from_value(value)
         .map_err(|e| format!("Failed to deserialize CLI args to map: {}", e))
 }
