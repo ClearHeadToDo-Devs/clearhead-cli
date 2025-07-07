@@ -8,10 +8,8 @@ type Args = Map<String, Value>;
 pub fn get_cli_map() -> Result<Args, String> {
     let cli = Cli::parse();
 
-    let value = serde_json::to_value(cli)
-        .map_err(|e| format!("unable to translate cli args to a json value {}", e))?;
-
-    value
+    serde_json::to_value(cli)
+        .map_err(|e| format!("unable to translate cli args to a json value {}", e))?
         .as_object()
         .cloned()
         .ok_or("Failed to convert CLI args to object".to_string())
