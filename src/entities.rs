@@ -1,10 +1,20 @@
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::treesitter::{NodeWrapper, TreeWrapper, create_node_wrapper, get_node_text};
 use uuid::Uuid;
 
 pub type ActionList = Vec<RootAction>;
+
+impl fmt::Display for ActionList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for action in self {
+            writeln!(f, "{}", action)?;
+        }
+        Ok(())
+    }
+}
 
 impl TryFrom<TreeWrapper> for ActionList {
     type Error = &'static str;
@@ -88,6 +98,24 @@ pub struct RootAction {
     pub children: Option<ChildActionList>,
 }
 
+impl fmt::Display for RootAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.common)?;
+        
+        if let Some(story) = &self.story {
+            write!(f, " *{}", story)?;
+        }
+        
+        if let Some(children) = &self.children {
+            for child in children {
+                write!(f, " >{}", child)?;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
 impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
     type Error = &'static str;
     fn try_from(value: NodeWrapper<'a>) -> Result<Self, Self::Error> {
@@ -139,6 +167,20 @@ pub struct ChildAction {
     grandchildren: Option<GrandChildActionList>,
 }
 
+impl fmt::Display for ChildAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.common)?;
+        
+        if let Some(grandchildren) = &self.grandchildren {
+            for grandchild in grandchildren {
+                write!(f, " >>{}", grandchild)?;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
 impl_action_node_try_from!(ChildAction, grandchildren, "grandchild_action_list");
 
 type GrandChildActionList = Vec<GrandChildAction>;
@@ -153,6 +195,20 @@ impl_action_list_try_from!(
 struct GrandChildAction {
     common: CommonActionProperties,
     great_grandchildren: Option<GreatGrandChildActionList>,
+}
+
+impl fmt::Display for GrandChildAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.common)?;
+        
+        if let Some(great_grandchildren) = &self.great_grandchildren {
+            for great_grandchild in great_grandchildren {
+                write!(f, " >>>{}", great_grandchild)?;
+            }
+        }
+        
+        Ok(())
+    }
 }
 
 impl_action_node_try_from!(
@@ -175,6 +231,20 @@ struct GreatGrandChildAction {
     great_great_grandchildren: Option<GreatGreatGrandChildActionList>,
 }
 
+impl fmt::Display for GreatGrandChildAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.common)?;
+        
+        if let Some(great_great_grandchildren) = &self.great_great_grandchildren {
+            for great_great_grandchild in great_great_grandchildren {
+                write!(f, " >>>>{}", great_great_grandchild)?;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
 impl_action_node_try_from!(
     GreatGrandChildAction,
     great_great_grandchildren,
@@ -195,6 +265,20 @@ struct GreatGreatGrandChildAction {
     leaf_children: Option<LeafActionList>,
 }
 
+impl fmt::Display for GreatGreatGrandChildAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.common)?;
+        
+        if let Some(leaf_children) = &self.leaf_children {
+            for leaf_child in leaf_children {
+                write!(f, " >>>>>{}", leaf_child)?;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
 impl_action_node_try_from!(GreatGreatGrandChildAction, leaf_children, "leaf_actions");
 
 type LeafActionList = Vec<LeafAction>;
@@ -208,6 +292,12 @@ impl_action_list_try_from!(
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct LeafAction {
     common: CommonActionProperties,
+}
+
+impl fmt::Display for LeafAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.common)
+    }
 }
 
 impl<'a> TryFrom<NodeWrapper<'a>> for LeafAction {
@@ -237,6 +327,47 @@ pub struct CommonActionProperties {
     pub id: Option<ActionId>,
     pub do_date_time: Option<ActionDoDateTime>,
     pub completed_date_time: Option<ActionCompletedDateTime>,
+}
+
+impl fmt::Display for CommonActionProperties {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // State and name (required)
+        write!(f, "({}) {}", self.state, self.name)?;
+        
+        // Description (optional)
+        if let Some(description) = &self.description {
+            write!(f, " ${}", description)?;
+        }
+        
+        // Priority (optional)
+        if let Some(priority) = &self.priority {
+            write!(f, " !{}", priority)?;
+        }
+        
+        // Context list (optional)
+        if let Some(context_list) = &self.context_list {
+            for context in context_list {
+                write!(f, " +{}", context.trim_start_matches('@'))?;
+            }
+        }
+        
+        // Do date time (optional)
+        if let Some(do_date_time) = &self.do_date_time {
+            write!(f, " @{}", do_date_time.format("%Y-%m-%dT%H:%M"))?;
+        }
+        
+        // Completed date time (optional)
+        if let Some(completed_date_time) = &self.completed_date_time {
+            write!(f, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M"))?;
+        }
+        
+        // ID (optional)
+        if let Some(id) = &self.id {
+            write!(f, " #{}", id)?;
+        }
+        
+        Ok(())
+    }
 }
 
 type Story = String;
@@ -325,4 +456,17 @@ pub enum ActionState {
     InProgress,
     BlockedorAwaiting,
     Cancelled,
+}
+
+impl fmt::Display for ActionState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let state_char = match self {
+            ActionState::NotStarted => " ",
+            ActionState::Completed => "x",
+            ActionState::InProgress => "-",
+            ActionState::BlockedorAwaiting => "=",
+            ActionState::Cancelled => "_",
+        };
+        write!(f, "{}", state_char)
+    }
 }
