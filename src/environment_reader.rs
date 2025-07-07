@@ -1,10 +1,10 @@
 use dirs::{config_dir, data_dir};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::path::PathBuf;
 
 use config::Config as ConfigBuilder;
 
-type Config = Value;
+type Config = Map<String, Value>;
 
 pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
     let default_config_location = PathBuf::from(format!(
@@ -31,7 +31,7 @@ pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
             panic!("Failed to build configuration: {}", e);
         });
 
-    return settings.try_deserialize::<Value>().unwrap();
+    return settings.try_deserialize::<Map<String, Value>>().unwrap();
 }
 pub fn ensure_path_exists(path: &PathBuf) {
     if !path.exists() {
