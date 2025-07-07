@@ -10,10 +10,12 @@ pub fn get_cli_map() -> Result<Args, String> {
 
     let value = serde_json::to_value(cli)
         .map_err(|e| format!("unable to translate cli args to a json value {}", e))?;
-    
-    value.as_object()
-        .ok_or("Failed to convert CLI args to object".to_string())
-        .map(|obj| obj.clone())
+
+    Result::cloned(
+        value
+            .as_object()
+            .ok_or("Failed to convert CLI args to object".to_string()),
+    )
 }
 
 #[derive(Parser, Serialize, Deserialize)]
