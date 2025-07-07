@@ -2,9 +2,9 @@ use clap::{Parser, Subcommand};
 use std::{fmt::format, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-type Args = Value;
+type Args = Map<String, Value>;
 pub fn get_cli_map() -> Result<Args, String> {
     let cli = Cli::parse();
 

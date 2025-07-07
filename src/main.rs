@@ -16,7 +16,13 @@ fn main() {
         _ => None,
     });
 
-    let opts = merge_hashmaps(&config_map, &cli).unwrap();
+    let opts = merge_hashmaps(
+        &config_map
+            .as_object()
+            .expect("failed to input cli args as maps"),
+        &cli.as_object().expect("failed to convert cli args to map"),
+    )
+    .unwrap();
 
     if let Some(debug) = opts.get("debug") {
         if debug.as_u64().unwrap_or(0) > 0 {
