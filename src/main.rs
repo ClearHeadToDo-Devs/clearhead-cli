@@ -20,7 +20,7 @@ fn main() {
         &config_map
             .as_object()
             .expect("failed to input cli args as maps"),
-        &cli.as_object().expect("failed to convert cli args to map"),
+        &cli,
     )
     .unwrap();
 

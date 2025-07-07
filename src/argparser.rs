@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::{fmt::format, path::PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -8,8 +8,12 @@ type Args = Map<String, Value>;
 pub fn get_cli_map() -> Result<Args, String> {
     let cli = Cli::parse();
 
-    serde_json::to_value(cli)
-        .map_err(|e| format!("unable to translate cli args to a json value {}", e))
+    let value = serde_json::to_value(cli)
+        .map_err(|e| format!("unable to translate cli args to a json value {}", e))?;
+    
+    value.as_object()
+        .ok_or("Failed to convert CLI args to object".to_string())
+        .map(|obj| obj.clone())
 }
 
 #[derive(Parser, Serialize, Deserialize)]
