@@ -5,43 +5,7 @@ use std::fmt;
 use crate::treesitter::{NodeWrapper, TreeWrapper, create_node_wrapper, get_node_text};
 use uuid::Uuid;
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub struct ActionList(pub Vec<RootAction>);
-
-impl fmt::Display for ActionList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for action in &self.0 {
-            writeln!(f, "{}", action)?;
-        }
-        Ok(())
-    }
-}
-
-impl std::ops::Deref for ActionList {
-    type Target = Vec<RootAction>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for ActionList {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl From<Vec<RootAction>> for ActionList {
-    fn from(vec: Vec<RootAction>) -> Self {
-        ActionList(vec)
-    }
-}
-
-impl Into<Vec<RootAction>> for ActionList {
-    fn into(self) -> Vec<RootAction> {
-        self.0
-    }
-}
+pub type ActionList = Vec<RootAction>;
 
 impl TryFrom<TreeWrapper> for ActionList {
     type Error = &'static str;
@@ -60,7 +24,7 @@ impl TryFrom<TreeWrapper> for ActionList {
             )
         });
 
-        return Ok(ActionList(action_list));
+        return Ok(action_list);
     }
 }
 

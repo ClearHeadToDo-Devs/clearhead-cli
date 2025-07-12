@@ -23,8 +23,5 @@ fn convert_basic_action() {
         children: None,
     }];
 
-    assert_eq!(
-        derived_struct,
-        cliche::entities::ActionList(expected_struct)
-    );
+    assert_eq!(derived_struct, expected_struct);
 }
