@@ -5,7 +5,7 @@ use std::fmt;
 use crate::treesitter::{NodeWrapper, TreeWrapper, create_node_wrapper, get_node_text};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct ActionList(pub Vec<RootAction>);
 
 impl fmt::Display for ActionList {
