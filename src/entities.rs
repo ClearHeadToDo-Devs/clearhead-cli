@@ -127,7 +127,6 @@ impl<'a> TryFrom<NodeWrapper<'a>> for RootAction {
                     story = Some(get_node_text(&child, &value.source));
                 }
                 "child_actions" => {
-                    // TODO: Implement child action parsing
                     children = Some(ChildActionList::try_from(create_node_wrapper(
                         child,
                         value.source.clone(),
