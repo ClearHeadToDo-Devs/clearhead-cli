@@ -1,21 +1,22 @@
 [package]
 name = "cliche"
 description = "A CLI tool and library for working with the clearhead framework"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Darrion Burgess <darrionburgess@gmail.com>"]
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/ClearHeadToDo-Devs/tree-sitter-actions.git"
 
 [dependencies]
-serde = { version = "*", features = ["derive"] }
 clap = {version= "*", features = ["derive"]}
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
 config = "*"
 dirs = "*"
-serde_json = "*"
-tree-sitter = "0.24"
+tree-sitter = "*"
 tree-sitter-actions = "*"
 chrono = { version = "*", features = ["serde"] }
+reqwest = {version = "*", features = ["blocking"]}
 
 [dependencies.uuid]
 version = "*"
