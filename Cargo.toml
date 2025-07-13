@@ -8,18 +8,18 @@ license = "MIT"
 repository = "https://github.com/ClearHeadToDo-Devs/tree-sitter-actions.git"
 
 [dependencies]
-clap = {version= "*", features = ["derive"]}
-serde = { version = "*", features = ["derive"] }
-serde_json = "*"
-config = "*"
-dirs = "*"
-tree-sitter = "*"
-tree-sitter-actions = "*"
-chrono = { version = "*", features = ["serde"] }
-reqwest = {version = "*", features = ["blocking"]}
+clap = {version= "4.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+config = "0.14"
+dirs = "5.0"
+tree-sitter = "0.20"
+tree-sitter-actions = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = {version = "0.11", features = ["blocking"]}
 
 [dependencies.uuid]
-version = "*"
+version = "1.0"
 # Lets you generate random UUIDs
 features = [
   "serde",
