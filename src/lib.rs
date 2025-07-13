@@ -48,7 +48,7 @@ fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     let mut action_parser = tree_sitter::Parser::new();
 
     action_parser
-        .set_language(&tree_sitter_actions::LANGUAGE.into())
+        .set_language(tree_sitter_actions::LANGUAGE.into())
         .expect("Failed to set language for tree-sitter parser");
 
     action_parser
