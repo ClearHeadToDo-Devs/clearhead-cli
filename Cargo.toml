@@ -13,8 +13,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 config = "0.14"
 dirs = "5.0"
-tree-sitter = "0.20"
-tree-sitter-actions = "0.1"
+tree-sitter = "0.25.1"
+tree-sitter-actions = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = {version = "0.11", features = ["blocking"]}
 
