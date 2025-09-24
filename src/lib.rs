@@ -44,7 +44,7 @@ pub fn get_action_list(_opts: &Value, actions: String) -> Result<Value, String> 
     return Ok(serde_json::to_value(&action_list).unwrap());
 }
 
-fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
+pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     let mut action_parser = tree_sitter::Parser::new();
 
     action_parser
