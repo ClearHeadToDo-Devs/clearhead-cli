@@ -1,8 +1,33 @@
 # _C_ommand _L_ine _I_nterface for the _CL_ear _HE_ad framework (cliche)
-This is still very experimental, but the ultimate goal is to make an ergonomic, efficient, and powerful command line that will ultimately serve as the root for much of the clearhead ecosystem.
 
-for now the crate is both:
-- A cli app (`cliche`)
+**Status:** Early development - code generation pipeline in progress
+
+This is the Rust CLI for managing `.actions` files. It follows an **ontology-driven code generation** approach where Rust structs are generated from the tree-sitter parser using type-sitter.
+
+## Current Status
+
+- ⏳ **Waiting on Parser**: Tree-sitter-actions grammar generation in progress
+- ⏳ **Code Generation**: Will generate Rust structs from parser AST nodes using type-sitter
+- ✅ **Project Structure**: Basic CLI skeleton in place
+- ✅ **Values & Architecture**: Data-centric, functional approach defined
+
+**Generation Flow:**
+```
+Parser (tree-sitter-actions)
+       ↓
+   AST Nodes
+       ↓
+  [type-sitter]
+       ↓
+Rust Structs (GENERATED in src/generated/)
+       ↓
+Hand-Written Impl Blocks (in src/models/)
+       ↓
+   CLI Commands
+```
+
+For now the crate is both:
+- A CLI app (`cliche`)
 - And a library (`cliche`)
 
 ## Usage
