@@ -15,9 +15,13 @@ pub struct Action {
     pub name: String,
     pub description: Option<String>,
     pub priority: Option<usize>,
+    #[serde(rename = "contexts")]
     pub context_list: Option<Vec<String>>,
+    #[serde(rename = "doDateTime", skip_serializing_if = "Option::is_none")]
     pub do_date_time: Option<DateTime<Local>>,
+    #[serde(rename = "completedDate", skip_serializing_if = "Option::is_none")]
     pub completed_date_time: Option<DateTime<Local>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub story: Option<String>,
 }
 
@@ -236,11 +240,13 @@ fn parse_action_recursive(
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ActionState {
     #[default]
     NotStarted,
     Completed,
     InProgress,
+    #[serde(rename = "blocked")]
     BlockedorAwaiting,
     Cancelled,
 }

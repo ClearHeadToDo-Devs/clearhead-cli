@@ -234,3 +234,111 @@ fn test_actions_with_hierarchy() {
         .stdout(predicate::str::contains("> [ ] Child"))
         .stdout(predicate::str::contains(">> [ ] Grandchild"));
 }
+
+// Error handling tests - verify user-facing error messages
+
+#[test]
+fn test_helpful_error_on_missing_default_file() {
+    let env = TestEnv::new();
+    // Don't create inbox.actions
+
+    env.command()
+        .arg("read")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to read file"))
+        .stderr(predicate::str::contains("inbox.actions"));
+}
+
+#[test]
+fn test_helpful_error_on_missing_specific_file() {
+    let env = TestEnv::new();
+
+    env.command()
+        .arg("read")
+        .arg("nonexistent.actions")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to read file"))
+        .stderr(predicate::str::contains("nonexistent.actions"));
+}
+
+#[test]
+fn test_error_on_malformed_config() {
+    let env = TestEnv::new();
+
+    // Write invalid TOML
+    let config_path = env.config_dir.join("config.toml");
+    fs::write(config_path, "this is not valid toml = = =").expect("Failed to write config");
+
+    env.write_actions("inbox.actions", "[ ] Task");
+
+    env.command()
+        .arg("read")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to load config"));
+}
+
+#[test]
+fn test_error_on_invalid_format_in_config() {
+    let env = TestEnv::new();
+
+    // Config with invalid format
+    env.write_config("format = \"invalid_format\"");
+    env.write_actions("inbox.actions", "[ ] Task");
+
+    // Should use default format (actions) since config format is invalid
+    // Or should error - let's see what happens
+    env.command()
+        .arg("read")
+        .assert()
+        .success(); // Falls back to default
+}
+
+#[test]
+fn test_empty_actions_file() {
+    let env = TestEnv::new();
+
+    // Create empty file
+    env.write_actions("empty.actions", "");
+    let empty_path = env.data_dir.join("empty.actions");
+
+    // Should succeed with empty output (or error gracefully)
+    env.command()
+        .arg("read")
+        .arg(empty_path)
+        .assert()
+        .success();
+    // Empty file outputs just a newline, which is acceptable
+}
+
+#[test]
+fn test_actions_file_with_only_whitespace() {
+    let env = TestEnv::new();
+
+    env.write_actions("whitespace.actions", "   \n\n  \t  \n");
+    let ws_path = env.data_dir.join("whitespace.actions");
+
+    env.command()
+        .arg("read")
+        .arg(ws_path)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_invalid_cli_format_argument() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Task");
+
+    // Clap should catch this and show valid options
+    env.command()
+        .arg("read")
+        .arg("--format")
+        .arg("invalid")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value 'invalid'"));
+}

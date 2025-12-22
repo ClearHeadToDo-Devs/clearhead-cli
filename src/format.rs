@@ -169,7 +169,7 @@ mod tests {
         let formatted = format_as_json(&actions).unwrap();
 
         assert!(formatted.contains("\"name\": \"Test\""));
-        assert!(formatted.contains("\"state\": \"NotStarted\""));
+        assert!(formatted.contains("\"state\": \"not_started\""));
     }
 
     #[test]
@@ -179,7 +179,7 @@ mod tests {
         let formatted = format_as_xml(&actions).unwrap();
 
         assert!(formatted.contains("<name>Test</name>"));
-        assert!(formatted.contains("<state>NotStarted</state>"));
+        assert!(formatted.contains("<state>not_started</state>"));
     }
 
     #[test]
