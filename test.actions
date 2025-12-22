@@ -1,0 +1,6 @@
+[x] Complete the format system $Implemented all four output formats !1 +development
+> [ ] Add CLI integration $Wire up the read command !2 +development,testing
+>> [x] Create argparser $Done with typed structs !1
+>> [-] Implement main logic $In progress !2
+> [ ] Write documentation $Add examples and usage !3 +documentation
+[ ] Future task $Something for later +planning

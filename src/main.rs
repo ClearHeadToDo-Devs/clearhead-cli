@@ -1,46 +1,57 @@
-use cliche::merge_hashmaps;
+use std::fs;
+use std::io::{self, Read};
 use std::path::PathBuf;
+use std::process;
 
-use serde_json::Value;
 mod argparser;
-use argparser::get_cli_map;
+use argparser::{parse_cli, Commands};
 
 pub mod environment_reader;
-use environment_reader::get_config_map;
 
 fn main() {
-    let cli = get_cli_map().expect("Failed to parse CLI arguments");
+    let cli = parse_cli();
 
-    let config_map = get_config_map(match cli.get("config") {
-        Some(Value::String(path)) => Some(PathBuf::from(path)),
-        _ => None,
-    });
-
-    let opts = merge_hashmaps(&config_map, &cli).unwrap();
-
-    if let Some(debug) = opts.get("debug") {
-        if debug.as_u64().unwrap_or(0) > 0 {
-            println!("Full opts Map: {:#?}", opts);
-        }
+    if cli.debug > 0 {
+        eprintln!("Debug mode enabled (level: {})", cli.debug);
+        eprintln!("Config file: {:?}", cli.config);
     }
 
-    process_subcommand(&opts);
+    if let Err(e) = run_command(&cli) {
+        eprintln!("Error: {}", e);
+        process::exit(1);
+    }
 }
 
-fn process_subcommand(opts: &Value) {
-    if let Some(command) = opts.get("command") {
-        if let Some(name) = command.get("name").and_then(Value::as_str) {
-            match name {
-                "read" => {
-                    let all = command.get("all").and_then(Value::as_bool).unwrap_or(false);
-                    if all {
-                        println!("Reading all actions");
-                    } else {
-                        println!("Reading specific actions");
-                    }
-                }
-                _ => println!("Unknown command"),
-            }
+fn run_command(cli: &argparser::Cli) -> Result<(), String> {
+    match &cli.command {
+        Commands::Read { file, format, all: _ } => {
+            // Read input from file or stdin
+            let content = read_input(file.as_ref())?;
+
+            // Parse the .actions content
+            let actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            // Format and output
+            let output_format = (*format).into();
+            let formatted = cliche::format(&actions, output_format)?;
+
+            println!("{}", formatted);
+            Ok(())
+        }
+    }
+}
+
+/// Read input from a file or stdin
+fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
+    match file {
+        Some(path) => fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e)),
+        None => {
+            let mut buffer = String::new();
+            io::stdin()
+                .read_to_string(&mut buffer)
+                .map_err(|e| format!("Failed to read from stdin: {}", e))?;
+            Ok(buffer)
         }
     }
 }

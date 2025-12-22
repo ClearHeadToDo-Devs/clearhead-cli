@@ -1,23 +1,14 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-
-type Args = Map<String, Value>;
-pub fn get_cli_map() -> Result<Args, String> {
-    let cli = Cli::parse();
-
-    let value = serde_json::to_value(cli)
-        .map_err(|e| format!("unable to translate cli args to a json value {}", e))?;
-
-    serde_json::from_value(value)
-        .map_err(|e| format!("Failed to deserialize CLI args to map: {}", e))
+/// CLI argument parser - returns typed structs for ergonomic access
+pub fn parse_cli() -> Cli {
+    Cli::parse()
 }
 
-#[derive(Parser, Serialize, Deserialize)]
+#[derive(Parser)]
 #[command(version, about, long_about = None)]
-struct Cli {
+pub struct Cli {
     /// Sets a custom config file
     #[arg(short, long, value_name = "FILE")]
     pub config: Option<PathBuf>,
@@ -30,10 +21,43 @@ struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand, Serialize, Deserialize)]
-enum Commands {
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Read and display actions from a file or stdin
     Read {
+        /// File to read (.actions format). If not provided, reads from stdin
+        file: Option<PathBuf>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "actions")]
+        format: Format,
+
+        /// Read all actions (reserved for future use)
         #[arg(short, long)]
         all: bool,
     },
+}
+
+/// CLI-specific format enum that maps to library's OutputFormat
+#[derive(Clone, Copy, ValueEnum)]
+pub enum Format {
+    /// .actions file format
+    Actions,
+    /// JSON format
+    Json,
+    /// XML format
+    Xml,
+    /// Table format
+    Table,
+}
+
+impl From<Format> for cliche::OutputFormat {
+    fn from(f: Format) -> Self {
+        match f {
+            Format::Actions => cliche::OutputFormat::Actions,
+            Format::Json => cliche::OutputFormat::Json,
+            Format::Xml => cliche::OutputFormat::Xml,
+            Format::Table => cliche::OutputFormat::Table,
+        }
+    }
 }

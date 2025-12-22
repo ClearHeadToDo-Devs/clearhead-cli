@@ -5,7 +5,7 @@ use serde::Serialize;
 /// Output format options for ActionList serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
-    /// .actions file format with depth markers (>, >>, etc.)
+    /// .actions file format with depth markers
     Actions,
     /// JSON format (pretty-printed)
     Json,
