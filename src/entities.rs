@@ -10,12 +10,15 @@ pub type ActionList = Vec<Action>;
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<Uuid>,
     pub state: ActionState,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<usize>,
-    #[serde(rename = "contexts")]
+    #[serde(rename = "contexts", skip_serializing_if = "Option::is_none")]
     pub context_list: Option<Vec<String>>,
     #[serde(rename = "doDateTime", skip_serializing_if = "Option::is_none")]
     pub do_date_time: Option<DateTime<Local>>,

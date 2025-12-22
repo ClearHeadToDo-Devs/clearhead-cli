@@ -93,7 +93,8 @@ fn test_env_var_overrides_config() {
         .env("CLICHE_FORMAT", "json")
         .assert()
         .success()
-        .stdout(predicate::str::starts_with("["))  // JSON array
+        .stdout(predicate::str::starts_with("{"))  // JSON object
+        .stdout(predicate::str::contains("\"actions\":"))
         .stdout(predicate::str::contains("\"name\": \"Task\""));
 }
 
@@ -160,6 +161,7 @@ fn test_all_output_formats() {
         .arg("json")
         .assert()
         .success()
+        .stdout(predicate::str::contains("\"actions\":"))
         .stdout(predicate::str::contains("\"name\": \"Test\""));
 
     // XML format
@@ -233,6 +235,63 @@ fn test_actions_with_hierarchy() {
         .stdout(predicate::str::contains("[x] Parent"))
         .stdout(predicate::str::contains("> [ ] Child"))
         .stdout(predicate::str::contains(">> [ ] Grandchild"));
+}
+
+// Schema validation tests - verify JSON output matches canonical schema
+
+#[test]
+fn test_json_output_validates_against_schema() {
+    use jsonschema::JSONSchema;
+
+    let env = TestEnv::new();
+
+    // Create a test file with various features
+    env.write_actions(
+        "test.actions",
+        "[x] Parent task $description !1 +work,urgent\n> [ ] Child task\n>> [-] Grandchild task",
+    );
+    let test_path = env.data_dir.join("test.actions");
+
+    // Get JSON output
+    let output = env
+        .command()
+        .arg("read")
+        .arg(&test_path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json_str = String::from_utf8(output).expect("Invalid UTF-8");
+    let json_value: serde_json::Value =
+        serde_json::from_str(&json_str).expect("Invalid JSON");
+
+    // Load schema from tree-sitter-actions repo
+    // Note: Assumes tree-sitter-actions is checked out alongside clearhead-cli
+    let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tree-sitter-actions/schema/actions.schema.json");
+
+    let schema_str = std::fs::read_to_string(&schema_path)
+        .expect("Failed to read schema - ensure tree-sitter-actions is checked out");
+    let schema: serde_json::Value =
+        serde_json::from_str(&schema_str).expect("Invalid schema JSON");
+
+    // Compile and validate
+    let compiled = JSONSchema::compile(&schema).expect("Invalid schema");
+
+    let validation_result = compiled.validate(&json_value);
+    if let Err(errors) = validation_result {
+        let error_messages: Vec<String> = errors.map(|e| e.to_string()).collect();
+        panic!(
+            "JSON validation failed:\n{}",
+            error_messages.join("\n")
+        );
+    }
 }
 
 // Error handling tests - verify user-facing error messages

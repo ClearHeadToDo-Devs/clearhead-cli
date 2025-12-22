@@ -56,7 +56,14 @@ fn format_as_actions(list: &ActionList) -> Result<String, String> {
 
 /// Format ActionList as pretty-printed JSON
 fn format_as_json(list: &ActionList) -> Result<String, String> {
-    serde_json::to_string_pretty(list).map_err(|e| format!("JSON formatting failed: {}", e))
+    // Wrapper to match schema format: {"actions": [...]}
+    #[derive(Serialize)]
+    struct ActionsWrapper<'a> {
+        actions: &'a [Action],
+    }
+
+    let wrapper = ActionsWrapper { actions: list };
+    serde_json::to_string_pretty(&wrapper).map_err(|e| format!("JSON formatting failed: {}", e))
 }
 
 /// Format ActionList as XML
@@ -168,6 +175,7 @@ mod tests {
 
         let formatted = format_as_json(&actions).unwrap();
 
+        assert!(formatted.contains("\"actions\":"));
         assert!(formatted.contains("\"name\": \"Test\""));
         assert!(formatted.contains("\"state\": \"not_started\""));
     }

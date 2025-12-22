@@ -33,3 +33,4 @@ features = [
 tempfile = "3.8"
 assert_cmd = "2.0"
 predicates = "3.0"
+jsonschema = "0.18"
