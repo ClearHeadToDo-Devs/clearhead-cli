@@ -29,8 +29,8 @@ pub enum Commands {
         file: Option<PathBuf>,
 
         /// Output format
-        #[arg(short, long, value_enum, default_value = "actions")]
-        format: Format,
+        #[arg(short, long, value_enum)]
+        format: Option<Format>,
 
         /// Read all actions (reserved for future use)
         #[arg(short, long)]

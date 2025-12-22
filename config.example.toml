@@ -1,0 +1,22 @@
+# Example configuration file for cliche
+# Copy this to ~/.config/cliche/config.toml and customize as needed
+
+# Default output format when not specified on command line
+# Options: "actions", "json", "xml", "table"
+format = "actions"
+
+# Default file to read when no file is specified
+# Can be:
+#  - Relative path (will be resolved from ~/.local/share/cliche/)
+#  - Absolute path
+file = "inbox.actions"
+
+# Additional configuration options (future):
+#
+# [display]
+# show_full_ids = false    # Show full UUIDs vs short IDs in table format
+# colors = true            # Enable colored output
+#
+# [behavior]
+# auto_save = true         # Auto-save changes
+# confirm_delete = true    # Confirm destructive operations

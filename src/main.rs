@@ -7,6 +7,7 @@ mod argparser;
 use argparser::{parse_cli, Commands};
 
 pub mod environment_reader;
+use environment_reader::{ensure_dir_exists, get_data_dir, load_base_config};
 
 fn main() {
     let cli = parse_cli();
@@ -23,21 +24,69 @@ fn main() {
 }
 
 fn run_command(cli: &argparser::Cli) -> Result<(), String> {
+    // Load base config (defaults → file → env vars)
+    let base_config = load_base_config(cli.config.clone())
+        .map_err(|e| format!("Failed to load config: {}", e))?;
+
+    // Get XDG directories
+    let data_dir = get_data_dir();
+    let config_dir = environment_reader::get_config_dir();
+
+    // Ensure directories exist
+    ensure_dir_exists(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
+    ensure_dir_exists(&config_dir)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+    if cli.debug > 0 {
+        eprintln!("Data directory: {}", data_dir.display());
+        eprintln!("Config directory: {}", config_dir.display());
+        eprintln!("Base config: {:?}", base_config);
+    }
+
     match &cli.command {
         Commands::Read { file, format, all: _ } => {
-            // Read input from file or stdin
-            let content = read_input(file.as_ref())?;
+            // Resolve format: CLI > Env > Config > Default
+            let output_format = format
+                .map(|f| f.into())
+                .or_else(|| parse_format(&base_config.format).ok())
+                .unwrap_or(cliche::OutputFormat::Actions);
+
+            // Determine input source:
+            // - If file specified on CLI: use it
+            // - Otherwise: use default file from data_dir
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| data_dir.join(&base_config.file));
+
+            if cli.debug > 0 {
+                eprintln!("Output format: {:?}", output_format);
+                eprintln!("Input file: {}", input_file.display());
+            }
+
+            // Read input from file
+            let content = read_input(Some(&input_file))?;
 
             // Parse the .actions content
             let actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
 
             // Format and output
-            let output_format = (*format).into();
             let formatted = cliche::format(&actions, output_format)?;
 
             println!("{}", formatted);
             Ok(())
         }
+    }
+}
+
+/// Parse format string to OutputFormat
+fn parse_format(s: &str) -> Result<cliche::OutputFormat, String> {
+    match s.to_lowercase().as_str() {
+        "actions" => Ok(cliche::OutputFormat::Actions),
+        "json" => Ok(cliche::OutputFormat::Json),
+        "xml" => Ok(cliche::OutputFormat::Xml),
+        "table" => Ok(cliche::OutputFormat::Table),
+        _ => Err(format!("Unknown format: {}", s)),
     }
 }
 

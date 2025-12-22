@@ -1,45 +1,81 @@
+use config::{Config as ConfigBuilder, ConfigError, Environment, File};
 use dirs::{config_dir, data_dir};
-use serde_json::{Map, Value};
+use serde::Deserialize;
 use std::path::PathBuf;
 
-use config::Config as ConfigBuilder;
+/// Base configuration loaded from file and environment variables
+/// Uses serde defaults for fallback values
+#[derive(Debug, Deserialize, Clone)]
+pub struct BaseConfig {
+    /// Default output format (actions, json, xml, table)
+    #[serde(default = "default_format")]
+    pub format: String,
 
-type Config = Map<String, Value>;
-
-pub fn get_config_map(custom_config_loc: Option<PathBuf>) -> Config {
-    let default_config_location = PathBuf::from(format!(
-        "{}/cliche/settings.toml",
-        config_dir().unwrap().display()
-    ));
-    let default_action_location = format!("{}/clhd/active.action", data_dir().unwrap().display());
-
-    if custom_config_loc.is_none() {
-        ensure_path_exists(&default_config_location);
-    }
-
-    ensure_path_exists(&PathBuf::from(&default_action_location));
-
-    let settings = ConfigBuilder::builder()
-        .add_source(config::Environment::with_prefix("CLICHE"))
-        .add_source(config::File::from(
-            custom_config_loc.unwrap_or(default_config_location),
-        ))
-        .set_default("action_path", default_action_location)
-        .unwrap()
-        .build()
-        .unwrap_or_else(|e| {
-            panic!("Failed to build configuration: {}", e);
-        });
-
-    return settings.try_deserialize::<Map<String, Value>>().unwrap();
+    /// Default file name (relative to data_dir)
+    #[serde(default = "default_file")]
+    pub file: String,
 }
-pub fn ensure_path_exists(path: &PathBuf) {
+
+fn default_format() -> String {
+    "actions".to_string()
+}
+
+fn default_file() -> String {
+    "inbox.actions".to_string()
+}
+
+/// Resolved configuration with all values determined
+/// This is what the application uses at runtime
+#[derive(Debug, Clone)]
+pub struct ResolvedConfig {
+    pub format: cliche::OutputFormat,
+    pub file: PathBuf,
+    pub data_dir: PathBuf,
+    pub config_dir: PathBuf,
+}
+
+/// Get XDG config directory for cliche
+pub fn get_config_dir() -> PathBuf {
+    config_dir()
+        .expect("Failed to determine config directory")
+        .join("cliche")
+}
+
+/// Get XDG data directory for cliche
+pub fn get_data_dir() -> PathBuf {
+    data_dir()
+        .expect("Failed to determine data directory")
+        .join("cliche")
+}
+
+/// Load base configuration from file and environment variables
+///
+/// Precedence (lowest to highest):
+/// 1. Defaults (in code)
+/// 2. Config file (~/.config/cliche/config.toml)
+/// 3. Environment variables (CLICHE_FORMAT, CLICHE_FILE, etc.)
+///
+/// CLI arguments are applied later in main.rs (highest priority)
+pub fn load_base_config(custom_config_path: Option<PathBuf>) -> Result<BaseConfig, ConfigError> {
+    let config_path = custom_config_path.unwrap_or_else(|| get_config_dir().join("config.toml"));
+
+    ConfigBuilder::builder()
+        // 1. Defaults (lowest priority)
+        .set_default("format", default_format())?
+        .set_default("file", default_file())?
+        // 2. Config file (overrides defaults)
+        .add_source(File::from(config_path).required(false))
+        // 3. Environment variables (highest priority before CLI)
+        //    CLICHE_FORMAT=json, CLICHE_FILE=work.actions
+        .add_source(Environment::with_prefix("CLICHE"))
+        .build()?
+        .try_deserialize()
+}
+
+/// Ensure a directory exists, creating it if necessary
+pub fn ensure_dir_exists(path: &PathBuf) -> std::io::Result<()> {
     if !path.exists() {
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).expect("Failed to create parent directory");
-            }
-        }
-        std::fs::File::create(path).expect("Failed to create file");
+        std::fs::create_dir_all(path)?;
     }
+    Ok(())
 }
