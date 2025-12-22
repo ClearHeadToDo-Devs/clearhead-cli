@@ -270,16 +270,12 @@ mod tests {
             .expect("Failed to set language");
 
         let tree = parser.parse(source, None).expect("Failed to parse");
-        eprintln!("Tree: {}", tree.root_node().to_sexp());
-
         let tree_wrapper = TreeWrapper {
             tree,
             source: source.to_string(),
         };
 
-        let result: ActionList = tree_wrapper.try_into().expect("Failed to convert to ActionList");
-        eprintln!("Parsed {} actions", result.len());
-        result
+        tree_wrapper.try_into().expect("Failed to convert to ActionList")
     }
 
     #[test]
