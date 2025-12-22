@@ -160,7 +160,7 @@ fn roundtrip_minimal_action() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = cliche::format_action_list(&actions1);
+    let formatted = cliche::format(&actions1, cliche::OutputFormat::Actions).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -182,7 +182,7 @@ fn roundtrip_action_with_children() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = cliche::format_action_list(&actions1);
+    let formatted = cliche::format(&actions1, cliche::OutputFormat::Actions).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -209,7 +209,7 @@ fn roundtrip_action_with_metadata() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = cliche::format_action_list(&actions1);
+    let formatted = cliche::format(&actions1, cliche::OutputFormat::Actions).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -228,7 +228,7 @@ fn show_formatted_output() {
     let original = get_test_data()["children"]["with_children"]["content"].clone();
     let test_config = serde_json::json!({});
     let actions = get_action_list_struct(&test_config, &original).unwrap();
-    let formatted = cliche::format_action_list(&actions);
+    let formatted = cliche::format(&actions, cliche::OutputFormat::Actions).unwrap();
 
     eprintln!("\n=== Formatted .actions file ===");
     eprintln!("{}", formatted);
@@ -245,7 +245,7 @@ fn roundtrip_action_with_everything() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = cliche::format_action_list(&actions1);
+    let formatted = cliche::format(&actions1, cliche::OutputFormat::Actions).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();

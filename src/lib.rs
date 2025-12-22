@@ -5,7 +5,9 @@ pub mod treesitter;
 
 pub mod entities;
 use entities::ActionList;
-pub use entities::format_action_list;
+
+pub mod format;
+pub use format::{format, OutputFormat};
 
 // merging json hashmaps as our universal structure
 pub fn merge_hashmaps(
