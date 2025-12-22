@@ -1,34 +1,12 @@
 # _C_ommand _L_ine _I_nterface for the _CL_ear _HE_ad framework (cliche)
 
-**Status:** Early development - code generation pipeline in progress
+**Status:** Early development - core parsing and data model complete
 
-This is the Rust CLI for managing `.actions` files. It follows an **ontology-driven code generation** approach where Rust structs are generated from the tree-sitter parser using type-sitter.
+This is the Rust CLI and library for managing `.actions` files using the [tree-sitter-actions](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions) grammar.
 
-## Current Status
-
-- ⏳ **Waiting on Parser**: Tree-sitter-actions grammar generation in progress
-- ⏳ **Code Generation**: Will generate Rust structs from parser AST nodes using type-sitter
-- ✅ **Project Structure**: Basic CLI skeleton in place
-- ✅ **Values & Architecture**: Data-centric, functional approach defined
-
-**Generation Flow:**
-```
-Parser (tree-sitter-actions)
-       ↓
-   AST Nodes
-       ↓
-  [type-sitter]
-       ↓
-Rust Structs (GENERATED in src/generated/)
-       ↓
-Hand-Written Impl Blocks (in src/models/)
-       ↓
-   CLI Commands
-```
-
-For now the crate is both:
-- A CLI app (`cliche`)
-- And a library (`cliche`)
+The crate provides both:
+- A CLI app (`cliche`) for CRUD operations on `.actions` files
+- A library (`cliche`) for parsing and working with action data structures
 
 ## Usage
 The goal of CLI itself should be relatively straightforward, it will complete CRUD operations on clearhead document(s) using standard configuration practices.
@@ -40,6 +18,77 @@ Therefore, subcommands are as follows:
 - _D_elete: Delete an action(s) in the document
 
 In addition, when no subcommand is specified, it will open up the TUI interface to create a keyboard-driven interface that will allow practitioners to interact with the system in a more consistent way. See it as the medium ground between a CLI script and editing the documents directly, heavily inspire by visidata and lazygit.
+
+## Current Implementation
+
+### Data Model
+
+The library uses a **flat list structure** for storing actions, optimized for task manager operations:
+
+```rust
+pub struct Action {
+    pub id: Uuid,
+    pub parent_id: Option<Uuid>,  // Links to parent action
+    pub state: ActionState,
+    pub name: String,
+    pub description: Option<String>,
+    pub priority: Option<usize>,
+    pub context_list: Option<Vec<String>>,
+    pub do_date_time: Option<DateTime<Local>>,
+    pub completed_date_time: Option<DateTime<Local>>,
+    pub story: Option<String>,  // Only for root actions
+}
+
+pub type ActionList = Vec<Action>;
+```
+
+This flat structure makes common operations trivial:
+- **Move action**: Just change `parent_id`
+- **Query actions**: Filter the Vec directly
+- **Update action**: Direct access by ID
+- **Depth calculation**: Available via `action.depth(&action_list)`
+
+### Parsing .actions Files
+
+The library uses field-based tree-sitter parsing for ergonomic access to the AST:
+
+```rust
+use cliche::get_action_list_struct;
+
+let source = r#"
+[ ] Buy groceries $from the store !1 +shopping
+> [ ] Buy milk
+> [ ] Buy eggs
+"#;
+
+let actions = get_action_list_struct(&Default::default(), source)?;
+// Returns Vec<Action> with 3 actions:
+// - Root: "Buy groceries" (parent_id: None)
+// - Child: "Buy milk" (parent_id: Some(root.id))
+// - Child: "Buy eggs" (parent_id: Some(root.id))
+```
+
+### State Management
+
+Actions can be in one of five states:
+- `NotStarted` - `[ ]` - Default state
+- `Completed` - `[x]` - Action is done
+- `InProgress` - `[-]` - Currently working on it
+- `BlockedorAwaiting` - `[=]` - Blocked or waiting
+- `Cancelled` - `[_]` - Cancelled/abandoned
+
+### Testing
+
+Run the test suite:
+```bash
+cargo test
+```
+
+Current test coverage includes:
+- Simple action parsing
+- Metadata extraction (description, priority, context, etc.)
+- Hierarchical action structures (parent-child relationships)
+
 ## Architecture
 ultimately, this is going to be the bed of implementing many experimental technologies at once including:
 - TreeSitter for using files as both the storage and the interface when necessary
