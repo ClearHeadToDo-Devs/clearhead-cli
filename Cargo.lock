@@ -1706,9 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-actions"
-version = "0.3.45"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e902deb5519dc589171085b5467ca59fc4e1cacff9e9ad6d9e0b014dee860249"
+version = "0.4.47"
 dependencies = [
  "cc",
  "serde_json",
