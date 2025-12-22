@@ -147,3 +147,121 @@ fn parse_action_with_everything_from_grammar_examples() {
     assert!(root.context_list.is_some());
     assert!(root.id.to_string().starts_with("01951111"));
 }
+
+// Round-trip tests: parse → format → parse → verify equivalence
+
+/// Test round-trip conversion for a minimal action
+#[test]
+fn roundtrip_minimal_action() {
+    let original = get_test_data()["children"]["minimal"]["content"].clone();
+    let test_config = serde_json::json!({});
+
+    // Parse original
+    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+
+    // Format back to string
+    let formatted = cliche::format_action_list(&actions1);
+
+    // Parse the formatted string
+    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+
+    // Verify equivalence
+    assert_eq!(actions1.len(), actions2.len());
+    assert_eq!(actions1[0].id, actions2[0].id);
+    assert_eq!(actions1[0].state, actions2[0].state);
+    assert_eq!(actions1[0].name, actions2[0].name);
+}
+
+/// Test round-trip conversion for actions with children
+#[test]
+fn roundtrip_action_with_children() {
+    let original = get_test_data()["children"]["with_children"]["content"].clone();
+    let test_config = serde_json::json!({});
+
+    // Parse original
+    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+
+    // Format back to string
+    let formatted = cliche::format_action_list(&actions1);
+
+    // Parse the formatted string
+    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+
+    // Verify equivalence - should have same number of actions
+    assert_eq!(actions1.len(), actions2.len());
+
+    // Verify each action matches
+    for (a1, a2) in actions1.iter().zip(actions2.iter()) {
+        assert_eq!(a1.id, a2.id);
+        assert_eq!(a1.parent_id, a2.parent_id);
+        assert_eq!(a1.state, a2.state);
+        assert_eq!(a1.name, a2.name);
+    }
+}
+
+/// Test round-trip conversion for action with metadata
+#[test]
+fn roundtrip_action_with_metadata() {
+    let original = get_test_data()["properties"]["with_description"]["content"].clone();
+    let test_config = serde_json::json!({});
+
+    // Parse original
+    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+
+    // Format back to string
+    let formatted = cliche::format_action_list(&actions1);
+
+    // Parse the formatted string
+    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+
+    // Verify equivalence
+    assert_eq!(actions1.len(), actions2.len());
+    assert_eq!(actions1[0].id, actions2[0].id);
+    assert_eq!(actions1[0].state, actions2[0].state);
+    assert_eq!(actions1[0].name, actions2[0].name);
+    assert_eq!(actions1[0].description, actions2[0].description);
+}
+
+/// Print formatted output for visual inspection
+#[test]
+fn show_formatted_output() {
+    let original = get_test_data()["children"]["with_children"]["content"].clone();
+    let test_config = serde_json::json!({});
+    let actions = get_action_list_struct(&test_config, &original).unwrap();
+    let formatted = cliche::format_action_list(&actions);
+
+    eprintln!("\n=== Formatted .actions file ===");
+    eprintln!("{}", formatted);
+    eprintln!("=== End ===\n");
+}
+
+/// Test round-trip conversion for comprehensive action with everything
+#[test]
+fn roundtrip_action_with_everything() {
+    let original = get_test_data()["actions"]["with_everything"]["content"].clone();
+    let test_config = serde_json::json!({});
+
+    // Parse original
+    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+
+    // Format back to string
+    let formatted = cliche::format_action_list(&actions1);
+
+    // Parse the formatted string
+    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+
+    // Verify equivalence - all 6 actions
+    assert_eq!(actions1.len(), actions2.len());
+
+    // Verify each action's core properties match
+    for (a1, a2) in actions1.iter().zip(actions2.iter()) {
+        assert_eq!(a1.id, a2.id, "IDs should match");
+        assert_eq!(a1.parent_id, a2.parent_id, "Parent IDs should match");
+        assert_eq!(a1.state, a2.state, "States should match");
+        assert_eq!(a1.name, a2.name, "Names should match");
+        assert_eq!(a1.description, a2.description, "Descriptions should match");
+        assert_eq!(a1.priority, a2.priority, "Priorities should match");
+        assert_eq!(a1.context_list, a2.context_list, "Context lists should match");
+        assert_eq!(a1.story, a2.story, "Stories should match");
+    }
+}

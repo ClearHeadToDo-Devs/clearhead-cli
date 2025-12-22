@@ -7,6 +7,35 @@ use uuid::Uuid;
 
 pub type ActionList = Vec<Action>;
 
+/// Format an ActionList as a .actions file with proper depth markers
+///
+/// This function converts an ActionList back into the .actions file format,
+/// preserving all metadata and using `>` markers to indicate nesting depth.
+///
+/// # Arguments
+/// * `action_list` - The list of actions to format
+///
+/// # Returns
+/// A String containing the formatted .actions file content
+pub fn format_action_list(action_list: &ActionList) -> String {
+    let mut output = String::new();
+
+    for action in action_list {
+        let depth = action.depth(action_list);
+
+        // Add depth markers (> for each level of nesting)
+        if depth > 0 {
+            output.push_str(&">".repeat(depth));
+            output.push(' ');
+        }
+
+        // Use the Action's Display implementation for the content
+        output.push_str(&format!("{}\n", action));
+    }
+
+    output
+}
+
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     pub id: Uuid,
@@ -40,7 +69,7 @@ impl Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // State and name (required)
-        write!(f, "({}) {}", self.state, self.name)?;
+        write!(f, "[{}] {}", self.state, self.name)?;
 
         // Description (optional)
         if let Some(description) = &self.description {
@@ -54,9 +83,8 @@ impl fmt::Display for Action {
 
         // Context list (optional)
         if let Some(context_list) = &self.context_list {
-            for context in context_list {
-                write!(f, " +{}", context.trim_start_matches('@'))?;
-            }
+            let contexts = context_list.join(",");
+            write!(f, " +{}", contexts)?;
         }
 
         // Do date time (optional)
