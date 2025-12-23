@@ -1,6 +1,6 @@
-[x] Complete the format system $Implemented all four output formats !1 +development
-> [ ] Add CLI integration $Wire up the read command !2 +development,testing
->> [x] Create argparser $Done with typed structs !1
->> [-] Implement main logic $In progress !2
-> [ ] Write documentation $Add examples and usage !3 +documentation
-[ ] Future task $Something for later +planning
+[x] Complete the format system $Implemented all four output formats !1 +development #8975ca06-f358-4846-916a-b32bb1fd7f7a
+> [ ] Add CLI integration $Wire up the read command !2 +development,testing #5b8bd919-b1bb-4209-a710-9117c412648f
+>> [x] Create argparser $Done with typed structs !1 #3cd10fde-d97f-4b46-a691-81759ac9048a
+>> [-] Implement main logic $In progress !2 #ce02bb95-402f-4988-a3fe-b60db103af73
+> [ ] Write documentation $Add examples and usage !3 +documentation #498f44d1-eb0d-4ce6-927d-4d091dd4b8e1
+[ ] Future task $Something for later +planning #d112634b-507e-48c3-8ed1-419bc280034b

@@ -104,6 +104,23 @@ cliche read --format json
 cliche read --format table
 ```
 
+### Advanced Workflows
+
+**Normalization (Hydration)**
+To enable advanced features like sorting and patching, your file needs stable UUIDs.
+```bash
+# Add UUIDs to all actions in the file
+cliche normalize ~/work.actions --write
+```
+
+**Patching (Smart Sync)**
+Update a Primary file based on a modified Secondary view (even if lines were reordered).
+```bash
+# Apply changes from a temp file back to the source of truth
+cliche patch --primary ~/work.actions --secondary ~/tmp/filtered_view.actions --write
+```
+This is the engine that powers editor plugins, allowing you to filter/sort a view, edit it, and save the changes back to the original file safely.
+
 ## Development
 
 See [CONTRIBUTORS.md](CONTRIBUTORS.md) for:

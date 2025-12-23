@@ -44,7 +44,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     }
 
     match &cli.command {
-        Commands::Read { file, format, all: _ } => {
+        Commands::Read { file, format, query, all: _ } => {
             // Resolve format: CLI > Env > Config > Default
             let output_format = format
                 .map(|f| f.into())
@@ -67,13 +67,59 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             // Read input from file
             let content = read_input(Some(&input_file))?;
 
-            // Parse the .actions content
-            let actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
+            // Parse or Query
+            let actions = if let Some(query_path) = query {
+                // Read query from file
+                let query_source = fs::read_to_string(query_path)
+                    .map_err(|e| format!("Failed to read query file '{}': {}", query_path.display(), e))?;
+                
+                cliche::run_query(&content, &query_source)?
+            } else {
+                // Parse the full .actions content
+                cliche::get_action_list_struct(&serde_json::json!({}), &content)?
+            };
 
             // Format and output
             let formatted = cliche::format(&actions, output_format)?;
 
             println!("{}", formatted);
+            Ok(())
+        }
+        Commands::Normalize { file, write } => {
+            let input_file = file.as_ref();
+            let content = read_input(input_file)?;
+            let actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
+            let formatted = cliche::format(&actions, cliche::OutputFormat::Actions)?;
+
+            if *write {
+                if let Some(path) = input_file {
+                    fs::write(path, formatted).map_err(|e| format!("Failed to write to file: {}", e))?;
+                } else {
+                    return Err("Cannot use --write without specifying a file".to_string());
+                }
+            } else {
+                println!("{}", formatted);
+            }
+            Ok(())
+        }
+        Commands::Patch { primary, secondary, write } => {
+            let primary_content = fs::read_to_string(primary)
+                .map_err(|e| format!("Failed to read primary file: {}", e))?;
+            let secondary_content = fs::read_to_string(secondary)
+                .map_err(|e| format!("Failed to read secondary file: {}", e))?;
+
+            let mut primary_actions = cliche::get_action_list_struct(&serde_json::json!({}), &primary_content)?;
+            let secondary_actions = cliche::get_action_list_struct(&serde_json::json!({}), &secondary_content)?;
+
+            cliche::patch_action_list(&mut primary_actions, &secondary_actions);
+
+            let formatted = cliche::format(&primary_actions, cliche::OutputFormat::Actions)?;
+
+            if *write {
+                fs::write(primary, formatted).map_err(|e| format!("Failed to write to primary file: {}", e))?;
+            } else {
+                println!("{}", formatted);
+            }
             Ok(())
         }
     }

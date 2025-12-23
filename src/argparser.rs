@@ -32,9 +32,38 @@ pub enum Commands {
         #[arg(short, long, value_enum)]
         format: Option<Format>,
 
+        /// Path to a Tree-sitter query file (.scm) to filter actions
+        #[arg(short, long)]
+        query: Option<PathBuf>,
+
         /// Read all actions (reserved for future use)
         #[arg(short, long)]
         all: bool,
+    },
+
+    /// Ensure all actions in a file have UUIDs and are properly formatted
+    Normalize {
+        /// File to normalize. If not provided, reads from stdin
+        file: Option<PathBuf>,
+
+        /// Overwrite the input file with the normalized version
+        #[arg(short, long)]
+        write: bool,
+    },
+
+    /// Apply changes from a secondary patch file to a primary source file
+    Patch {
+        /// The primary source file (source of truth)
+        #[arg(short, long)]
+        primary: PathBuf,
+
+        /// The secondary file containing updates/patches
+        #[arg(short, long)]
+        secondary: PathBuf,
+
+        /// Overwrite the primary file with the patched version
+        #[arg(short, long)]
+        write: bool,
     },
 }
 

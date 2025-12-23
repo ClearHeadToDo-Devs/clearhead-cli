@@ -107,7 +107,7 @@ impl TryFrom<TreeWrapper> for ActionList {
 }
 
 /// Recursively parse an action node and all its children into a flat list
-fn parse_action_recursive(
+pub fn parse_action_recursive(
     node: NodeWrapper,
     parent_id: Option<Uuid>,
 ) -> Result<Vec<Action>, &'static str> {
