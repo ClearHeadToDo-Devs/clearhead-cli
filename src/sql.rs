@@ -19,14 +19,21 @@
 //! let conn = sql::create_database()?;
 //! sql::load_actions(&conn, &actions)?;
 //!
-//! // Query actions
+//! // Query for action IDs
 //! let ids = sql::query_actions(&conn, "SELECT id FROM actions WHERE priority = 1")?;
+//!
+//! // Or get full Action structs for filtering/export
+//! let filtered = sql::get_actions_from_sql(&conn,
+//!     "SELECT * FROM actions WHERE priority = 1")?;
+//! let output = cliche::format(&filtered, cliche::OutputFormat::Actions)?;
 //! ```
 //!
 //! For CLI usage examples, see `docs/SQL_QUERIES.md`.
 
 use rusqlite::{Connection, Result as SqlResult, params};
-use crate::entities::{ActionList, ActionState};
+use crate::entities::{Action, ActionList, ActionState};
+use chrono::{DateTime, Local};
+use uuid::Uuid;
 
 /// Create an in-memory SQLite database with the canonical schema
 pub fn create_database() -> SqlResult<Connection> {
@@ -169,6 +176,18 @@ fn state_to_sql(state: &ActionState) -> &'static str {
     }
 }
 
+/// Convert SQL string representation back to ActionState
+fn state_from_sql(state_str: &str) -> Result<ActionState, String> {
+    match state_str {
+        "not_started" => Ok(ActionState::NotStarted),
+        "completed" => Ok(ActionState::Completed),
+        "in_progress" => Ok(ActionState::InProgress),
+        "blocked" => Ok(ActionState::BlockedorAwaiting),
+        "cancelled" => Ok(ActionState::Cancelled),
+        _ => Err(format!("Invalid state string: {}", state_str)),
+    }
+}
+
 /// Execute a SQL query and return matching action IDs
 ///
 /// Executes arbitrary SQL and extracts the first column as action IDs.
@@ -195,6 +214,121 @@ pub fn query_actions(conn: &Connection, sql: &str) -> SqlResult<Vec<String>> {
     }
 
     Ok(ids)
+}
+
+/// Get full Action structs from a SQL query
+///
+/// Executes a SQL query and reconstructs complete Action objects.
+/// The query should SELECT from the actions table (e.g., `SELECT * FROM actions WHERE ...`).
+///
+/// # Arguments
+/// * `conn` - The SQLite connection
+/// * `sql` - The SQL query to execute (should SELECT from actions table)
+///
+/// # Returns
+/// A vector of Action structs with all fields populated, including contexts
+///
+/// # Example
+/// ```ignore
+/// let actions = get_actions_from_sql(&conn, "SELECT * FROM actions WHERE priority = 1")?;
+/// let formatted = cliche::format(&actions, OutputFormat::Actions)?;
+/// ```
+pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, String> {
+    let mut stmt = conn.prepare(sql)
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let action_iter = stmt.query_map([], |row| {
+        // Extract all fields from the row
+        let id_str: String = row.get(0)?;
+        let parent_id_str: Option<String> = row.get(1)?;
+        let state_str: String = row.get(2)?;
+        let name: String = row.get(3)?;
+        let description: Option<String> = row.get(4)?;
+        let priority: Option<usize> = row.get(5)?;
+        let story: Option<String> = row.get(6)?;
+        let do_datetime_str: Option<String> = row.get(7)?;
+        let _do_duration: Option<i32> = row.get(8)?; // Not yet used
+        let completed_datetime_str: Option<String> = row.get(9)?;
+        let _depth: i32 = row.get(10)?; // Calculated dynamically, not stored in Action
+
+        Ok((id_str, parent_id_str, state_str, name, description, priority,
+            story, do_datetime_str, completed_datetime_str))
+    }).map_err(|e| format!("Failed to execute query: {}", e))?;
+
+    let mut actions = ActionList::new();
+
+    for row_result in action_iter {
+        let (id_str, parent_id_str, state_str, name, description, priority,
+             story, do_datetime_str, completed_datetime_str) =
+            row_result.map_err(|e| format!("Failed to read row: {}", e))?;
+
+        // Parse UUID
+        let id = Uuid::parse_str(&id_str)
+            .map_err(|e| format!("Invalid UUID '{}': {}", id_str, e))?;
+
+        let parent_id = if let Some(pid_str) = parent_id_str {
+            Some(Uuid::parse_str(&pid_str)
+                .map_err(|e| format!("Invalid parent UUID '{}': {}", pid_str, e))?)
+        } else {
+            None
+        };
+
+        // Parse state
+        let state = state_from_sql(&state_str)?;
+
+        // Parse datetimes
+        let do_date_time = if let Some(dt_str) = do_datetime_str {
+            Some(DateTime::parse_from_rfc3339(&dt_str)
+                .map_err(|e| format!("Invalid do_datetime '{}': {}", dt_str, e))?
+                .with_timezone(&Local))
+        } else {
+            None
+        };
+
+        let completed_date_time = if let Some(dt_str) = completed_datetime_str {
+            Some(DateTime::parse_from_rfc3339(&dt_str)
+                .map_err(|e| format!("Invalid completed_datetime '{}': {}", dt_str, e))?
+                .with_timezone(&Local))
+        } else {
+            None
+        };
+
+        // Query contexts for this action
+        let mut context_stmt = conn.prepare("SELECT context FROM action_contexts WHERE action_id = ?1")
+            .map_err(|e| format!("Failed to prepare context query: {}", e))?;
+
+        let contexts_iter = context_stmt.query_map(params![id_str], |row| {
+            row.get::<_, String>(0)
+        }).map_err(|e| format!("Failed to query contexts: {}", e))?;
+
+        let mut contexts = Vec::new();
+        for context_result in contexts_iter {
+            contexts.push(context_result
+                .map_err(|e| format!("Failed to read context: {}", e))?);
+        }
+
+        let context_list = if contexts.is_empty() {
+            None
+        } else {
+            Some(contexts)
+        };
+
+        // Construct the Action
+        actions.push(Action {
+            id,
+            parent_id,
+            state,
+            name,
+            description,
+            priority,
+            context_list,
+            do_date_time,
+            completed_date_time,
+            story,
+        });
+    }
+
+    Ok(actions)
 }
 
 /// Build a WHERE clause query from components
@@ -290,5 +424,131 @@ mod tests {
 
         let query = build_where_query("priority = 1", Some("name, priority"), Some("actions"));
         assert_eq!(query, "SELECT name, priority FROM actions WHERE priority = 1");
+    }
+
+    #[test]
+    fn test_sql_to_ir_roundtrip() {
+        use crate::entities::ActionState;
+        use uuid::Uuid;
+
+        let conn = create_database().expect("Failed to create database");
+
+        // Create test actions with various fields
+        let mut original_actions = ActionList::new();
+
+        let parent_id = Uuid::new_v4();
+        let child_id = Uuid::new_v4();
+
+        // Parent action with all fields
+        original_actions.push(Action {
+            id: parent_id,
+            parent_id: None,
+            state: ActionState::InProgress,
+            name: "Parent Task".to_string(),
+            description: Some("This is a parent task".to_string()),
+            priority: Some(2),
+            context_list: Some(vec!["work".to_string(), "urgent".to_string()]),
+            do_date_time: None,
+            completed_date_time: None,
+            story: Some("Epic Story".to_string()),
+        });
+
+        // Child action
+        original_actions.push(Action {
+            id: child_id,
+            parent_id: Some(parent_id),
+            state: ActionState::NotStarted,
+            name: "Child Task".to_string(),
+            description: None,
+            priority: Some(1),
+            context_list: Some(vec!["work".to_string()]),
+            do_date_time: None,
+            completed_date_time: None,
+            story: None,
+        });
+
+        // Load into SQL
+        load_actions(&conn, &original_actions).expect("Failed to load actions");
+
+        // Retrieve back from SQL
+        let retrieved_actions = get_actions_from_sql(&conn, "SELECT * FROM actions")
+            .expect("Failed to get actions from SQL");
+
+        // Verify we got the same number of actions
+        assert_eq!(retrieved_actions.len(), original_actions.len());
+
+        // Find parent and child by ID (order may vary)
+        let parent = retrieved_actions.iter().find(|a| a.id == parent_id).expect("Parent not found");
+        let child = retrieved_actions.iter().find(|a| a.id == child_id).expect("Child not found");
+
+        // Verify parent action
+        assert_eq!(parent.id, parent_id);
+        assert_eq!(parent.parent_id, None);
+        assert_eq!(parent.state, ActionState::InProgress);
+        assert_eq!(parent.name, "Parent Task");
+        assert_eq!(parent.description, Some("This is a parent task".to_string()));
+        assert_eq!(parent.priority, Some(2));
+        assert_eq!(parent.story, Some("Epic Story".to_string()));
+
+        // Verify contexts (may be in different order)
+        let contexts = parent.context_list.as_ref().unwrap();
+        assert_eq!(contexts.len(), 2);
+        assert!(contexts.contains(&"work".to_string()));
+        assert!(contexts.contains(&"urgent".to_string()));
+
+        // Verify child action
+        assert_eq!(child.id, child_id);
+        assert_eq!(child.parent_id, Some(parent_id));
+        assert_eq!(child.state, ActionState::NotStarted);
+        assert_eq!(child.name, "Child Task");
+        assert_eq!(child.description, None);
+        assert_eq!(child.priority, Some(1));
+        assert_eq!(child.context_list, Some(vec!["work".to_string()]));
+    }
+
+    #[test]
+    fn test_get_actions_with_filter() {
+        use crate::entities::ActionState;
+        use uuid::Uuid;
+
+        let conn = create_database().expect("Failed to create database");
+
+        let mut actions = ActionList::new();
+
+        // Add multiple actions with different priorities
+        actions.push(Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "High Priority".to_string(),
+            description: None,
+            priority: Some(1),
+            context_list: None,
+            do_date_time: None,
+            completed_date_time: None,
+            story: None,
+        });
+
+        actions.push(Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Low Priority".to_string(),
+            description: None,
+            priority: Some(3),
+            context_list: None,
+            do_date_time: None,
+            completed_date_time: None,
+            story: None,
+        });
+
+        load_actions(&conn, &actions).expect("Failed to load actions");
+
+        // Query only high priority actions
+        let high_priority = get_actions_from_sql(&conn, "SELECT * FROM actions WHERE priority = 1")
+            .expect("Failed to query");
+
+        assert_eq!(high_priority.len(), 1);
+        assert_eq!(high_priority[0].name, "High Priority");
     }
 }
