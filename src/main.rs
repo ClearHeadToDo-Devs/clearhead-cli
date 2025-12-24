@@ -49,7 +49,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let output_format = format
                 .map(|f| f.into())
                 .or_else(|| parse_format(&base_config.format).ok())
-                .unwrap_or(cliche::OutputFormat::Actions);
+                .unwrap_or(clearhead_cli::OutputFormat::Actions);
 
             // Determine input source:
             // - If file specified on CLI: use it
@@ -70,12 +70,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             // Parse, then optionally filter with SQL
             let actions = if let Some(sql_query) = sql {
                 // Full SQL query
-                let all_actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
-                cliche::run_sql_query(&all_actions, sql_query)?
+                let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+                clearhead_cli::run_sql_query(&all_actions, sql_query)?
             } else if let Some(where_clause) = where_clause {
                 // SQL WHERE clause
-                let all_actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
-                cliche::run_sql_where(
+                let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+                clearhead_cli::run_sql_where(
                     &all_actions,
                     where_clause,
                     select.as_deref(),
@@ -83,11 +83,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 )?
             } else {
                 // No filter - parse all actions
-                cliche::get_action_list_struct(&serde_json::json!({}), &content)?
+                clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
             };
 
             // Format and output
-            let formatted = cliche::format(&actions, output_format)?;
+            let formatted = clearhead_cli::format(&actions, output_format)?;
 
             println!("{}", formatted);
             Ok(())
@@ -95,8 +95,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Commands::Normalize { file, write } => {
             let input_file = file.as_ref();
             let content = read_input(input_file)?;
-            let actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
-            let formatted = cliche::format(&actions, cliche::OutputFormat::Actions)?;
+            let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions)?;
 
             if *write {
                 if let Some(path) = input_file {
@@ -115,12 +115,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let secondary_content = fs::read_to_string(secondary)
                 .map_err(|e| format!("Failed to read secondary file: {}", e))?;
 
-            let mut primary_actions = cliche::get_action_list_struct(&serde_json::json!({}), &primary_content)?;
-            let secondary_actions = cliche::get_action_list_struct(&serde_json::json!({}), &secondary_content)?;
+            let mut primary_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &primary_content)?;
+            let secondary_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &secondary_content)?;
 
-            cliche::patch_action_list(&mut primary_actions, &secondary_actions);
+            clearhead_cli::patch_action_list(&mut primary_actions, &secondary_actions);
 
-            let formatted = cliche::format(&primary_actions, cliche::OutputFormat::Actions)?;
+            let formatted = clearhead_cli::format(&primary_actions, clearhead_cli::OutputFormat::Actions)?;
 
             if *write {
                 fs::write(primary, formatted).map_err(|e| format!("Failed to write to primary file: {}", e))?;
@@ -133,12 +133,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 }
 
 /// Parse format string to OutputFormat
-fn parse_format(s: &str) -> Result<cliche::OutputFormat, String> {
+fn parse_format(s: &str) -> Result<clearhead_cli::OutputFormat, String> {
     match s.to_lowercase().as_str() {
-        "actions" => Ok(cliche::OutputFormat::Actions),
-        "json" => Ok(cliche::OutputFormat::Json),
-        "xml" => Ok(cliche::OutputFormat::Xml),
-        "table" => Ok(cliche::OutputFormat::Table),
+        "actions" => Ok(clearhead_cli::OutputFormat::Actions),
+        "json" => Ok(clearhead_cli::OutputFormat::Json),
+        "xml" => Ok(clearhead_cli::OutputFormat::Xml),
+        "table" => Ok(clearhead_cli::OutputFormat::Table),
         _ => Err(format!("Unknown format: {}", s)),
     }
 }

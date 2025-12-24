@@ -13,7 +13,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use cliche::sql;
+//! use clearhead_cli::sql;
 //!
 //! // Create database and load actions
 //! let conn = sql::create_database()?;
@@ -25,7 +25,7 @@
 //! // Or get full Action structs for filtering/export
 //! let filtered = sql::get_actions_from_sql(&conn,
 //!     "SELECT * FROM actions WHERE priority = 1")?;
-//! let output = cliche::format(&filtered, cliche::OutputFormat::Actions)?;
+//! let output = clearhead_cli::format(&filtered, clearhead_cli::OutputFormat::Actions)?;
 //! ```
 //!
 //! For CLI usage examples, see `docs/SQL_QUERIES.md`.
@@ -231,7 +231,7 @@ pub fn query_actions(conn: &Connection, sql: &str) -> SqlResult<Vec<String>> {
 /// # Example
 /// ```ignore
 /// let actions = get_actions_from_sql(&conn, "SELECT * FROM actions WHERE priority = 1")?;
-/// let formatted = cliche::format(&actions, OutputFormat::Actions)?;
+/// let formatted = clearhead_cli::format(&actions, OutputFormat::Actions)?;
 /// ```
 pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, String> {
     let mut stmt = conn.prepare(sql)
@@ -346,7 +346,7 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
 ///
 /// # Example
 /// ```
-/// # use cliche::sql::build_where_query;
+/// # use clearhead_cli::sql::build_where_query;
 /// let query = build_where_query("priority = 1", None, None);
 /// assert_eq!(query, "SELECT id FROM actions WHERE priority = 1");
 ///

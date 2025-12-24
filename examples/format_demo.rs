@@ -1,4 +1,4 @@
-use cliche::*;
+use clearhead_cli::*;
 use tree_sitter_actions::get_test_data;
 
 fn main() {

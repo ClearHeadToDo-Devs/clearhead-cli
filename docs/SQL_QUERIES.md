@@ -1,6 +1,6 @@
 # SQL Query Guide
 
-This guide shows how to use SQL queries to filter and search actions in clearhead-cli.
+This guide shows how to use SQL queries to filter and search actions in clearhead_cli.
 
 ## Overview
 
@@ -19,16 +19,16 @@ Use `--where` for simple filtering:
 
 ```bash
 # All P1 actions
-cliche read tasks.actions --where "priority = 1"
+clearhead_cli read tasks.actions --where "priority = 1"
 
 # All completed actions
-cliche read tasks.actions --where "state = 'completed'"
+clearhead_cli read tasks.actions --where "state = 'completed'"
 
 # Actions without a parent (root actions)
-cliche read tasks.actions --where "parent_id IS NULL"
+clearhead_cli read tasks.actions --where "parent_id IS NULL"
 
 # Multiple conditions
-cliche read tasks.actions --where "priority = 1 AND state <> 'completed'"
+clearhead_cli read tasks.actions --where "priority = 1 AND state <> 'completed'"
 ```
 
 ### Querying by Context
@@ -37,12 +37,12 @@ To filter by context (tags), you need to JOIN with the `action_contexts` table:
 
 ```bash
 # Actions in 'work' context
-cliche read tasks.actions --sql "SELECT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT a.id FROM actions a \
   JOIN action_contexts c ON a.id = c.action_id \
   WHERE c.context = 'work'"
 
 # Actions in 'work' OR 'urgent' context
-cliche read tasks.actions --sql "SELECT DISTINCT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT DISTINCT a.id FROM actions a \
   JOIN action_contexts c ON a.id = c.action_id \
   WHERE c.context IN ('work', 'urgent')"
 ```
@@ -53,12 +53,12 @@ For advanced queries, use `--sql` with full SQL:
 
 ```bash
 # P1 actions in work context
-cliche read tasks.actions --sql "SELECT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT a.id FROM actions a \
   JOIN action_contexts c ON a.id = c.action_id \
   WHERE a.priority = 1 AND c.context = 'work'"
 
 # All descendants of a specific story (recursive CTE)
-cliche read tasks.actions --sql "WITH RECURSIVE descendants AS (
+clearhead_cli read tasks.actions --sql "WITH RECURSIVE descendants AS (
     SELECT * FROM actions WHERE story = 'Sprint 1'
     UNION ALL
     SELECT a.* FROM actions a
@@ -107,43 +107,43 @@ Indexes are created on commonly-queried fields:
 
 ```bash
 # Not started
-cliche read tasks.actions --where "state = 'not_started'"
+clearhead_cli read tasks.actions --where "state = 'not_started'"
 
 # In progress
-cliche read tasks.actions --where "state = 'in_progress'"
+clearhead_cli read tasks.actions --where "state = 'in_progress'"
 
 # Blocked
-cliche read tasks.actions --where "state = 'blocked'"
+clearhead_cli read tasks.actions --where "state = 'blocked'"
 ```
 
 ### By Priority
 
 ```bash
 # High priority (P1)
-cliche read tasks.actions --where "priority = 1"
+clearhead_cli read tasks.actions --where "priority = 1"
 
 # P1 or P2
-cliche read tasks.actions --where "priority IN (1, 2)"
+clearhead_cli read tasks.actions --where "priority IN (1, 2)"
 
 # Has any priority set
-cliche read tasks.actions --where "priority IS NOT NULL"
+clearhead_cli read tasks.actions --where "priority IS NOT NULL"
 ```
 
 ### Hierarchical Queries
 
 ```bash
 # Root actions only
-cliche read tasks.actions --where "parent_id IS NULL"
+clearhead_cli read tasks.actions --where "parent_id IS NULL"
 
 # All children of a specific action
-cliche read tasks.actions --where "parent_id = '<UUID>'"
+clearhead_cli read tasks.actions --where "parent_id = '<UUID>'"
 
 # Actions with children (have at least one child)
-cliche read tasks.actions --sql "SELECT DISTINCT p.id FROM actions p \
+clearhead_cli read tasks.actions --sql "SELECT DISTINCT p.id FROM actions p \
   JOIN actions c ON c.parent_id = p.id"
 
 # Leaf actions (no children)
-cliche read tasks.actions --sql "SELECT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT a.id FROM actions a \
   LEFT JOIN actions c ON c.parent_id = a.id \
   WHERE c.id IS NULL"
 ```
@@ -152,10 +152,10 @@ cliche read tasks.actions --sql "SELECT a.id FROM actions a \
 
 ```bash
 # All actions in a story
-cliche read tasks.actions --where "story = 'Sprint 1'"
+clearhead_cli read tasks.actions --where "story = 'Sprint 1'"
 
 # Actions without a story
-cliche read tasks.actions --where "story IS NULL"
+clearhead_cli read tasks.actions --where "story IS NULL"
 ```
 
 ### Advanced Patterns
@@ -164,7 +164,7 @@ cliche read tasks.actions --where "story IS NULL"
 
 ```bash
 # Actions that have BOTH 'work' AND 'urgent' contexts
-cliche read tasks.actions --sql "SELECT action_id as id FROM action_contexts \
+clearhead_cli read tasks.actions --sql "SELECT action_id as id FROM action_contexts \
   WHERE context IN ('work', 'urgent') \
   GROUP BY action_id \
   HAVING COUNT(DISTINCT context) = 2"
@@ -173,7 +173,7 @@ cliche read tasks.actions --sql "SELECT action_id as id FROM action_contexts \
 #### Incomplete High-Priority Work
 
 ```bash
-cliche read tasks.actions --sql "SELECT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT a.id FROM actions a \
   JOIN action_contexts c ON a.id = c.action_id \
   WHERE a.priority = 1 \
     AND a.state <> 'completed' \
@@ -183,7 +183,7 @@ cliche read tasks.actions --sql "SELECT a.id FROM actions a \
 #### Actions Without Context Tags
 
 ```bash
-cliche read tasks.actions --sql "SELECT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT a.id FROM actions a \
   LEFT JOIN action_contexts c ON a.id = c.action_id \
   WHERE c.context IS NULL"
 ```
@@ -196,13 +196,13 @@ Use proper quoting to avoid shell interpretation issues:
 
 ```bash
 # Good - use double quotes for whole query, single quotes for strings
-cliche read tasks.actions --where "priority = 1 AND state = 'completed'"
+clearhead_cli read tasks.actions --where "priority = 1 AND state = 'completed'"
 
 # Good - use <> instead of != to avoid shell issues
-cliche read tasks.actions --where "state <> 'completed'"
+clearhead_cli read tasks.actions --where "state <> 'completed'"
 
 # Bad - shell interprets ! as history expansion
-cliche read tasks.actions --where "state != 'completed'"
+clearhead_cli read tasks.actions --where "state != 'completed'"
 ```
 
 ### Debugging Queries
@@ -210,7 +210,7 @@ cliche read tasks.actions --where "state != 'completed'"
 Use `--debug` to see what's happening:
 
 ```bash
-cliche --debug read tasks.actions --where "priority = 1"
+clearhead_cli --debug read tasks.actions --where "priority = 1"
 ```
 
 ### Output Formats
@@ -219,13 +219,13 @@ Combine SQL queries with different output formats:
 
 ```bash
 # JSON output
-cliche read tasks.actions --where "priority = 1" --format json
+clearhead_cli read tasks.actions --where "priority = 1" --format json
 
 # Table format (default)
-cliche read tasks.actions --where "priority = 1" --format table
+clearhead_cli read tasks.actions --where "priority = 1" --format table
 
 # Actions format (for further processing)
-cliche read tasks.actions --where "priority = 1" --format actions
+clearhead_cli read tasks.actions --where "priority = 1" --format actions
 ```
 
 ## Examples from the Spec
@@ -236,13 +236,13 @@ These examples are from the [official specification](https://github.com/ClearHea
 
 ```bash
 # All P1 actions
-cliche read tasks.actions --where "priority = 1"
+clearhead_cli read tasks.actions --where "priority = 1"
 
 # All completed actions
-cliche read tasks.actions --where "state = 'completed'"
+clearhead_cli read tasks.actions --where "state = 'completed'"
 
 # Actions in 'work' context
-cliche read tasks.actions --sql "SELECT a.id FROM actions a \
+clearhead_cli read tasks.actions --sql "SELECT a.id FROM actions a \
   JOIN action_contexts c ON a.id = c.action_id \
   WHERE c.context = 'work'"
 ```
@@ -251,10 +251,10 @@ cliche read tasks.actions --sql "SELECT a.id FROM actions a \
 
 ```bash
 # Actions due today (SQLite date functions)
-cliche read tasks.actions --where "date(do_datetime) = date('now')"
+clearhead_cli read tasks.actions --where "date(do_datetime) = date('now')"
 
 # Overdue not-started actions
-cliche read tasks.actions --where "state = 'not_started' \
+clearhead_cli read tasks.actions --where "state = 'not_started' \
   AND do_datetime < datetime('now')"
 ```
 
@@ -262,11 +262,11 @@ cliche read tasks.actions --where "state = 'not_started' \
 
 ```bash
 # Count by state
-cliche read tasks.actions --sql "SELECT state, COUNT(*) as count \
+clearhead_cli read tasks.actions --sql "SELECT state, COUNT(*) as count \
   FROM actions GROUP BY state"
 
 # Priority distribution
-cliche read tasks.actions --sql "SELECT \
+clearhead_cli read tasks.actions --sql "SELECT \
   COALESCE(priority, 999) as priority, \
   COUNT(*) as count \
   FROM actions \
@@ -293,10 +293,10 @@ Note: Aggregate queries return IDs, so they may not show meaningful data in the 
 
 ```bash
 # SQL - precise, flexible
-cliche read tasks.actions --where "priority = 1 AND state = 'completed'"
+clearhead_cli read tasks.actions --where "priority = 1 AND state = 'completed'"
 
 # Tree-sitter - simpler for basic cases
-cliche read tasks.actions --query p1
+clearhead_cli read tasks.actions --query p1
 ```
 
 ## Further Reading

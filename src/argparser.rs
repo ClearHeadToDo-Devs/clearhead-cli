@@ -92,13 +92,13 @@ pub enum Format {
     Table,
 }
 
-impl From<Format> for cliche::OutputFormat {
+impl From<Format> for clearhead_cli::OutputFormat {
     fn from(f: Format) -> Self {
         match f {
-            Format::Actions => cliche::OutputFormat::Actions,
-            Format::Json => cliche::OutputFormat::Json,
-            Format::Xml => cliche::OutputFormat::Xml,
-            Format::Table => cliche::OutputFormat::Table,
+            Format::Actions => clearhead_cli::OutputFormat::Actions,
+            Format::Json => clearhead_cli::OutputFormat::Json,
+            Format::Xml => clearhead_cli::OutputFormat::Xml,
+            Format::Table => clearhead_cli::OutputFormat::Table,
         }
     }
 }

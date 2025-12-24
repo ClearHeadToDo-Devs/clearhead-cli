@@ -13,8 +13,8 @@ struct TestEnv {
 impl TestEnv {
     fn new() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let config_dir = temp_dir.path().join("config/cliche");
-        let data_dir = temp_dir.path().join("data/cliche");
+        let config_dir = temp_dir.path().join("config/clearhead_cli");
+        let data_dir = temp_dir.path().join("data/clearhead_cli");
 
         fs::create_dir_all(&config_dir).expect("Failed to create config dir");
         fs::create_dir_all(&data_dir).expect("Failed to create data dir");
@@ -40,7 +40,7 @@ impl TestEnv {
 
     /// Get a Command with XDG env vars set to test directories
     fn command(&self) -> Command {
-        let bin = assert_cmd::cargo::cargo_bin!("cliche");
+        let bin = assert_cmd::cargo::cargo_bin!("clearhead_cli");
         let mut cmd = Command::new(bin);
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
@@ -271,7 +271,7 @@ fn test_json_output_validates_against_schema() {
         serde_json::from_str(&json_str).expect("Invalid JSON");
 
     // Load schema from tree-sitter-actions repo
-    // Note: Assumes tree-sitter-actions is checked out alongside clearhead-cli
+    // Note: Assumes tree-sitter-actions is checked out alongside clearhead_cli
     let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()

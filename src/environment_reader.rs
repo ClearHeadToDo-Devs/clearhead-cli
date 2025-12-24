@@ -28,31 +28,31 @@ fn default_file() -> String {
 /// This is what the application uses at runtime
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {
-    pub format: cliche::OutputFormat,
+    pub format: clearhead_cli::OutputFormat,
     pub file: PathBuf,
     pub data_dir: PathBuf,
     pub config_dir: PathBuf,
 }
 
-/// Get XDG config directory for cliche
+/// Get XDG config directory for clearhead_cli
 pub fn get_config_dir() -> PathBuf {
     config_dir()
         .expect("Failed to determine config directory")
-        .join("cliche")
+        .join("clearhead_cli")
 }
 
-/// Get XDG data directory for cliche
+/// Get XDG data directory for clearhead_cli
 pub fn get_data_dir() -> PathBuf {
     data_dir()
         .expect("Failed to determine data directory")
-        .join("cliche")
+        .join("clearhead_cli")
 }
 
 /// Load base configuration from file and environment variables
 ///
 /// Precedence (lowest to highest):
 /// 1. Defaults (in code)
-/// 2. Config file (~/.config/cliche/config.toml)
+/// 2. Config file (~/.config/clearhead_cli/config.toml)
 /// 3. Environment variables (CLICHE_FORMAT, CLICHE_FILE, etc.)
 ///
 /// CLI arguments are applied later in main.rs (highest priority)

@@ -4,4 +4,4 @@
 # debug = 0 
 
 # The path to the action file
-# action_path = XDG_DATA_HOME/cliche/active.actions
+# action_path = XDG_DATA_HOME/clearhead_cli/active.actions

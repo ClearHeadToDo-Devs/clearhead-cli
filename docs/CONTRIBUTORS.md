@@ -1,6 +1,6 @@
 # Contributors Guide
 
-Welcome! This document contains technical details for developers working on `cliche`.
+Welcome! This document contains technical details for developers working on `clearhead_cli`.
 
 ## Table of Contents
 
@@ -28,7 +28,7 @@ Welcome! This document contains technical details for developers working on `cli
 - Handles user interaction, file I/O, config loading
 - Uses typed structs (not JSON Maps) for type safety
 - Translates CLI types → library types
-- Example: `argparser::Format` converts to `cliche::OutputFormat`
+- Example: `argparser::Format` converts to `clearhead_cli::OutputFormat`
 
 ### Hub-and-Spoke Format System
 
@@ -113,10 +113,10 @@ Trade-off: Can't implement traits like `Display` on the alias. Instead, we use f
 ### XDG Directories
 
 ```
-~/.config/cliche/
+~/.config/clearhead_cli/
   └── config.toml         # User preferences
 
-~/.local/share/cliche/
+~/.local/share/clearhead_cli/
   └── inbox.actions       # Default task list
 ```
 
@@ -263,11 +263,11 @@ pub enum Format {
     Csv,
 }
 
-impl From<Format> for cliche::OutputFormat {
+impl From<Format> for clearhead_cli::OutputFormat {
     fn from(f: Format) -> Self {
         match f {
             // ...
-            Format::Csv => cliche::OutputFormat::Csv,
+            Format::Csv => clearhead_cli::OutputFormat::Csv,
         }
     }
 }

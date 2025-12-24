@@ -1,15 +1,15 @@
-# cliche
+# clearhead_cli
 
 **Command Line Interface for the ClearHead framework**
 
-A fast, flexible task manager that uses plain text `.actions` files - edit them with any text editor, manage them with `cliche`.
+A fast, flexible task manager that uses plain text `.actions` files - edit them with any text editor, manage them with `clearhead_cli`.
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-cargo install cliche
+cargo install clearhead_cli
 ```
 
 ### Your First Task List
@@ -17,8 +17,8 @@ cargo install cliche
 Create a file called `inbox.actions` (this is created for you in the default location otherwise):
 
 ```
-[ ] Welcome to cliche $Your personal task manager
-> [ ] Try different output formats $Run: cliche read --format table
+[ ] Welcome to clearhead_cli $Your personal task manager
+> [ ] Try different output formats $Run: clearhead_cli read --format table
 > [x] Get started $You're already using it!
 ```
 
@@ -26,13 +26,13 @@ View it in different formats:
 
 ```bash
 # Table view (great for browsing)
-cliche read inbox.actions --format table
+clearhead_cli read inbox.actions --format table
 
 # JSON (great for scripting)
-cliche read inbox.actions --format json
+clearhead_cli read inbox.actions --format json
 
 # Original format (round-trip safe)
-cliche read inbox.actions
+clearhead_cli read inbox.actions
 ```
 
 ## Features
@@ -43,23 +43,23 @@ cliche read inbox.actions
 
 ## Configuration
 
-Optionally create `~/.config/cliche/config.toml`:
+Optionally create `~/.config/clearhead_cli/config.toml`:
 
 ```toml
 format = "table"           # Default output format
-file = "inbox.actions"     # Default file in ~/.local/share/cliche/
+file = "inbox.actions"     # Default file in ~/.local/share/clearhead_cli/
 ```
 
 Override with environment variables:
 
 ```bash
-CLICHE_FORMAT=json cliche read
+CLICHE_FORMAT=json clearhead_cli read
 ```
 
 Or command-line arguments (highest priority):
 
 ```bash
-cliche read --format table
+clearhead_cli read --format table
 ```
 
 ## Action Syntax
@@ -90,33 +90,33 @@ For the full specification see [The Specification](https://github.com/ClearHeadT
 ### Read
 
 ```bash
-# Read default file (~/.local/share/cliche/inbox.actions)
-cliche read
+# Read default file (~/.local/share/clearhead_cli/inbox.actions)
+clearhead_cli read
 
 # Read specific file
-cliche read ~/work.actions
+clearhead_cli read ~/work.actions
 
 # Output as JSON
-cliche read --format json
+clearhead_cli read --format json
 
 # Output as table
-cliche read --format table
+clearhead_cli read --format table
 ```
 
 **Filtering with SQL queries:**
 
 ```bash
 # Simple WHERE clause
-cliche read --where "priority = 1"
-cliche read --where "state = 'completed'"
+clearhead_cli read --where "priority = 1"
+clearhead_cli read --where "state = 'completed'"
 
 # Query by context (requires JOIN)
-cliche read --sql "SELECT a.id FROM actions a \
+clearhead_cli read --sql "SELECT a.id FROM actions a \
   JOIN action_contexts c ON a.id = c.action_id \
   WHERE c.context = 'work'"
 
 # Complex queries with recursive CTEs
-cliche read --sql "WITH RECURSIVE descendants AS (
+clearhead_cli read --sql "WITH RECURSIVE descendants AS (
     SELECT * FROM actions WHERE story = 'Sprint 1'
     UNION ALL
     SELECT a.* FROM actions a JOIN descendants d ON a.parent_id = d.id
@@ -131,14 +131,14 @@ See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL que
 To enable advanced features like sorting and patching, your file needs stable UUIDs.
 ```bash
 # Add UUIDs to all actions in the file
-cliche normalize ~/work.actions --write
+clearhead_cli normalize ~/work.actions --write
 ```
 
 **Patching (Smart Sync)**
 Update a Primary file based on a modified Secondary view (even if lines were reordered).
 ```bash
 # Apply changes from a temp file back to the source of truth
-cliche patch --primary ~/work.actions --secondary ~/tmp/filtered_view.actions --write
+clearhead_cli patch --primary ~/work.actions --secondary ~/tmp/filtered_view.actions --write
 ```
 This is the engine that powers editor plugins, allowing you to filter/sort a view, edit it, and save the changes back to the original file safely.
 

@@ -1,5 +1,5 @@
 /// Built-in Tree-sitter queries embedded into the binary via the tree-sitter-actions crate.
-/// These allow users to run `cliche read --query p1` without needing external files.
+/// These allow users to run `clearhead_cli read --query p1` without needing external files.
 
 pub fn get_builtin_query(name: &str) -> Option<&'static str> {
     match name {

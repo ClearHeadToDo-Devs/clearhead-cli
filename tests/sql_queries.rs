@@ -2,7 +2,7 @@
 ///
 /// Tests examples from the canonical SQL schema specification
 
-use cliche::entities::{Action, ActionList, ActionState};
+use clearhead_cli::entities::{Action, ActionList, ActionState};
 use uuid::Uuid;
 
 fn create_test_actions() -> ActionList {
@@ -80,7 +80,7 @@ fn create_test_actions() -> ActionList {
 fn test_basic_priority_filter() {
     // Example from spec: "All P1 actions"
     let actions = create_test_actions();
-    let filtered = cliche::run_sql_where(&actions, "priority = 1", None, None)
+    let filtered = clearhead_cli::run_sql_where(&actions, "priority = 1", None, None)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 P1 actions");
@@ -91,7 +91,7 @@ fn test_basic_priority_filter() {
 fn test_state_filter() {
     // Example from spec: "All completed actions"
     let actions = create_test_actions();
-    let filtered = cliche::run_sql_where(&actions, "state = 'completed'", None, None)
+    let filtered = clearhead_cli::run_sql_where(&actions, "state = 'completed'", None, None)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 completed actions");
@@ -103,7 +103,7 @@ fn test_context_filter() {
     // Example from spec: "Actions in 'work' context"
     let actions = create_test_actions();
     let sql = "SELECT a.id FROM actions a JOIN action_contexts c ON a.id = c.action_id WHERE c.context = 'work'";
-    let filtered = cliche::run_sql_query(&actions, sql)
+    let filtered = clearhead_cli::run_sql_query(&actions, sql)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 3, "Expected 3 actions in 'work' context");
@@ -114,7 +114,7 @@ fn test_multiple_contexts() {
     // Example from spec: "Actions in 'work' OR 'urgent' context"
     let actions = create_test_actions();
     let sql = "SELECT DISTINCT a.id FROM actions a JOIN action_contexts c ON a.id = c.action_id WHERE c.context IN ('work', 'urgent')";
-    let filtered = cliche::run_sql_query(&actions, sql)
+    let filtered = clearhead_cli::run_sql_query(&actions, sql)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 3, "Expected 3 actions with work or urgent context");
@@ -124,7 +124,7 @@ fn test_multiple_contexts() {
 fn test_root_actions_only() {
     // Example from spec: "Root actions only"
     let actions = create_test_actions();
-    let filtered = cliche::run_sql_where(&actions, "parent_id IS NULL", None, None)
+    let filtered = clearhead_cli::run_sql_where(&actions, "parent_id IS NULL", None, None)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 3, "Expected 3 root actions");
@@ -141,7 +141,7 @@ fn test_children_of_action() {
         .expect("P2 action not found");
 
     let sql = format!("SELECT id FROM actions WHERE parent_id = '{}'", p2_id);
-    let filtered = cliche::run_sql_query(&actions, &sql)
+    let filtered = clearhead_cli::run_sql_query(&actions, &sql)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 children of P2");
@@ -152,7 +152,7 @@ fn test_complex_combined_query() {
     // Example from spec: "P1 actions in 'work' context"
     let actions = create_test_actions();
     let sql = "SELECT a.id FROM actions a JOIN action_contexts c ON a.id = c.action_id WHERE a.priority = 1 AND c.context = 'work'";
-    let filtered = cliche::run_sql_query(&actions, sql)
+    let filtered = clearhead_cli::run_sql_query(&actions, sql)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 P1 actions in work context");
@@ -161,7 +161,7 @@ fn test_complex_combined_query() {
 #[test]
 fn test_not_started_actions() {
     let actions = create_test_actions();
-    let filtered = cliche::run_sql_where(&actions, "state = 'not_started'", None, None)
+    let filtered = clearhead_cli::run_sql_where(&actions, "state = 'not_started'", None, None)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 not-started actions");
@@ -170,7 +170,7 @@ fn test_not_started_actions() {
 #[test]
 fn test_actions_with_description() {
     let actions = create_test_actions();
-    let filtered = cliche::run_sql_where(&actions, "description IS NOT NULL", None, None)
+    let filtered = clearhead_cli::run_sql_where(&actions, "description IS NOT NULL", None, None)
         .expect("Query failed");
 
     assert_eq!(filtered.len(), 1, "Expected 1 action with description");
