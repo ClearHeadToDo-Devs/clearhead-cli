@@ -1,7 +1,7 @@
 [package]
 name = "cliche"
 description = "A CLI tool and library for working with the clearhead framework"
-version = "0.1.1"
+version = "0.2.1"
 authors = ["Darrion Burgess <darrionburgess@gmail.com>"]
 edition = "2024"
 license = "MIT"
