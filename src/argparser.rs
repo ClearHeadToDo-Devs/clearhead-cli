@@ -32,16 +32,12 @@ pub enum Commands {
         #[arg(short, long, value_enum)]
         format: Option<Format>,
 
-        /// Path to a Tree-sitter query file (.scm) to filter actions
-        #[arg(short, long)]
-        query: Option<PathBuf>,
-
         /// SQL WHERE clause to filter actions (e.g., "priority = 1")
-        #[arg(short = 'w', long = "where", conflicts_with = "query")]
+        #[arg(short = 'w', long = "where")]
         where_clause: Option<String>,
 
         /// Full SQL query (overrides --where, --select, --from)
-        #[arg(long, conflicts_with_all = ["query", "where_clause"])]
+        #[arg(long, conflicts_with = "where_clause")]
         sql: Option<String>,
 
         /// SQL SELECT clause (default: "id")

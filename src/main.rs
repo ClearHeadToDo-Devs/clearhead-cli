@@ -44,7 +44,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     }
 
     match &cli.command {
-        Commands::Read { file, format, query, where_clause, sql, select, from, all: _ } => {
+        Commands::Read { file, format, where_clause, sql, select, from, all: _ } => {
             // Resolve format: CLI > Env > Config > Default
             let output_format = format
                 .map(|f| f.into())
@@ -67,7 +67,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             // Read input from file
             let content = read_input(Some(&input_file))?;
 
-            // Parse, then optionally filter with query
+            // Parse, then optionally filter with SQL
             let actions = if let Some(sql_query) = sql {
                 // Full SQL query
                 let all_actions = cliche::get_action_list_struct(&serde_json::json!({}), &content)?;
@@ -81,12 +81,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     select.as_deref(),
                     from.as_deref(),
                 )?
-            } else if let Some(query_path) = query {
-                // Tree-sitter query from file
-                let query_source = fs::read_to_string(query_path)
-                    .map_err(|e| format!("Failed to read query file '{}': {}", query_path.display(), e))?;
-
-                cliche::run_query(&content, &query_source)?
             } else {
                 // No filter - parse all actions
                 cliche::get_action_list_struct(&serde_json::json!({}), &content)?

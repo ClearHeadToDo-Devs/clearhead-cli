@@ -40,7 +40,8 @@ impl TestEnv {
 
     /// Get a Command with XDG env vars set to test directories
     fn command(&self) -> Command {
-        let mut cmd = Command::cargo_bin("cliche").expect("Failed to find cliche binary");
+        let bin = assert_cmd::cargo::cargo_bin!("cliche");
+        let mut cmd = Command::new(bin);
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
         cmd
@@ -238,38 +239,6 @@ fn test_actions_with_hierarchy() {
 }
 
 // Schema validation tests - verify JSON output matches canonical schema
-
-#[test]
-fn test_query_filtering() {
-    let env = TestEnv::new();
-
-    // Create a file with different priorities
-    let content = "
-[ ] High Priority !1 #uuid-1
-[ ] Medium Priority !2 #uuid-2
-[ ] Another High !1 #uuid-3
-";
-    env.write_actions("priorities.actions", content);
-    
-    // Create a query file that finds P1 actions
-    let query = "(root_action metadata: (priority) @p (#eq? @p \"!1\")) @action";
-    let query_path = env.data_dir.join("p1.scm");
-    fs::write(&query_path, query).unwrap();
-
-    let actions_path = env.data_dir.join("priorities.actions");
-
-    // Run read with query
-    env.command()
-        .arg("read")
-        .arg(&actions_path)
-        .arg("--query")
-        .arg(&query_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("High Priority"))
-        .stdout(predicate::str::contains("Another High"))
-        .stdout(predicate::str::contains("Medium Priority").not());
-}
 
 #[test]
 fn test_json_output_validates_against_schema() {

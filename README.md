@@ -14,7 +14,7 @@ cargo install cliche
 
 ### Your First Task List
 
-Create a file called `inbox.actions`:
+Create a file called `inbox.actions` (this is created for you in the default location otherwise):
 
 ```
 [ ] Welcome to cliche $Your personal task manager
@@ -39,10 +39,7 @@ cliche read inbox.actions
 
 - **SQL queries**: Filter actions with WHERE clauses or full SQL (JOINs, CTEs, aggregations)
 - **Multiple output formats**: actions, json, xml, table
-- **XDG compliant**: Follows standard directory conventions
-- **Config precedence**: CLI args → env vars → config file → defaults
 - **Zero lock-in**: Plain text files, use any editor
-- **Type-safe**: Rust library + CLI tool
 
 ## Configuration
 
@@ -65,11 +62,12 @@ Or command-line arguments (highest priority):
 cliche read --format table
 ```
 
-## Task Syntax
+## Action Syntax
 
+For the full specification see [The Specification](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions/blob/master/docs/action_specification.md)
 ```
-[x] Completed task $with description !1 +context,tags
-> [ ] Child task
+[x] Completed Action $with description !1 +context,tags
+> [ ] Child Action
 >> [-] Grandchild in progress
 ```
 
@@ -146,7 +144,7 @@ This is the engine that powers editor plugins, allowing you to filter/sort a vie
 
 ## Development
 
-See [CONTRIBUTORS.md](CONTRIBUTORS.md) for:
+See [CONTRIBUTORS.md](docs/CONTRIBUTORS.md) for:
 - Architecture overview
 - How to add features
 - Testing guidelines
