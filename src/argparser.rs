@@ -36,6 +36,22 @@ pub enum Commands {
         #[arg(short, long)]
         query: Option<PathBuf>,
 
+        /// SQL WHERE clause to filter actions (e.g., "priority = 1")
+        #[arg(short = 'w', long = "where", conflicts_with = "query")]
+        where_clause: Option<String>,
+
+        /// Full SQL query (overrides --where, --select, --from)
+        #[arg(long, conflicts_with_all = ["query", "where_clause"])]
+        sql: Option<String>,
+
+        /// SQL SELECT clause (default: "id")
+        #[arg(long, requires = "where_clause")]
+        select: Option<String>,
+
+        /// SQL FROM clause (default: "actions")
+        #[arg(long, requires = "where_clause")]
+        from: Option<String>,
+
         /// Read all actions (reserved for future use)
         #[arg(short, long)]
         all: bool,

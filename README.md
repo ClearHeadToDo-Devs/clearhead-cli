@@ -37,6 +37,7 @@ cliche read inbox.actions
 
 ## Features
 
+- **SQL queries**: Filter actions with WHERE clauses or full SQL (JOINs, CTEs, aggregations)
 - **Multiple output formats**: actions, json, xml, table
 - **XDG compliant**: Follows standard directory conventions
 - **Config precedence**: CLI args → env vars → config file → defaults
@@ -103,6 +104,28 @@ cliche read --format json
 # Output as table
 cliche read --format table
 ```
+
+**Filtering with SQL queries:**
+
+```bash
+# Simple WHERE clause
+cliche read --where "priority = 1"
+cliche read --where "state = 'completed'"
+
+# Query by context (requires JOIN)
+cliche read --sql "SELECT a.id FROM actions a \
+  JOIN action_contexts c ON a.id = c.action_id \
+  WHERE c.context = 'work'"
+
+# Complex queries with recursive CTEs
+cliche read --sql "WITH RECURSIVE descendants AS (
+    SELECT * FROM actions WHERE story = 'Sprint 1'
+    UNION ALL
+    SELECT a.* FROM actions a JOIN descendants d ON a.parent_id = d.id
+  ) SELECT id FROM descendants"
+```
+
+See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL queries.
 
 ### Advanced Workflows
 
