@@ -91,6 +91,9 @@ fn format_as_table(list: &ActionList) -> Result<String, String> {
         Cell::new("State").fg(Color::Cyan),
         Cell::new("Name").fg(Color::Cyan),
         Cell::new("Priority").fg(Color::Cyan),
+        Cell::new("Due").fg(Color::Cyan),
+        Cell::new("Dur").fg(Color::Cyan),
+        Cell::new("Recurrence").fg(Color::Cyan),
         Cell::new("Context").fg(Color::Cyan),
         Cell::new("Description").fg(Color::Cyan),
         Cell::new("ID").fg(Color::Cyan),
@@ -113,6 +116,25 @@ fn format_as_table(list: &ActionList) -> Result<String, String> {
             .map(|p| p.to_string())
             .unwrap_or_else(|| "-".to_string());
 
+        // Format due date
+        let due = action
+            .do_date_time
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "-".to_string());
+
+        // Format duration
+        let duration = action
+            .do_duration
+            .map(|d| format!("{}m", d))
+            .unwrap_or_else(|| "-".to_string());
+
+        // Format recurrence
+        let recurrence = action
+            .recurrence
+            .as_ref()
+            .map(|r| r.frequency.to_uppercase())
+            .unwrap_or_else(|| "-".to_string());
+
         // Format context list
         let context = action
             .context_list
@@ -130,7 +152,7 @@ fn format_as_table(list: &ActionList) -> Result<String, String> {
         // Format ID (short version - first 8 chars)
         let id = action.id.to_string()[..8].to_string();
 
-        table.add_row(vec![state, name, priority, context, description, id]);
+        table.add_row(vec![state, name, priority, due, duration, recurrence, context, description, id]);
     }
 
     Ok(table.to_string())

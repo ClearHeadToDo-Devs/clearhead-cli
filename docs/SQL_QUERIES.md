@@ -97,6 +97,27 @@ CREATE TABLE action_contexts (
 );
 ```
 
+### `action_recurrence` Table
+```sql
+CREATE TABLE action_recurrence (
+    action_id TEXT PRIMARY KEY REFERENCES actions(id) ON DELETE CASCADE,
+    frequency TEXT NOT NULL CHECK(frequency IN ('secondly', 'minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly')),
+    interval INTEGER DEFAULT 1 CHECK(interval >= 1),
+    count INTEGER CHECK(count >= 1),
+    until_date TEXT,
+    by_second TEXT,
+    by_minute TEXT,
+    by_hour TEXT,
+    by_day TEXT,
+    by_month_day TEXT,
+    by_year_day TEXT,
+    by_week_no TEXT,
+    by_month TEXT,
+    by_set_pos TEXT,
+    week_start TEXT DEFAULT 'MO' CHECK(week_start IN ('MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'))
+);
+```
+
 ### Indexes
 Indexes are created on commonly-queried fields:
 - `state`, `priority`, `story`, `do_datetime`, `parent_id`, `depth`, `context`

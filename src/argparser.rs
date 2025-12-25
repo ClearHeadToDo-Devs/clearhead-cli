@@ -77,6 +77,16 @@ pub enum Commands {
         #[arg(short, long)]
         write: bool,
     },
+
+    /// Show an agenda of upcoming actions, including expanded recurring instances
+    Agenda {
+        /// File to read (.actions format). If not provided, reads from stdin
+        file: Option<PathBuf>,
+
+        /// Number of days to project forward
+        #[arg(short, long, default_value = "7")]
+        days: u32,
+    },
 }
 
 /// CLI-specific format enum that maps to library's OutputFormat

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Local};
+use rrule::Tz;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -125,6 +126,50 @@ impl Action {
                 .and_then(|a| a.parent_id);
         }
         depth
+    }
+
+    /// Expand recurrence rule into a list of occurrence dates
+    /// 
+    /// Uses the do_date_time as DTSTART and the recurrence field as RRULE.
+    /// Returns an empty vector if no recurrence is present or if parsing fails.
+    /// 
+    /// # Arguments
+    /// * `limit` - Maximum number of occurrences to generate
+    pub fn expand_occurrences(&self, limit: u16) -> Vec<DateTime<Tz>> {
+        let recurrence = match &self.recurrence {
+            Some(r) => r,
+            None => return Vec::new(),
+        };
+
+        let dt_start = match self.do_date_time {
+            Some(dt) => dt,
+            None => return Vec::new(),
+        };
+
+        // Construct the full RRULE string: "DTSTART:...\nRRULE:..."
+        // Note: rrule crate expects specific format. 
+        // We need to convert Local DateTime to a specific timezone or UTC for rrule.
+        // For simplicity in this CLI, we'll try to treat it as local/unspecified or UTC.
+        // RFC 5545 requires DTSTART.
+        
+        let recurrence_str = recurrence.to_string();
+        let clean_recurrence = if recurrence_str.starts_with("R:") {
+            &recurrence_str[2..]
+        } else {
+            &recurrence_str
+        };
+
+        let rrule_str = format!("DTSTART:{}\nRRULE:{}", dt_start.format("%Y%m%dT%H%M%S"), clean_recurrence);
+        
+        match rrule_str.parse::<rrule::RRuleSet>() {
+            Ok(rrule_set) => {
+                rrule_set.all(limit).dates
+            },
+            Err(e) => {
+                eprintln!("Failed to parse recurrence rule: {}", e);
+                Vec::new()
+            }
+        }
     }
 }
 
@@ -329,14 +374,6 @@ pub fn parse_action_recursive(
                         if let Ok(minutes) = minutes_str.parse::<u32>() {
                             do_duration = Some(minutes);
                         }
-                    } else {
-                        // Fallback: assume the number is the text after 'D'
-                        let full_text = get_node_text(&duration_node, &node.source);
-                        if full_text.starts_with('D') {
-                            if let Ok(minutes) = full_text[1..].trim().parse::<u32>() {
-                                do_duration = Some(minutes);
-                            }
-                        }
                     }
                 }
 
@@ -345,12 +382,6 @@ pub fn parse_action_recursive(
                     if let Some(rrule_node) = recurrence_node.child_by_field_name("rrule") {
                         let rrule_str = get_node_text(&rrule_node, &node.source);
                         recurrence = parse_rrule(&rrule_str);
-                    } else {
-                        // Fallback: manual extraction if field access fails
-                        let full_text = get_node_text(&recurrence_node, &node.source);
-                        if full_text.starts_with("R:") {
-                            recurrence = parse_rrule(&full_text);
-                        }
                     }
                 }
             }
@@ -622,5 +653,55 @@ mod tests {
         assert!(formatted.contains("R:FREQ=WEEKLY"));
         assert!(formatted.contains(";INTERVAL=2"));
         assert!(formatted.contains(";BYDAY=MO"));
+    }
+
+    #[test]
+    fn test_expand_occurrences() {
+        use chrono::TimeZone;
+        
+        // Create a fixed start date: 2025-01-01 09:00:00 (Wednesday)
+        let dt_start = Local.with_ymd_and_hms(2025, 1, 1, 9, 0, 0).unwrap();
+        
+        let recurrence = Recurrence {
+            frequency: "daily".to_string(),
+            interval: Some(1),
+            count: Some(3), // Expect 3 occurrences
+            until: None,
+            by_second: None,
+            by_minute: None,
+            by_hour: None,
+            by_day: None,
+            by_month_day: None,
+            by_year_day: None,
+            by_week_no: None,
+            by_month: None,
+            by_set_pos: None,
+            week_start: None,
+        };
+
+        let action = Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Daily Standup".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: Some(dt_start),
+            do_duration: None,
+            recurrence: Some(recurrence),
+            completed_date_time: None,
+            story: None,
+        };
+
+        let occurrences = action.expand_occurrences(10);
+        
+        assert_eq!(occurrences.len(), 3);
+        
+        // Verify dates (ignoring time zone specifics for this simple test, just checking sequence)
+        // Note: rrule returns DateTime<Tz>, we can format to check
+        assert_eq!(occurrences[0].format("%Y-%m-%d").to_string(), "2025-01-01");
+        assert_eq!(occurrences[1].format("%Y-%m-%d").to_string(), "2025-01-02");
+        assert_eq!(occurrences[2].format("%Y-%m-%d").to_string(), "2025-01-03");
     }
 }
