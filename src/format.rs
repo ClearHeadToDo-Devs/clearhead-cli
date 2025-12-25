@@ -152,6 +152,8 @@ mod tests {
             priority: None,
             context_list: None,
             do_date_time: None,
+            do_duration: None,
+            recurrence: None,
             completed_date_time: None,
             story: None,
         }

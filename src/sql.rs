@@ -31,7 +31,7 @@
 //! For CLI usage examples, see `docs/SQL_QUERIES.md`.
 
 use rusqlite::{Connection, Result as SqlResult, params};
-use crate::entities::{Action, ActionList, ActionState};
+use crate::entities::{Action, ActionList, ActionState, Recurrence};
 use chrono::{DateTime, Local};
 use uuid::Uuid;
 
@@ -82,19 +82,25 @@ fn create_schema(conn: &Connection) -> SqlResult<()> {
 
     conn.execute("CREATE INDEX idx_action_contexts_context ON action_contexts(context)", [])?;
 
-    // Recurrence table (for future use)
+    // Recurrence table per RFC 5545 RRULE syntax
+    // Maps from R:FREQ=WEEKLY;BYDAY=MO,WE,FR to normalized fields
     conn.execute(
         "CREATE TABLE action_recurrence (
             action_id TEXT PRIMARY KEY REFERENCES actions(id) ON DELETE CASCADE,
-            frequency TEXT NOT NULL CHECK(frequency IN ('minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly')),
+            frequency TEXT NOT NULL CHECK(frequency IN ('secondly', 'minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly')),
             interval INTEGER DEFAULT 1 CHECK(interval >= 1),
             count INTEGER CHECK(count >= 1),
             until_date TEXT,
+            by_second TEXT,
             by_minute TEXT,
             by_hour TEXT,
             by_day TEXT,
             by_month_day TEXT,
-            by_month TEXT
+            by_year_day TEXT,
+            by_week_no TEXT,
+            by_month TEXT,
+            by_set_pos TEXT,
+            week_start TEXT DEFAULT 'MO' CHECK(week_start IN ('MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'))
         )",
         [],
     )?;
@@ -144,7 +150,7 @@ pub fn load_actions(conn: &Connection, actions: &ActionList) -> SqlResult<()> {
                 action.priority,
                 action.story,
                 action.do_date_time.map(|dt| dt.to_rfc3339()),
-                None::<i32>, // duration - not yet implemented in Action struct
+                action.do_duration,
                 action.completed_date_time.map(|dt| dt.to_rfc3339()),
                 action.depth(actions),
             ],
@@ -158,6 +164,38 @@ pub fn load_actions(conn: &Connection, actions: &ActionList) -> SqlResult<()> {
                     params![action.id.to_string(), context],
                 )?;
             }
+        }
+
+        // Insert recurrence
+        if let Some(ref r) = action.recurrence {
+            fn join_vec<T: std::fmt::Display>(v: &[T]) -> String {
+                v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")
+            }
+
+            tx.execute(
+                "INSERT INTO action_recurrence (
+                    action_id, frequency, interval, count, until_date,
+                    by_second, by_minute, by_hour, by_day, by_month_day,
+                    by_year_day, by_week_no, by_month, by_set_pos, week_start
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    action.id.to_string(),
+                    r.frequency,
+                    r.interval,
+                    r.count,
+                    r.until,
+                    r.by_second.as_ref().map(|v| join_vec(v)),
+                    r.by_minute.as_ref().map(|v| join_vec(v)),
+                    r.by_hour.as_ref().map(|v| join_vec(v)),
+                    r.by_day.as_ref().map(|v| v.join(",")),
+                    r.by_month_day.as_ref().map(|v| join_vec(v)),
+                    r.by_year_day.as_ref().map(|v| join_vec(v)),
+                    r.by_week_no.as_ref().map(|v| join_vec(v)),
+                    r.by_month.as_ref().map(|v| join_vec(v)),
+                    r.by_set_pos.as_ref().map(|v| join_vec(v)),
+                    r.week_start,
+                ],
+            )?;
         }
     }
 
@@ -247,19 +285,19 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
         let priority: Option<usize> = row.get(5)?;
         let story: Option<String> = row.get(6)?;
         let do_datetime_str: Option<String> = row.get(7)?;
-        let _do_duration: Option<i32> = row.get(8)?; // Not yet used
+        let do_duration: Option<i32> = row.get(8)?;
         let completed_datetime_str: Option<String> = row.get(9)?;
         let _depth: i32 = row.get(10)?; // Calculated dynamically, not stored in Action
 
         Ok((id_str, parent_id_str, state_str, name, description, priority,
-            story, do_datetime_str, completed_datetime_str))
+            story, do_datetime_str, do_duration, completed_datetime_str))
     }).map_err(|e| format!("Failed to execute query: {}", e))?;
 
     let mut actions = ActionList::new();
 
     for row_result in action_iter {
         let (id_str, parent_id_str, state_str, name, description, priority,
-             story, do_datetime_str, completed_datetime_str) =
+             story, do_datetime_str, do_duration_int, completed_datetime_str) =
             row_result.map_err(|e| format!("Failed to read row: {}", e))?;
 
         // Parse UUID
@@ -292,6 +330,9 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
         } else {
             None
         };
+        
+        // Convert duration
+        let do_duration = do_duration_int.map(|d| d as u32);
 
         // Query contexts for this action
         let mut context_stmt = conn.prepare("SELECT context FROM action_contexts WHERE action_id = ?1")
@@ -313,6 +354,54 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
             Some(contexts)
         };
 
+        // Query recurrence
+        let mut recurrence = None;
+        let mut r_stmt = conn.prepare(
+            "SELECT frequency, interval, count, until_date, by_second, by_minute, by_hour, by_day, by_month_day, by_year_day, by_week_no, by_month, by_set_pos, week_start 
+             FROM action_recurrence WHERE action_id = ?1"
+        ).map_err(|e| format!("Failed to prepare recurrence query: {}", e))?;
+        
+        let mut r_rows = r_stmt.query(params![id_str])
+            .map_err(|e| format!("Failed to query recurrence: {}", e))?;
+
+        if let Some(row) = r_rows.next().map_err(|e| format!("Failed to read recurrence row: {}", e))? {
+             fn parse_vec<T: std::str::FromStr>(s: Option<String>) -> Option<Vec<T>> {
+                s.and_then(|str_val| {
+                    let v: Vec<T> = str_val.split(',')
+                        .filter_map(|x| x.parse().ok())
+                        .collect();
+                    if v.is_empty() { None } else { Some(v) }
+                })
+             }
+             
+             // For strings (BYDAY), we don't need FromStr, just split
+             fn parse_string_vec(s: Option<String>) -> Option<Vec<String>> {
+                 s.and_then(|str_val| {
+                     let v: Vec<String> = str_val.split(',')
+                         .map(|x| x.to_string())
+                         .collect();
+                     if v.is_empty() { None } else { Some(v) }
+                 })
+             }
+
+             recurrence = Some(Recurrence {
+                 frequency: row.get(0).unwrap_or_default(),
+                 interval: row.get(1).ok(),
+                 count: row.get(2).ok(),
+                 until: row.get(3).ok(),
+                 by_second: parse_vec(row.get(4).ok()),
+                 by_minute: parse_vec(row.get(5).ok()),
+                 by_hour: parse_vec(row.get(6).ok()),
+                 by_day: parse_string_vec(row.get(7).ok()),
+                 by_month_day: parse_vec(row.get(8).ok()),
+                 by_year_day: parse_vec(row.get(9).ok()),
+                 by_week_no: parse_vec(row.get(10).ok()),
+                 by_month: parse_vec(row.get(11).ok()),
+                 by_set_pos: parse_vec(row.get(12).ok()),
+                 week_start: row.get(13).ok(),
+             });
+        }
+
         // Construct the Action
         actions.push(Action {
             id,
@@ -323,6 +412,8 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
             priority,
             context_list,
             do_date_time,
+            do_duration,
+            recurrence,
             completed_date_time,
             story,
         });
@@ -403,6 +494,8 @@ mod tests {
             priority: Some(1),
             context_list: Some(vec!["work".to_string()]),
             do_date_time: None,
+            do_duration: None,
+            recurrence: None,
             completed_date_time: None,
             story: Some("Test Story".to_string()),
         });
@@ -449,6 +542,8 @@ mod tests {
             priority: Some(2),
             context_list: Some(vec!["work".to_string(), "urgent".to_string()]),
             do_date_time: None,
+            do_duration: None,
+            recurrence: None,
             completed_date_time: None,
             story: Some("Epic Story".to_string()),
         });
@@ -463,6 +558,8 @@ mod tests {
             priority: Some(1),
             context_list: Some(vec!["work".to_string()]),
             do_date_time: None,
+            do_duration: None,
+            recurrence: None,
             completed_date_time: None,
             story: None,
         });
@@ -525,6 +622,8 @@ mod tests {
             priority: Some(1),
             context_list: None,
             do_date_time: None,
+            do_duration: None,
+            recurrence: None,
             completed_date_time: None,
             story: None,
         });
@@ -538,6 +637,8 @@ mod tests {
             priority: Some(3),
             context_list: None,
             do_date_time: None,
+            do_duration: None,
+            recurrence: None,
             completed_date_time: None,
             story: None,
         });
@@ -550,5 +651,59 @@ mod tests {
 
         assert_eq!(high_priority.len(), 1);
         assert_eq!(high_priority[0].name, "High Priority");
+    }
+
+    #[test]
+    fn test_recurrence_and_duration_persistence() {
+        use crate::entities::{ActionState, Recurrence};
+        use uuid::Uuid;
+
+        let conn = create_database().expect("Failed to create database");
+        let mut actions = ActionList::new();
+        
+        let recurrence = Recurrence {
+            frequency: "weekly".to_string(),
+            interval: Some(2),
+            count: None,
+            until: None,
+            by_second: None,
+            by_minute: None,
+            by_hour: None,
+            by_day: Some(vec!["MO".to_string(), "FR".to_string()]),
+            by_month_day: None,
+            by_year_day: None,
+            by_week_no: None,
+            by_month: None,
+            by_set_pos: None,
+            week_start: Some("MO".to_string()),
+        };
+
+        actions.push(Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Recurring Task".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,
+            do_duration: Some(60),
+            recurrence: Some(recurrence.clone()),
+            completed_date_time: None,
+            story: None,
+        });
+
+        load_actions(&conn, &actions).expect("Failed to load actions");
+
+        let retrieved = get_actions_from_sql(&conn, "SELECT * FROM actions").expect("Failed to query");
+        
+        assert_eq!(retrieved.len(), 1);
+        assert_eq!(retrieved[0].do_duration, Some(60));
+        assert!(retrieved[0].recurrence.is_some());
+        
+        let ret_recurrence = retrieved[0].recurrence.as_ref().unwrap();
+        assert_eq!(ret_recurrence.frequency, "weekly");
+        assert_eq!(ret_recurrence.interval, Some(2));
+        assert_eq!(ret_recurrence.by_day, Some(vec!["MO".to_string(), "FR".to_string()]));
     }
 }

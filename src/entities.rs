@@ -7,6 +7,38 @@ use uuid::Uuid;
 
 pub type ActionList = Vec<Action>;
 
+/// Recurrence rule per RFC 5545 RRULE specification
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct Recurrence {
+    pub frequency: String,           // FREQ: secondly, minutely, hourly, daily, weekly, monthly, yearly
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval: Option<u32>,       // INTERVAL: default 1
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,          // COUNT: max occurrences
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub until: Option<String>,       // UNTIL: end date/time in ISO 8601
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_second: Option<Vec<u32>>, // BYSECOND: 0-59
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_minute: Option<Vec<u32>>, // BYMINUTE: 0-59
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_hour: Option<Vec<u32>>,   // BYHOUR: 0-23
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_day: Option<Vec<String>>, // BYDAY: MO,TU,WE,TH,FR,SA,SU (with optional modifiers like 1MO, -1FR)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_month_day: Option<Vec<i32>>, // BYMONTHDAY: 1-31 or -1 to -31
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_year_day: Option<Vec<i32>>,  // BYYEARDAY: 1-366 or -1 to -366
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_week_no: Option<Vec<i32>>,   // BYWEEKNO: 1-53 or -1 to -53
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_month: Option<Vec<u32>>,     // BYMONTH: 1-12
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_set_pos: Option<Vec<i32>>,   // BYSETPOS: limits to nth occurrence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub week_start: Option<String>,     // WKST: MO,TU,WE,TH,FR,SA,SU (default MO)
+}
+
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     pub id: Uuid,
@@ -22,10 +54,62 @@ pub struct Action {
     pub context_list: Option<Vec<String>>,
     #[serde(rename = "doDateTime", skip_serializing_if = "Option::is_none")]
     pub do_date_time: Option<DateTime<Local>>,
+    #[serde(rename = "doDuration", skip_serializing_if = "Option::is_none")]
+    pub do_duration: Option<u32>, // Duration in minutes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recurrence: Option<Recurrence>,
     #[serde(rename = "completedDate", skip_serializing_if = "Option::is_none")]
     pub completed_date_time: Option<DateTime<Local>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub story: Option<String>,
+}
+
+impl fmt::Display for Recurrence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "R:FREQ={}", self.frequency.to_uppercase())?;
+
+        if let Some(interval) = self.interval {
+            write!(f, ";INTERVAL={}", interval)?;
+        }
+        if let Some(count) = self.count {
+            write!(f, ";COUNT={}", count)?;
+        }
+        if let Some(until) = &self.until {
+            write!(f, ";UNTIL={}", until)?;
+        }
+        if let Some(by_second) = &self.by_second {
+            write!(f, ";BYSECOND={}", by_second.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_minute) = &self.by_minute {
+            write!(f, ";BYMINUTE={}", by_minute.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_hour) = &self.by_hour {
+            write!(f, ";BYHOUR={}", by_hour.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_day) = &self.by_day {
+            write!(f, ";BYDAY={}", by_day.join(","))?;
+        }
+        if let Some(by_month_day) = &self.by_month_day {
+            write!(f, ";BYMONTHDAY={}", by_month_day.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_year_day) = &self.by_year_day {
+            write!(f, ";BYYEARDAY={}", by_year_day.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_week_no) = &self.by_week_no {
+            write!(f, ";BYWEEKNO={}", by_week_no.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_month) = &self.by_month {
+            write!(f, ";BYMONTH={}", by_month.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(by_set_pos) = &self.by_set_pos {
+            write!(f, ";BYSETPOS={}", by_set_pos.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+        }
+        if let Some(week_start) = &self.week_start {
+            write!(f, ";WKST={}", week_start)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Action {
@@ -68,6 +152,16 @@ impl fmt::Display for Action {
         // Do date time (optional)
         if let Some(do_date_time) = &self.do_date_time {
             write!(f, " @{}", do_date_time.format("%Y-%m-%dT%H:%M"))?;
+            
+            // Duration
+            if let Some(duration) = self.do_duration {
+                write!(f, " D{}", duration)?;
+            }
+            
+            // Recurrence
+            if let Some(recurrence) = &self.recurrence {
+                write!(f, " {}", recurrence)?;
+            }
         }
 
         // Completed date time (optional)
@@ -104,6 +198,38 @@ impl TryFrom<TreeWrapper> for ActionList {
 
         Ok(action_list)
     }
+}
+
+/// Parse ISO 8601 datetime string to DateTime<Local>
+/// Supports formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM, YYYY-MM-DDTHH:MM:SS
+/// with optional timezone (Z or +/-HH:MM)
+fn parse_iso8601_datetime(datetime_str: &str) -> Option<DateTime<Local>> {
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+
+    let trimmed = datetime_str.trim();
+
+    // Try parsing with timezone first
+    if let Ok(dt) = DateTime::parse_from_rfc3339(trimmed) {
+        return Some(dt.with_timezone(&Local));
+    }
+
+    // Try YYYY-MM-DDTHH:MM:SS format (without timezone)
+    if let Ok(naive_dt) = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S") {
+        return Some(Local.from_local_datetime(&naive_dt).earliest()?);
+    }
+
+    // Try YYYY-MM-DDTHH:MM format (without timezone, no seconds)
+    if let Ok(naive_dt) = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M") {
+        return Some(Local.from_local_datetime(&naive_dt).earliest()?);
+    }
+
+    // Try YYYY-MM-DD format (date only, default to start of day)
+    if let Ok(naive_date) = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+        let naive_dt = naive_date.and_time(NaiveTime::from_hms_opt(0, 0, 0)?);
+        return Some(Local.from_local_datetime(&naive_dt).earliest()?);
+    }
+
+    None
 }
 
 /// Recursively parse an action node and all its children into a flat list
@@ -144,6 +270,8 @@ pub fn parse_action_recursive(
     let mut id = None;
     let mut story = None;
     let mut do_date_time = None;
+    let mut do_duration = None;
+    let mut recurrence = None;
     let mut completed_date_time = None;
 
     let mut metadata_cursor = node.node.walk();
@@ -189,17 +317,47 @@ pub fn parse_action_recursive(
                 }
             }
             "do_date" => {
-                if let Some(_datetime_node) = metadata_node.child_by_field_name("datetime") {
-                    // TODO: Parse datetime once we handle the full ISO 8601 format
-                    // For now, leaving as None
-                    do_date_time = None;
+                if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
+                    let datetime_str = get_node_text(&datetime_node, &node.source);
+                    do_date_time = parse_iso8601_datetime(&datetime_str);
+                }
+
+                // Parse duration
+                if let Some(duration_node) = metadata_node.child_by_field_name("duration") {
+                    if let Some(minutes_node) = duration_node.child_by_field_name("minutes") {
+                        let minutes_str = get_node_text(&minutes_node, &node.source);
+                        if let Ok(minutes) = minutes_str.parse::<u32>() {
+                            do_duration = Some(minutes);
+                        }
+                    } else {
+                        // Fallback: assume the number is the text after 'D'
+                        let full_text = get_node_text(&duration_node, &node.source);
+                        if full_text.starts_with('D') {
+                            if let Ok(minutes) = full_text[1..].trim().parse::<u32>() {
+                                do_duration = Some(minutes);
+                            }
+                        }
+                    }
+                }
+
+                // Parse recurrence
+                if let Some(recurrence_node) = metadata_node.child_by_field_name("recurrence") {
+                    if let Some(rrule_node) = recurrence_node.child_by_field_name("rrule") {
+                        let rrule_str = get_node_text(&rrule_node, &node.source);
+                        recurrence = parse_rrule(&rrule_str);
+                    } else {
+                        // Fallback: manual extraction if field access fails
+                        let full_text = get_node_text(&recurrence_node, &node.source);
+                        if full_text.starts_with("R:") {
+                            recurrence = parse_rrule(&full_text);
+                        }
+                    }
                 }
             }
             "completed_date" => {
-                if let Some(_datetime_node) = metadata_node.child_by_field_name("datetime") {
-                    // TODO: Parse datetime once we handle the full ISO 8601 format
-                    // For now, leaving as None
-                    completed_date_time = None;
+                if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
+                    let datetime_str = get_node_text(&datetime_node, &node.source);
+                    completed_date_time = parse_iso8601_datetime(&datetime_str);
                 }
             }
             "id" => {
@@ -228,6 +386,8 @@ pub fn parse_action_recursive(
         priority,
         context_list,
         do_date_time,
+        do_duration,
+        recurrence,
         completed_date_time,
         story,
     });
@@ -265,6 +425,81 @@ impl fmt::Display for ActionState {
         };
         write!(f, "{}", state_char)
     }
+}
+
+fn parse_rrule(rrule_str: &str) -> Option<Recurrence> {
+    let mut frequency = String::new();
+    let mut interval = None;
+    let mut count = None;
+    let mut until = None;
+    let mut by_second = None;
+    let mut by_minute = None;
+    let mut by_hour = None;
+    let mut by_day = None;
+    let mut by_month_day = None;
+    let mut by_year_day = None;
+    let mut by_week_no = None;
+    let mut by_month = None;
+    let mut by_set_pos = None;
+    let mut week_start = None;
+
+    // Remove "R:" prefix if present (it should be handled by tree-sitter but just in case)
+    let clean_rrule = if rrule_str.trim().starts_with("R:") {
+        &rrule_str.trim()[2..]
+    } else {
+        rrule_str.trim()
+    };
+
+    for part in clean_rrule.split(';') {
+        let mut kv = part.splitn(2, '=');
+        let key = kv.next()?;
+        let value = kv.next()?;
+
+        match key {
+            "FREQ" => frequency = value.to_lowercase(),
+            "INTERVAL" => interval = value.parse().ok(),
+            "COUNT" => count = value.parse().ok(),
+            "UNTIL" => until = Some(value.to_string()),
+            "BYSECOND" => by_second = Some(parse_int_list(value)),
+            "BYMINUTE" => by_minute = Some(parse_int_list(value)),
+            "BYHOUR" => by_hour = Some(parse_int_list(value)),
+            "BYDAY" => by_day = Some(value.split(',').map(|s| s.to_string()).collect()),
+            "BYMONTHDAY" => by_month_day = Some(parse_int_list(value)),
+            "BYYEARDAY" => by_year_day = Some(parse_int_list(value)),
+            "BYWEEKNO" => by_week_no = Some(parse_int_list(value)),
+            "BYMONTH" => by_month = Some(parse_int_list(value)),
+            "BYSETPOS" => by_set_pos = Some(parse_int_list(value)),
+            "WKST" => week_start = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    if frequency.is_empty() {
+        return None;
+    }
+
+    Some(Recurrence {
+        frequency,
+        interval,
+        count,
+        until,
+        by_second,
+        by_minute,
+        by_hour,
+        by_day,
+        by_month_day,
+        by_year_day,
+        by_week_no,
+        by_month,
+        by_set_pos,
+        week_start,
+    })
+}
+
+fn parse_int_list<T: std::str::FromStr>(s: &str) -> Vec<T> {
+    s.split(',')
+        .filter_map(|x| x.parse().ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -328,5 +563,64 @@ mod tests {
         // Check grandchild
         assert_eq!(actions[2].name, "Grandchild action");
         assert_eq!(actions[2].parent_id, Some(actions[1].id));
+    }
+
+    #[test]
+    fn test_parse_recurrence_and_duration() {
+        let source = "[ ] Recurring Task @2025-01-20T14:00 D60 R:FREQ=WEEKLY;BYDAY=MO;INTERVAL=2";
+        let actions = parse_actions(source);
+
+        assert_eq!(actions.len(), 1);
+        let action = &actions[0];
+
+        assert_eq!(action.name, "Recurring Task");
+        assert!(action.do_date_time.is_some());
+        assert_eq!(action.do_duration, Some(60));
+
+        let recurrence = action.recurrence.as_ref().expect("Recurrence should be present");
+        assert_eq!(recurrence.frequency, "weekly");
+        assert_eq!(recurrence.by_day, Some(vec!["MO".to_string()]));
+        assert_eq!(recurrence.interval, Some(2));
+    }
+
+    #[test]
+    fn test_format_recurrence_and_duration() {
+        let recurrence = Recurrence {
+            frequency: "weekly".to_string(),
+            interval: Some(2),
+            count: None,
+            until: None,
+            by_second: None,
+            by_minute: None,
+            by_hour: None,
+            by_day: Some(vec!["MO".to_string()]),
+            by_month_day: None,
+            by_year_day: None,
+            by_week_no: None,
+            by_month: None,
+            by_set_pos: None,
+            week_start: None,
+        };
+
+        let action = Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Recurring".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: Some(Local::now()),
+            do_duration: Some(60),
+            recurrence: Some(recurrence),
+            completed_date_time: None,
+            story: None,
+        };
+        
+        let formatted = format!("{}", action);
+        assert!(formatted.contains("D60"));
+        assert!(formatted.contains("R:FREQ=WEEKLY"));
+        assert!(formatted.contains(";INTERVAL=2"));
+        assert!(formatted.contains(";BYDAY=MO"));
     }
 }
