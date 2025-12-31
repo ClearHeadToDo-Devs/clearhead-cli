@@ -147,10 +147,10 @@ let output_format = cli_format           // CLI arg (highest priority)
 ### Why Typed Structs?
 
 Previously, the config system serialized everything to `Map<String, Value>` (JSON). We refactored to use typed structs for:
-- ✅ Compile-time safety
-- ✅ IDE autocomplete
-- ✅ Pattern matching
-- ✅ Clear APIs
+- Compile-time safety
+- IDE autocomplete
+- Pattern matching
+- Clear APIs
 
 The library still uses simple types, only the CLI uses config structs.
 
@@ -223,6 +223,15 @@ fn test_my_feature() {
         .stdout(predicate::str::contains("My task"));
 }
 ```
+
+### Snapshot Testing 
+Another interesting approach we use is snapshot testing with `insta`. We do this by actually working through the individual examples provided by the `tree-sitter-actions` grammar tests, parsing them into our IR, and then generating snapshots of the resulting data structures.
+
+You can actually see the snapshots themselves in the `snapshots` directory within the `tests` folder. These snapshots are stored in RON (Rusty Object Notation) format, which is a human-readable serialization format similar to JSON but more Rust-friendly.
+
+With this, one can both see the structure and data of the parsed actions, and also verify that any changes to the parsing logic do not inadvertently alter the expected output.
+
+While this does mean new examples added to the grammar tests will need corresponding snapshots, it provides a very robust way to ensure the integrity of the parsing logic over time. and to ensure that changes on the tree-sitter side are caught by the test suite if they arent caught by the other tests.
 
 ## Adding New Features
 
@@ -370,4 +379,4 @@ We're pragmatic Rustaceans, not zealots:
 - Test coverage for new features
 - Keep library pure, CLI can be impure
 
-Happy hacking! 🦀
+Happy hacking! 

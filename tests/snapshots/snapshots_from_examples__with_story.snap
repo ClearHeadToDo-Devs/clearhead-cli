@@ -1,0 +1,12 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: completed,
+    name: "story test",
+    story: Some("Parent Story"),
+  ),
+]

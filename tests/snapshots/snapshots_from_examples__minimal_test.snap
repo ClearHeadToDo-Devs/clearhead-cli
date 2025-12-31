@@ -1,0 +1,11 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "test",
+  ),
+]

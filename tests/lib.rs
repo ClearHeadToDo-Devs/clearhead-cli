@@ -1,11 +1,20 @@
 use clearhead_cli::entities::*;
 use clearhead_cli::*;
-use tree_sitter_actions::get_test_data;
+use std::fs;
+use std::path::PathBuf;
 
-/// Test parsing a minimal action using the grammar's built-in test data
+/// Helper to read example file content
+fn read_example(filename: &str) -> String {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let example_path = manifest_dir.join("examples").join(filename);
+    fs::read_to_string(&example_path)
+        .expect(&format!("Failed to read example file: {}", filename))
+}
+
+/// Test parsing a minimal action
 #[test]
 fn parse_minimal_action_from_grammar_examples() {
-    let test_action = get_test_data()["children"]["minimal"]["content"].clone();
+    let test_action = read_example("minimal.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -19,7 +28,7 @@ fn parse_minimal_action_from_grammar_examples() {
 /// Test parsing an action with children hierarchy
 #[test]
 fn parse_action_with_children_from_grammar_examples() {
-    let test_action = get_test_data()["children"]["with_children"]["content"].clone();
+    let test_action = read_example("with_children.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -55,7 +64,7 @@ fn parse_action_with_children_from_grammar_examples() {
 /// Test parsing action with description
 #[test]
 fn parse_action_with_description_from_grammar_examples() {
-    let test_action = get_test_data()["properties"]["with_description"]["content"].clone();
+    let test_action = read_example("with_description.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -69,7 +78,7 @@ fn parse_action_with_description_from_grammar_examples() {
 /// Test parsing action with priority
 #[test]
 fn parse_action_with_priority_from_grammar_examples() {
-    let test_action = get_test_data()["properties"]["with_priority"]["content"].clone();
+    let test_action = read_example("with_priority.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -83,7 +92,7 @@ fn parse_action_with_priority_from_grammar_examples() {
 /// Test parsing action with story/project
 #[test]
 fn parse_action_with_story_from_grammar_examples() {
-    let test_action = get_test_data()["properties"]["with_story"]["content"].clone();
+    let test_action = read_example("with_story.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -97,7 +106,7 @@ fn parse_action_with_story_from_grammar_examples() {
 /// Test parsing action with context tags
 #[test]
 fn parse_action_with_context_from_grammar_examples() {
-    let test_action = get_test_data()["properties"]["with_context"]["content"].clone();
+    let test_action = read_example("with_context.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -115,7 +124,7 @@ fn parse_action_with_context_from_grammar_examples() {
 /// Test parsing action with ID
 #[test]
 fn parse_action_with_id_from_grammar_examples() {
-    let test_action = get_test_data()["properties"]["with_id_no_dash"]["content"].clone();
+    let test_action = read_example("with_id_no_dash.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -129,7 +138,7 @@ fn parse_action_with_id_from_grammar_examples() {
 /// Test parsing comprehensive action with all metadata
 #[test]
 fn parse_action_with_everything_from_grammar_examples() {
-    let test_action = get_test_data()["actions"]["with_everything"]["content"].clone();
+    let test_action = read_example("with_everything.actions");
     let test_config = serde_json::json!({});
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
@@ -153,7 +162,7 @@ fn parse_action_with_everything_from_grammar_examples() {
 /// Test round-trip conversion for a minimal action
 #[test]
 fn roundtrip_minimal_action() {
-    let original = get_test_data()["children"]["minimal"]["content"].clone();
+    let original = read_example("minimal.actions");
     let test_config = serde_json::json!({});
 
     // Parse original
@@ -175,7 +184,7 @@ fn roundtrip_minimal_action() {
 /// Test round-trip conversion for actions with children
 #[test]
 fn roundtrip_action_with_children() {
-    let original = get_test_data()["children"]["with_children"]["content"].clone();
+    let original = read_example("with_children.actions");
     let test_config = serde_json::json!({});
 
     // Parse original
@@ -202,7 +211,7 @@ fn roundtrip_action_with_children() {
 /// Test round-trip conversion for action with metadata
 #[test]
 fn roundtrip_action_with_metadata() {
-    let original = get_test_data()["properties"]["with_description"]["content"].clone();
+    let original = read_example("with_description.actions");
     let test_config = serde_json::json!({});
 
     // Parse original
@@ -225,7 +234,7 @@ fn roundtrip_action_with_metadata() {
 /// Print formatted output for visual inspection
 #[test]
 fn show_formatted_output() {
-    let original = get_test_data()["children"]["with_children"]["content"].clone();
+    let original = read_example("with_children.actions");
     let test_config = serde_json::json!({});
     let actions = get_action_list_struct(&test_config, &original).unwrap();
     let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions).unwrap();
@@ -238,7 +247,7 @@ fn show_formatted_output() {
 /// Test round-trip conversion for comprehensive action with everything
 #[test]
 fn roundtrip_action_with_everything() {
-    let original = get_test_data()["actions"]["with_everything"]["content"].clone();
+    let original = read_example("with_everything.actions");
     let test_config = serde_json::json!({});
 
     // Parse original

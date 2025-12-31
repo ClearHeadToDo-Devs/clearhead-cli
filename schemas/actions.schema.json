@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/clearheadtodo-devs/tree-sitter-actions/schema/actions.schema.json",
+  "title": "Actions File Serialization Format",
+  "description": "JSON Schema for the canonical serialization of .actions files",
+  "type": "object",
+  "required": [
+    "actions"
+  ],
+  "properties": {
+    "actions": {
+      "type": "array",
+      "description": "Array of root-level actions",
+      "items": {
+        "$ref": "#/definitions/action"
+      }
+    }
+  },
+  "definitions": {
+    "action": {
+      "type": "object",
+      "required": [
+        "state",
+        "name"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "Current state of the action",
+          "enum": [
+            "not_started",
+            "completed",
+            "in_progress",
+            "blocked",
+            "cancelled"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "Name/title of the action",
+          "minLength": 1,
+          "pattern": "[^\\n$!*+@%#>]+"
+        },
+        "description": {
+          "type": "string",
+          "description": "Long-form description of the action",
+          "pattern": "[^\\n!*+@%#>]+"
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Numeric priority level",
+          "minimum": 0
+        },
+        "story": {
+          "type": "string",
+          "description": "Parent project/story name (root actions only)",
+          "pattern": "[^\\n!$+@%#>]+"
+        },
+        "contexts": {
+          "type": "array",
+          "description": "Array of context tags",
+          "items": {
+            "type": "string",
+            "pattern": "[^,\\n!$*@%#>]+"
+          },
+          "minItems": 1
+        },
+        "doDateTime": {
+          "type": "string",
+          "description": "ISO 8601 formatted scheduled date/time",
+          "pattern": "[^\\n!$*+%#>]+"
+        },
+        "doDuration": {
+          "type": "integer",
+          "description": "Duration in minutes",
+          "minimum": 1
+        },
+        "recurrence": {
+          "$ref": "#/definitions/recurrence"
+        },
+        "completedDate": {
+          "type": "string",
+          "description": "ISO 8601 formatted completion date/time",
+          "pattern": "[^\\n!$*+@#>]+"
+        },
+        "id": {
+          "type": "string",
+          "description": "UUIDv7 identifier",
+          "pattern": "[0-9a-fA-F-]+"
+        },
+        "parent_id": {
+          "type": "string",
+          "description": "UUIDv7 identifier of the parent action",
+          "pattern": "[0-9a-fA-F-]+"
+        },
+        "children": {
+          "type": "array",
+          "description": "Nested child actions",
+          "items": {
+            "$ref": "#/definitions/action"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "recurrence": {
+      "type": "object",
+      "required": [
+        "frequency"
+      ],
+      "properties": {
+        "frequency": {
+          "type": "string",
+          "description": "Recurrence frequency",
+          "enum": [
+            "minutely",
+            "hourly",
+            "daily",
+            "weekly",
+            "monthly",
+            "yearly"
+          ]
+        },
+        "interval": {
+          "type": "integer",
+          "description": "Interval between recurrences",
+          "minimum": 1,
+          "default": 1
+        },
+        "count": {
+          "type": "integer",
+          "description": "Maximum number of occurrences",
+          "minimum": 1
+        },
+        "until": {
+          "type": "string",
+          "description": "End date in ISO 8601 format"
+        },
+        "byMinute": {
+          "type": "array",
+          "description": "Minutes within the hour",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 60
+          }
+        },
+        "byHour": {
+          "type": "array",
+          "description": "Hours within the day",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          }
+        },
+        "byDay": {
+          "type": "array",
+          "description": "Days of the week",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Mon",
+              "Tue",
+              "Wed",
+              "Thu",
+              "Fri",
+              "Sat",
+              "Sun"
+            ]
+          }
+        },
+        "byMonthDay": {
+          "type": "array",
+          "description": "Days of the month",
+          "items": {
+            "type": "integer",
+            "minimum": -31,
+            "maximum": 31,
+            "not": {
+              "const": 0
+            }
+          }
+        },
+        "byMonth": {
+          "type": "array",
+          "description": "Months of the year",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,47 +1,47 @@
 ---
 source: tests/snapshots_from_examples.rs
-assertion_line: 26
 expression: actions
 ---
 [
   Action(
     id: "[uuid]",
     state: completed,
-    name: "Mega Action",
-    description: Some("descriptions"),
+    name: "Go to the store for chicken",
+    description: Some("Make sure you get the stuff from the butcher directly"),
     priority: Some(1),
     contexts: Some([
-      "test_context",
-      "another-context",
+      "Driving",
+      "Store",
+      "Market",
     ]),
-    doDateTime: Some("2019-01-01T00:01:00-08:00"),
-    doDuration: Some(120),
-    completedDate: Some("2019-03-01T02:01:00-08:00"),
-    story: Some("Test Story"),
+    doDateTime: Some("2025-01-19T08:30:00-08:00"),
+    doDuration: Some(30),
+    completedDate: Some("2025-01-19T10:30:00-08:00"),
+    story: Some("Run Errands"),
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
-    name: "child action",
+    name: "Child action",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
-    name: "grandchild action",
+    name: "Grandchild action",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
-    name: "great grandchild action",
+    name: "Great grandchild action",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
-    name: "double-great grandchild action",
+    name: "Double-great grandchild action",
   ),
   Action(
     id: "[uuid]",

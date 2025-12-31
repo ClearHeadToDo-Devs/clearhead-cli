@@ -1,0 +1,76 @@
+{
+  "actions": [
+    {
+      "state": "completed",
+      "name": "Buy groceries",
+      "priority": 1,
+      "story": "Weekly Errands",
+      "contexts": ["shopping", "personal"],
+      "doDate": {
+        "datetime": "2025-01-15T14:00",
+        "duration": 60
+      },
+      "completedDate": "2025-01-15T15:30",
+      "id": "01951111-cfa6-718d-b303-d7107f4005b3"
+    },
+    {
+      "state": "in_progress",
+      "name": "Write documentation",
+      "description": "Update the README with new features",
+      "priority": 1,
+      "story": "Documentation Sprint",
+      "contexts": ["work", "writing"],
+      "doDate": {
+        "datetime": "2025-01-16T09:00",
+        "duration": 120
+      },
+      "id": "01951111-cfa6-718d-b303-d7107f4005b4"
+    },
+    {
+      "state": "not_started",
+      "name": "Review pull requests",
+      "priority": 2,
+      "contexts": ["work", "code-review"],
+      "doDate": {
+        "datetime": "2025-01-16"
+      },
+      "id": "01951111-cfa6-718d-b303-d7107f4005b5",
+      "children": [
+        {
+          "state": "not_started",
+          "name": "Review PR #123",
+          "contexts": ["urgent"]
+        },
+        {
+          "state": "completed",
+          "name": "Review PR #122",
+          "completedDate": "2025-01-15T16:00"
+        }
+      ]
+    },
+    {
+      "state": "blocked",
+      "name": "Deploy to production",
+      "description": "Waiting for security review",
+      "priority": 1,
+      "story": "v2.0 Release",
+      "contexts": ["work", "devops"],
+      "id": "01951111-cfa6-718d-b303-d7107f4005b6"
+    },
+    {
+      "state": "not_started",
+      "name": "Plan vacation",
+      "priority": 3,
+      "contexts": ["personal", "planning"],
+      "doDate": {
+        "datetime": "2025-01-20",
+        "recurrence": {
+          "frequency": "weekly",
+          "interval": 1,
+          "byDay": ["Sat"]
+        }
+      },
+      "id": "01951111-cfa6-718d-b303-d7107f4005b7"
+    }
+  ]
+}

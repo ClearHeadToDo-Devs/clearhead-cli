@@ -270,15 +270,12 @@ fn test_json_output_validates_against_schema() {
     let json_value: serde_json::Value =
         serde_json::from_str(&json_str).expect("Invalid JSON");
 
-    // Load schema from tree-sitter-actions repo
-    // Note: Assumes tree-sitter-actions is checked out alongside clearhead_cli
+    // Load schema from local vendored copy
     let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tree-sitter-actions/schema/actions.schema.json");
+        .join("schemas/actions.schema.json");
 
     let schema_str = std::fs::read_to_string(&schema_path)
-        .expect("Failed to read schema - ensure tree-sitter-actions is checked out");
+        .expect("Failed to read schema from schemas/actions.schema.json");
     let schema: serde_json::Value =
         serde_json::from_str(&schema_str).expect("Invalid schema JSON");
 

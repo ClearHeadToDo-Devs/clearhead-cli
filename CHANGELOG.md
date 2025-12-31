@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **LSP Scaffolding:** Added `tower-lsp` and `tokio` dependencies.
   - Implemented `src/lsp.rs` with a basic Language Server loop.
   - Added `Lsp` command to the CLI, running on an isolated local Tokio runtime to preserve the synchronous nature of other CLI commands.
+  - **Surgical Hydration:** Implemented the first LSP feature: a `Code Action` that detects actions missing an ID and surgically injects a `#uuid` (UUIDv7) without rewriting the rest of the file.
 
 ### Changed
 - **Architecture:** Formalized the "Action-centric" Hub-and-Spoke model. The `Action` struct is now the primary Intermediate Representation (IR) for all sync and query operations.

@@ -1,0 +1,29 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: completed,
+    name: "Parent task",
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Child task one",
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Grandchild task",
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Child task two",
+  ),
+]
