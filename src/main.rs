@@ -6,6 +6,8 @@ use std::process;
 mod argparser;
 use argparser::{parse_cli, Commands};
 
+mod lsp;
+
 pub mod environment_reader;
 use environment_reader::{ensure_dir_exists, get_data_dir, load_base_config};
 
@@ -236,6 +238,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             println!("Agenda for the next {} days:", days);
             println!("{}", table);
 
+            Ok(())
+        }
+        Commands::Lsp => {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| format!("Failed to start async runtime: {}", e))?;
+            
+            rt.block_on(lsp::start_lsp());
             Ok(())
         }
     }

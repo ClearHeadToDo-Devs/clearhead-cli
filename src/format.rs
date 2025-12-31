@@ -43,7 +43,7 @@ fn format_as_actions(list: &ActionList) -> Result<String, String> {
 
         // Add depth markers (> for each level of nesting)
         if depth > 0 {
-            output.push_str(&">".repeat(depth));
+            output.push_str(&">".repeat(depth.try_into().unwrap()));
             output.push(' ');
         }
 
@@ -102,7 +102,7 @@ fn format_as_table(list: &ActionList) -> Result<String, String> {
     // Add rows for each action
     for action in list {
         let depth = action.depth(list);
-        let indent = "  ".repeat(depth);
+        let indent = "  ".repeat(depth.try_into().unwrap());
 
         // Format name with indentation to show hierarchy
         let name = format!("{}{}", indent, action.name);

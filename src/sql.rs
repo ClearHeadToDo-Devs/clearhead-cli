@@ -282,7 +282,7 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
         let state_str: String = row.get(2)?;
         let name: String = row.get(3)?;
         let description: Option<String> = row.get(4)?;
-        let priority: Option<usize> = row.get(5)?;
+        let priority: Option<u32> = row.get(5)?;
         let story: Option<String> = row.get(6)?;
         let do_datetime_str: Option<String> = row.get(7)?;
         let do_duration: Option<i32> = row.get(8)?;

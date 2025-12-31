@@ -87,6 +87,9 @@ pub enum Commands {
         #[arg(short, long, default_value = "7")]
         days: u32,
     },
+
+    /// Start the Language Server Protocol (LSP) server
+    Lsp,
 }
 
 /// CLI-specific format enum that maps to library's OutputFormat

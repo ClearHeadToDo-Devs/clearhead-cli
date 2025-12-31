@@ -2,6 +2,7 @@ use serde_json::{Map, Value};
 use tree_sitter::Tree;
 
 pub mod treesitter;
+pub mod sync_utils;
 
 pub mod entities;
 use entities::ActionList;

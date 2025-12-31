@@ -1,6 +1,8 @@
 use chrono::{DateTime, Local};
 use rrule::Tz;
 use serde::{Deserialize, Serialize};
+use autosurgeon::{Hydrate, Reconcile};
+use crate::sync_utils::{hydrate_date, reconcile_date};
 use std::fmt;
 
 use crate::treesitter::{create_node_wrapper, get_node_text, NodeWrapper, TreeWrapper};
@@ -9,7 +11,7 @@ use uuid::Uuid;
 pub type ActionList = Vec<Action>;
 
 /// Recurrence rule per RFC 5545 RRULE specification
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct Recurrence {
     pub frequency: String,           // FREQ: secondly, minutely, hourly, daily, weekly, monthly, yearly
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -40,7 +42,7 @@ pub struct Recurrence {
     pub week_start: Option<String>,     // WKST: MO,TU,WE,TH,FR,SA,SU (default MO)
 }
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct Action {
     pub id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,16 +52,18 @@ pub struct Action {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<usize>,
+    pub priority: Option<u32>,
     #[serde(rename = "contexts", skip_serializing_if = "Option::is_none")]
     pub context_list: Option<Vec<String>>,
     #[serde(rename = "doDateTime", skip_serializing_if = "Option::is_none")]
+    #[autosurgeon(reconcile = "reconcile_date", hydrate = "hydrate_date")]
     pub do_date_time: Option<DateTime<Local>>,
     #[serde(rename = "doDuration", skip_serializing_if = "Option::is_none")]
     pub do_duration: Option<u32>, // Duration in minutes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recurrence: Option<Recurrence>,
     #[serde(rename = "completedDate", skip_serializing_if = "Option::is_none")]
+    #[autosurgeon(reconcile = "reconcile_date", hydrate = "hydrate_date")]
     pub completed_date_time: Option<DateTime<Local>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub story: Option<String>,
@@ -115,7 +119,7 @@ impl fmt::Display for Recurrence {
 
 impl Action {
     /// Compute the depth of this action by walking up the parent chain
-    pub fn depth(&self, action_list: &ActionList) -> usize {
+    pub fn depth(&self, action_list: &ActionList) -> u32 {
         let mut depth = 0;
         let mut current_id = self.parent_id;
         while let Some(parent_id) = current_id {
@@ -336,7 +340,7 @@ pub fn parse_action_recursive(
                 // Get the text of the priority node (skip the ! prefix)
                 let prio_text = get_node_text(&metadata_node, &node.source);
                 if prio_text.starts_with('!') {
-                    if let Ok(prio) = prio_text[1..].trim().parse::<usize>() {
+                    if let Ok(prio) = prio_text[1..].trim().parse::<u32>() {
                         priority = Some(prio);
                     }
                 }
@@ -433,7 +437,7 @@ pub fn parse_action_recursive(
     Ok(actions)
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reconcile, Hydrate)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionState {
     #[default]
