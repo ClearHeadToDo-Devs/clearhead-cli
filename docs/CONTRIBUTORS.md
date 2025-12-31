@@ -233,6 +233,11 @@ With this, one can both see the structure and data of the parsed actions, and al
 
 While this does mean new examples added to the grammar tests will need corresponding snapshots, it provides a very robust way to ensure the integrity of the parsing logic over time. and to ensure that changes on the tree-sitter side are caught by the test suite if they arent caught by the other tests.
 
+### Example Vendoring 
+We vendor the examples hosted at the [specification repo](https://github.com/ClearHeadToDo-Devs/specifications.git) directly to reduce explicit coupling between depenencies. 
+
+Instead, new tests and test modifications will be brought over as commits to ensure that the overview is done well while still having everything we need
+
 ## Adding New Features
 
 ### Adding a New Output Format

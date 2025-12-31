@@ -9,7 +9,7 @@ The CLI supports three query modes:
 2. **Full SQL queries** - For complex queries with JOINs, CTEs, etc.
 3. **Tree-sitter queries** - For pattern-based filtering (existing feature)
 
-All SQL queries use an in-memory SQLite database that follows the canonical schema from the [actions specification](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions/blob/main/docs/action_specification.md#sql-storage-schema).
+All SQL queries use an in-memory SQLite database that follows the canonical schema from the [sql schema specification for clearhead](https://github.com/ClearHeadToDo-Devs/specifications/blob/master/sql_schema_specification.md).
 
 ## Quick Start
 
@@ -296,29 +296,6 @@ clearhead_cli read tasks.actions --sql "SELECT \
 ```
 
 Note: Aggregate queries return IDs, so they may not show meaningful data in the default format. Consider using `--format json` for aggregate results.
-
-## Comparison with Tree-sitter Queries
-
-**Use SQL when:**
-- You need complex filtering (multiple conditions, JOINs)
-- You want to query by relationships (descendants, ancestors)
-- You need aggregations or statistics
-- You're familiar with SQL
-
-**Use Tree-sitter queries when:**
-- You need pattern matching on the syntax structure
-- You're filtering by action text patterns
-- You want built-in query templates (e.g., `--query p1`)
-
-**Example:**
-
-```bash
-# SQL - precise, flexible
-clearhead_cli read tasks.actions --where "priority = 1 AND state = 'completed'"
-
-# Tree-sitter - simpler for basic cases
-clearhead_cli read tasks.actions --query p1
-```
 
 ## Further Reading
 
