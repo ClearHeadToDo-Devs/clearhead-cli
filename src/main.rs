@@ -89,16 +89,28 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             };
 
             // Format and output
-            let formatted = clearhead_cli::format(&actions, output_format)?;
+            let formatted = clearhead_cli::format(&actions, output_format, None)?;
 
             println!("{}", formatted);
             Ok(())
         }
-        Commands::Normalize { file, write } => {
+        Commands::Normalize { file, write, style, indent_width } => {
             let input_file = file.as_ref();
             let content = read_input(input_file)?;
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions)?;
+
+            // Build format config from CLI args
+            let format_config = if style.is_some() || indent_width.is_some() {
+                Some(clearhead_cli::FormatConfig {
+                    style: style.map(|s| s.into()).unwrap_or(clearhead_cli::FormatStyle::Compact),
+                    indent_width: indent_width.unwrap_or(4),
+                    include_id: true,
+                })
+            } else {
+                None
+            };
+
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, format_config)?;
 
             if *write {
                 if let Some(path) = input_file {
@@ -122,7 +134,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             clearhead_cli::patch_action_list(&mut primary_actions, &secondary_actions);
 
-            let formatted = clearhead_cli::format(&primary_actions, clearhead_cli::OutputFormat::Actions)?;
+            let formatted = clearhead_cli::format(&primary_actions, clearhead_cli::OutputFormat::Actions, None)?;
 
             if *write {
                 fs::write(primary, formatted).map_err(|e| format!("Failed to write to primary file: {}", e))?;

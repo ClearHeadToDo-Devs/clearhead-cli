@@ -14,14 +14,14 @@ fn main() {
     let actions = get_action_list_struct(&test_config, &test_data).unwrap();
 
     println!("=== ACTIONS FORMAT ===");
-    println!("{}", format(&actions, OutputFormat::Actions).unwrap());
+    println!("{}", format(&actions, OutputFormat::Actions, None).unwrap());
 
     println!("\n=== JSON FORMAT ===");
-    println!("{}", format(&actions, OutputFormat::Json).unwrap());
+    println!("{}", format(&actions, OutputFormat::Json, None).unwrap());
 
     println!("\n=== XML FORMAT ===");
-    println!("{}", format(&actions, OutputFormat::Xml).unwrap());
+    println!("{}", format(&actions, OutputFormat::Xml, None).unwrap());
 
     println!("\n=== TABLE FORMAT ===");
-    println!("{}", format(&actions, OutputFormat::Table).unwrap());
+    println!("{}", format(&actions, OutputFormat::Table, None).unwrap());
 }

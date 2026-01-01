@@ -1,0 +1,5 @@
+---
+source: tests/formatting.rs
+expression: formatted
+---
+[x] buy groceries !

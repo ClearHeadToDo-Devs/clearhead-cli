@@ -1,0 +1,5 @@
+---
+source: tests/formatting.rs
+expression: formatted
+---
+[x] meeting with team @2025-01-20T14:30D90

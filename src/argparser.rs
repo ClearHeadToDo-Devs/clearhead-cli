@@ -61,6 +61,14 @@ pub enum Commands {
         /// Overwrite the input file with the normalized version
         #[arg(short, long)]
         write: bool,
+
+        /// Formatting style (compact or list)
+        #[arg(short, long, value_enum)]
+        style: Option<Style>,
+
+        /// Indentation width in spaces (for list style)
+        #[arg(short, long)]
+        indent_width: Option<usize>,
     },
 
     /// Apply changes from a secondary patch file to a primary source file
@@ -112,6 +120,24 @@ impl From<Format> for clearhead_cli::OutputFormat {
             Format::Json => clearhead_cli::OutputFormat::Json,
             Format::Xml => clearhead_cli::OutputFormat::Xml,
             Format::Table => clearhead_cli::OutputFormat::Table,
+        }
+    }
+}
+
+/// CLI-specific style enum that maps to library's FormatStyle
+#[derive(Clone, Copy, ValueEnum)]
+pub enum Style {
+    /// Compact: metadata on same line
+    Compact,
+    /// List: metadata on separate indented lines
+    List,
+}
+
+impl From<Style> for clearhead_cli::FormatStyle {
+    fn from(s: Style) -> Self {
+        match s {
+            Style::Compact => clearhead_cli::FormatStyle::Compact,
+            Style::List => clearhead_cli::FormatStyle::List,
         }
     }
 }

@@ -169,7 +169,7 @@ fn roundtrip_minimal_action() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions).unwrap();
+    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -191,7 +191,7 @@ fn roundtrip_action_with_children() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions).unwrap();
+    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -218,7 +218,7 @@ fn roundtrip_action_with_metadata() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions).unwrap();
+    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -237,7 +237,7 @@ fn show_formatted_output() {
     let original = read_example("with_children.actions");
     let test_config = serde_json::json!({});
     let actions = get_action_list_struct(&test_config, &original).unwrap();
-    let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions).unwrap();
+    let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None).unwrap();
 
     eprintln!("\n=== Formatted .actions file ===");
     eprintln!("{}", formatted);
@@ -254,7 +254,7 @@ fn roundtrip_action_with_everything() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions).unwrap();
+    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();

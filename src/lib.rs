@@ -8,7 +8,7 @@ pub mod entities;
 use entities::ActionList;
 
 pub mod format;
-pub use format::{format, OutputFormat};
+pub use format::{format, FormatConfig, FormatStyle, OutputFormat};
 
 pub mod sql;
 
