@@ -2,8 +2,6 @@ mod common;
 use clearhead_cli::get_action_list_struct;
 use common::get_examples;
 use serde_json::json;
-use std::fs;
-use std::path::PathBuf;
 
 #[test]
 fn test_snapshots_from_grammar_examples() {
