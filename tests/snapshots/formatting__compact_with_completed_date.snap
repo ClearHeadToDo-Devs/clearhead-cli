@@ -1,0 +1,5 @@
+---
+source: tests/formatting.rs
+expression: formatted
+---
+[x] finish report %2025-01-19T16:45

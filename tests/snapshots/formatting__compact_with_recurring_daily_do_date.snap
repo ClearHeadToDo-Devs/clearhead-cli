@@ -1,0 +1,5 @@
+---
+source: tests/formatting.rs
+expression: formatted
+---
+[x] Daily medication @2019-01-01T00:01D120R:FREQ=DAILY
