@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## 2026-01-01
+
+### Added
+- **Topiary Formatting Integration:** Integrated Topiary as the official formatter for `.actions` files, implementing a "cargo fmt" equivalent.
+  - Added `topiary-core` and `topiary-tree-sitter-facade` dependencies.
+  - Created `queries/actions/topiary.scm` query file defining formatting rules (currently implements compact mode).
+  - Added `FormatConfig` with `style` (Compact/List), `indent_width`, and `include_id` options.
+  - Added `--style` and `--indent-width` flags to `normalize` command.
+  - Created comprehensive snapshot tests in `tests/formatting.rs` for both formatting modes.
+  - Note: List mode infrastructure exists but currently produces same output as compact. Indentation scoping in Topiary query needed for full list mode support.
+- **Grammar Improvements:** Refactored `tree-sitter-actions` grammar to improve formatter compatibility.
+  - Made `priority_level` and `story_name` into named node types (previously anonymous regex nodes).
+  - This enables Topiary to preserve priority numbers and story names during formatting.
+
+### Fixed
+- **UUID Side-Effect Control:** Added `include_id: bool` field to `FormatConfig` to control UUID output.
+  - Parser auto-generates UUIDs for all actions (useful for normal pipeline).
+  - Formatter can now omit UUIDs via `include_id: false` (useful for testing stable output).
+  - This eliminates the need for UUID redaction in snapshot tests.
+
 ## 2025-12-30
 
 ### Added

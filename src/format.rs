@@ -159,10 +159,9 @@ fn format_with_topiary(input: &str, config: &FormatConfig) -> Result<String, Str
 
     // Create operation with formatting options
     // Note: Topiary's multi-line mode is controlled via query predicates, not operation flags
-    // We'll use tolerate_parsing_errors for the list style to be more lenient
-    // TODO: Fix query to be idempotent, then set skip_idempotence: false
+    // TODO: Fix remaining idempotence issue, then set skip_idempotence: false
     let operation = Operation::Format {
-        skip_idempotence: true,  // Temporarily skip while debugging query
+        skip_idempotence: true,  // Skip while query has minor idempotence issues
         tolerate_parsing_errors: config.style == FormatStyle::List,
     };
 

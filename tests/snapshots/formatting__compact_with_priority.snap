@@ -2,4 +2,4 @@
 source: tests/formatting.rs
 expression: formatted
 ---
-[x] buy groceries !
+[x] buy groceries !1

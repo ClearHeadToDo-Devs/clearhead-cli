@@ -127,11 +127,17 @@ See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL que
 
 ### Advanced Workflows
 
-**Normalization (Hydration)**
-To enable advanced features like sorting and patching, your file needs stable UUIDs.
+**Normalization and Formatting**
+Normalize formats `.actions` files with proper spacing and optionally adds UUIDs.
 ```bash
-# Add UUIDs to all actions in the file
+# Format a file (adds UUIDs by default)
 clearhead_cli normalize ~/work.actions --write
+
+# Format with specific style (compact is default)
+clearhead_cli normalize ~/work.actions --style compact --write
+
+# Preview formatted output without writing
+clearhead_cli normalize ~/work.actions
 ```
 
 **Patching (Smart Sync)**
