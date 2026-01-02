@@ -127,17 +127,27 @@ See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL que
 
 ### Advanced Workflows
 
-**Normalization and Formatting**
-Normalize formats `.actions` files with proper spacing and optionally adds UUIDs.
+**Formatting**
+Format `.actions` files with proper spacing (preserves existing UUIDs).
 ```bash
-# Format a file (adds UUIDs by default)
-clearhead_cli normalize ~/work.actions --write
-
-# Format with specific style (compact is default)
-clearhead_cli normalize ~/work.actions --style compact --write
+# Format a file with default compact style
+clearhead_cli format ~/work.actions --write
 
 # Preview formatted output without writing
-clearhead_cli normalize ~/work.actions
+clearhead_cli format ~/work.actions
+
+# Format with specific style
+clearhead_cli format ~/work.actions --style compact --write
+```
+
+**Normalization**
+Ensure all actions have UUIDs (formats by default for clean output).
+```bash
+# Add UUIDs and format
+clearhead_cli normalize ~/work.actions --write
+
+# Add UUIDs without formatting
+clearhead_cli normalize ~/work.actions --no-format --write
 ```
 
 **Patching (Smart Sync)**

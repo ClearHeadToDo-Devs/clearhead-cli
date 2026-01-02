@@ -53,12 +53,12 @@ pub enum Commands {
         all: bool,
     },
 
-    /// Ensure all actions in a file have UUIDs and are properly formatted
-    Normalize {
-        /// File to normalize. If not provided, reads from stdin
+    /// Format actions file with proper spacing and layout
+    Format {
+        /// File to format. If not provided, reads from stdin
         file: Option<PathBuf>,
 
-        /// Overwrite the input file with the normalized version
+        /// Overwrite the input file with the formatted version
         #[arg(short, long)]
         write: bool,
 
@@ -69,6 +69,20 @@ pub enum Commands {
         /// Indentation width in spaces (for list style)
         #[arg(short, long)]
         indent_width: Option<usize>,
+    },
+
+    /// Ensure all actions in a file have UUIDs (formats by default)
+    Normalize {
+        /// File to normalize. If not provided, reads from stdin
+        file: Option<PathBuf>,
+
+        /// Overwrite the input file with the normalized version
+        #[arg(short, long)]
+        write: bool,
+
+        /// Skip formatting after adding UUIDs
+        #[arg(long)]
+        no_format: bool,
     },
 
     /// Apply changes from a secondary patch file to a primary source file

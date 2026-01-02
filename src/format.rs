@@ -1,5 +1,5 @@
 use crate::entities::{Action, ActionList};
-use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
+use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 use serde::Serialize;
 
 /// Output format options for ActionList serialization
@@ -140,7 +140,7 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
 ///
 /// Applies the formatting rules defined in queries/actions/topiary.scm
 fn format_with_topiary(input: &str, config: &FormatConfig) -> Result<String, String> {
-    use topiary_core::{formatter, Language, Operation, TopiaryQuery};
+    use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
     // Convert tree-sitter language to Topiary's facade
     let grammar = topiary_tree_sitter_facade::Language::from(tree_sitter_actions::LANGUAGE);
@@ -161,19 +161,14 @@ fn format_with_topiary(input: &str, config: &FormatConfig) -> Result<String, Str
     // Note: Topiary's multi-line mode is controlled via query predicates, not operation flags
     // TODO: Fix remaining idempotence issue, then set skip_idempotence: false
     let operation = Operation::Format {
-        skip_idempotence: true,  // Skip while query has minor idempotence issues
+        skip_idempotence: true, // Skip while query has minor idempotence issues
         tolerate_parsing_errors: config.style == FormatStyle::List,
     };
 
     // Format the input
     let mut output = Vec::new();
-    formatter(
-        &mut input.as_bytes(),
-        &mut output,
-        &language,
-        operation,
-    )
-    .map_err(|e| format!("Topiary formatting failed: {}", e))?;
+    formatter(&mut input.as_bytes(), &mut output, &language, operation)
+        .map_err(|e| format!("Topiary formatting failed: {}", e))?;
 
     String::from_utf8(output).map_err(|e| format!("Invalid UTF-8 in formatted output: {}", e))
 }
@@ -276,7 +271,17 @@ fn format_as_table(list: &ActionList) -> Result<String, String> {
         // Format ID (short version - first 8 chars)
         let id = action.id.to_string()[..8].to_string();
 
-        table.add_row(vec![state, name, priority, due, duration, recurrence, context, description, id]);
+        table.add_row(vec![
+            state,
+            name,
+            priority,
+            due,
+            duration,
+            recurrence,
+            context,
+            description,
+            id,
+        ]);
     }
 
     Ok(table.to_string())
@@ -309,15 +314,27 @@ mod tests {
     fn test_format_as_actions() {
         let mut actions = vec![create_test_action("Root", ActionState::Completed, None)];
         let root_id = actions[0].id;
-        actions.push(create_test_action("Child", ActionState::NotStarted, Some(root_id)));
+        actions.push(create_test_action(
+            "Child",
+            ActionState::NotStarted,
+            Some(root_id),
+        ));
 
         let formatted = format_as_actions(&actions, None).unwrap();
 
         // Debug: print the output
         eprintln!("Formatted output:\n{}", formatted);
 
-        assert!(formatted.contains("[x] Root"), "Output doesn't contain '[x] Root': {}", formatted);
-        assert!(formatted.contains("[ ] Child"), "Output doesn't contain '[ ] Child': {}", formatted);
+        assert!(
+            formatted.contains("[x] Root"),
+            "Output doesn't contain '[x] Root': {}",
+            formatted
+        );
+        assert!(
+            formatted.contains("[ ] Child"),
+            "Output doesn't contain '[ ] Child': {}",
+            formatted
+        );
     }
 
     #[test]

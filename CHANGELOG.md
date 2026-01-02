@@ -11,9 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Added `topiary-core` and `topiary-tree-sitter-facade` dependencies.
   - Created `queries/actions/topiary.scm` query file defining formatting rules (currently implements compact mode).
   - Added `FormatConfig` with `style` (Compact/List), `indent_width`, and `include_id` options.
-  - Added `--style` and `--indent-width` flags to `normalize` command.
+  - **New `format` command:** Pure formatting without UUID modification. Preserves existing UUIDs, applies spacing rules.
   - Created comprehensive snapshot tests in `tests/formatting.rs` for both formatting modes.
   - Note: List mode infrastructure exists but currently produces same output as compact. Indentation scoping in Topiary query needed for full list mode support.
+
+### Changed
+- **Separated `format` and `normalize` commands:** Clarified conceptual distinction between formatting (cosmetic) and normalization (data integrity).
+  - `format`: Formats `.actions` files with proper spacing, preserves existing UUIDs (doesn't add new ones).
+  - `normalize`: Ensures all actions have UUIDs, formats by default (use `--no-format` to skip formatting).
 - **Grammar Improvements:** Refactored `tree-sitter-actions` grammar to improve formatter compatibility.
   - Made `priority_level` and `story_name` into named node types (previously anonymous regex nodes).
   - This enables Topiary to preserve priority numbers and story names during formatting.

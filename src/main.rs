@@ -94,23 +94,19 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             println!("{}", formatted);
             Ok(())
         }
-        Commands::Normalize { file, write, style, indent_width } => {
+        Commands::Format { file, write, style, indent_width } => {
             let input_file = file.as_ref();
             let content = read_input(input_file)?;
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
-            // Build format config from CLI args
-            let format_config = if style.is_some() || indent_width.is_some() {
-                Some(clearhead_cli::FormatConfig {
-                    style: style.map(|s| s.into()).unwrap_or(clearhead_cli::FormatStyle::Compact),
-                    indent_width: indent_width.unwrap_or(4),
-                    include_id: true,
-                })
-            } else {
-                None
+            // Format with style options, preserving existing UUIDs
+            let format_config = clearhead_cli::FormatConfig {
+                style: style.clone().map(|s| s.into()).unwrap_or(clearhead_cli::FormatStyle::Compact),
+                indent_width: *indent_width.as_ref().unwrap_or(&4),
+                include_id: true,  // Preserve existing UUIDs (don't add new ones)
             };
 
-            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, format_config)?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config))?;
 
             if *write {
                 if let Some(path) = input_file {
@@ -120,6 +116,36 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 }
             } else {
                 println!("{}", formatted);
+            }
+            Ok(())
+        }
+        Commands::Normalize { file, write, no_format } => {
+            let input_file = file.as_ref();
+            let content = read_input(input_file)?;
+            // Parse and ensure all actions have UUIDs (parser adds them automatically)
+            let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            let output = if *no_format {
+                // Just output with UUIDs, no formatting
+                clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?
+            } else {
+                // Format with default compact style and UUIDs
+                let format_config = clearhead_cli::FormatConfig {
+                    style: clearhead_cli::FormatStyle::Compact,
+                    indent_width: 4,
+                    include_id: true,
+                };
+                clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config))?
+            };
+
+            if *write {
+                if let Some(path) = input_file {
+                    fs::write(path, output).map_err(|e| format!("Failed to write to file: {}", e))?;
+                } else {
+                    return Err("Cannot use --write without specifying a file".to_string());
+                }
+            } else {
+                println!("{}", output);
             }
             Ok(())
         }
