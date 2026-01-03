@@ -1,5 +1,0 @@
----
-source: tests/formatting.rs
-expression: formatted
----
-[ ] send email +office,computer

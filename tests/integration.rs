@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 /// Test helper: creates isolated environment with temp XDG directories
 struct TestEnv {
-    _temp_dir: TempDir,  // Keep alive for cleanup
+    _temp_dir: TempDir, // Keep alive for cleanup
     config_dir: std::path::PathBuf,
     data_dir: std::path::PathBuf,
 }
@@ -76,7 +76,7 @@ fn test_config_file_sets_default_format() {
         .arg("read")
         .assert()
         .success()
-        .stdout(predicate::str::contains("State"))  // Table header
+        .stdout(predicate::str::contains("State")) // Table header
         .stdout(predicate::str::contains("Completed task"));
 }
 
@@ -94,7 +94,7 @@ fn test_env_var_overrides_config() {
         .env("CLICHE_FORMAT", "json")
         .assert()
         .success()
-        .stdout(predicate::str::starts_with("{"))  // JSON object
+        .stdout(predicate::str::starts_with("{")) // JSON object
         .stdout(predicate::str::contains("\"actions\":"))
         .stdout(predicate::str::contains("\"name\": \"Task\""));
 }
@@ -113,7 +113,7 @@ fn test_cli_arg_overrides_env_var() {
         .arg("actions")
         .assert()
         .success()
-        .stdout(predicate::str::starts_with("[x]"))  // Actions format
+        .stdout(predicate::str::starts_with("[x]")) // Actions format
         .stdout(predicate::str::contains("Done"));
 }
 
@@ -138,10 +138,7 @@ fn test_read_specific_file() {
 fn test_all_output_formats() {
     let env = TestEnv::new();
 
-    env.write_actions(
-        "test.actions",
-        "[x] Test $with description !1 +context",
-    );
+    env.write_actions("test.actions", "[x] Test $with description !1 +context");
     let test_path = env.data_dir.join("test.actions");
 
     // Actions format
@@ -219,10 +216,7 @@ fn test_config_with_custom_default_file() {
 fn test_actions_with_hierarchy() {
     let env = TestEnv::new();
 
-    env.write_actions(
-        "test.actions",
-        "[x] Parent\n> [ ] Child\n>> [ ] Grandchild",
-    );
+    env.write_actions("test.actions", "[x] Parent\n> [ ] Child\n>> [ ] Grandchild");
     let test_path = env.data_dir.join("test.actions");
 
     // Actions format should preserve hierarchy
@@ -267,17 +261,15 @@ fn test_json_output_validates_against_schema() {
         .clone();
 
     let json_str = String::from_utf8(output).expect("Invalid UTF-8");
-    let json_value: serde_json::Value =
-        serde_json::from_str(&json_str).expect("Invalid JSON");
+    let json_value: serde_json::Value = serde_json::from_str(&json_str).expect("Invalid JSON");
 
     // Load schema from local vendored copy
-    let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("schemas/actions.schema.json");
+    let schema_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas/actions.schema.json");
 
     let schema_str = std::fs::read_to_string(&schema_path)
         .expect("Failed to read schema from schemas/actions.schema.json");
-    let schema: serde_json::Value =
-        serde_json::from_str(&schema_str).expect("Invalid schema JSON");
+    let schema: serde_json::Value = serde_json::from_str(&schema_str).expect("Invalid schema JSON");
 
     // Compile and validate
     let compiled = JSONSchema::compile(&schema).expect("Invalid schema");
@@ -285,10 +277,7 @@ fn test_json_output_validates_against_schema() {
     let validation_result = compiled.validate(&json_value);
     if let Err(errors) = validation_result {
         let error_messages: Vec<String> = errors.map(|e| e.to_string()).collect();
-        panic!(
-            "JSON validation failed:\n{}",
-            error_messages.join("\n")
-        );
+        panic!("JSON validation failed:\n{}", error_messages.join("\n"));
     }
 }
 
@@ -347,10 +336,7 @@ fn test_error_on_invalid_format_in_config() {
 
     // Should use default format (actions) since config format is invalid
     // Or should error - let's see what happens
-    env.command()
-        .arg("read")
-        .assert()
-        .success(); // Falls back to default
+    env.command().arg("read").assert().success(); // Falls back to default
 }
 
 #[test]
@@ -362,11 +348,7 @@ fn test_empty_actions_file() {
     let empty_path = env.data_dir.join("empty.actions");
 
     // Should succeed with empty output (or error gracefully)
-    env.command()
-        .arg("read")
-        .arg(empty_path)
-        .assert()
-        .success();
+    env.command().arg("read").arg(empty_path).assert().success();
     // Empty file outputs just a newline, which is acceptable
 }
 
@@ -377,11 +359,7 @@ fn test_actions_file_with_only_whitespace() {
     env.write_actions("whitespace.actions", "   \n\n  \t  \n");
     let ws_path = env.data_dir.join("whitespace.actions");
 
-    env.command()
-        .arg("read")
-        .arg(ws_path)
-        .assert()
-        .success();
+    env.command().arg("read").arg(ws_path).assert().success();
 }
 
 #[test]
@@ -426,14 +404,14 @@ fn test_normalize_adds_uuids() {
 #[test]
 fn test_patch_updates_existing_actions() {
     let env = TestEnv::new();
-    
+
     // 1. Create Primary file with ID
     let uuid = "8975ca06-f358-4846-916a-b32bb1fd7f7a";
     env.write_actions("primary.actions", &format!("[ ] Task A #{}", uuid));
-    
+
     // 2. Create Secondary file with same ID but different state
     env.write_actions("secondary.actions", &format!("[x] Task A #{}", uuid));
-    
+
     let primary_path = env.data_dir.join("primary.actions");
     let secondary_path = env.data_dir.join("secondary.actions");
 
@@ -457,17 +435,20 @@ fn test_patch_updates_existing_actions() {
 #[test]
 fn test_patch_appends_new_actions() {
     let env = TestEnv::new();
-    
+
     // 1. Primary has Task A
     let uuid_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     env.write_actions("primary.actions", &format!("[ ] Task A #{}", uuid_a));
-    
+
     // 2. Secondary has Task A (unchanged) and Task B (new)
     let uuid_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
     // Note: In real usage, Secondary would usually be a full view, so it would contain A and B.
     // The patch logic iterates Secondary and updates/appends to Primary.
-    env.write_actions("secondary.actions", &format!("[ ] Task A #{}\n[ ] Task B #{}", uuid_a, uuid_b));
-    
+    env.write_actions(
+        "secondary.actions",
+        &format!("[ ] Task A #{}\n[ ] Task B #{}", uuid_a, uuid_b),
+    );
+
     let primary_path = env.data_dir.join("primary.actions");
     let secondary_path = env.data_dir.join("secondary.actions");
 

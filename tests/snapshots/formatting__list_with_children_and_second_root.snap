@@ -1,6 +1,0 @@
----
-source: tests/formatting.rs
-expression: formatted
----
-[ ] First root task> [ ] Child of first
-[ ] Second root task

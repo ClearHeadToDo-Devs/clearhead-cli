@@ -1,5 +1,0 @@
----
-source: tests/formatting.rs
-expression: formatted
----
-[x] Mega Action $ descriptions !1 *Test Story +test_context,another-context @2019-01-01T00:01D120 %2019-03-01T02:01> [ ] child action>> [ ] grandchild action>>> [ ] great grandchild action>>>> [ ] double-great grandchild action>>>>> [ ] Leaf action

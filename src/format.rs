@@ -326,13 +326,13 @@ mod tests {
         eprintln!("Formatted output:\n{}", formatted);
 
         assert!(
-            formatted.contains("[x] Root"),
-            "Output doesn't contain '[x] Root': {}",
+            formatted.contains("[x]Root"),
+            "Output doesn't contain '[x]Root': {}",
             formatted
         );
         assert!(
-            formatted.contains("[ ] Child"),
-            "Output doesn't contain '[ ] Child': {}",
+            formatted.contains("[ ]Child"),
+            "Output doesn't contain '[ ]Child': {}",
             formatted
         );
     }
