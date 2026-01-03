@@ -139,7 +139,7 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
 /// Format .actions text using Topiary
 ///
 /// Applies the formatting rules defined in queries/actions/topiary.scm
-fn format_with_topiary(input: &str, config: &FormatConfig) -> Result<String, String> {
+pub fn format_with_topiary(input: &str, config: &FormatConfig) -> Result<String, String> {
     use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
     // Convert tree-sitter language to Topiary's facade

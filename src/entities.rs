@@ -252,7 +252,7 @@ impl TryFrom<TreeWrapper> for ActionList {
 /// Parse ISO 8601 datetime string to DateTime<Local>
 /// Supports formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM, YYYY-MM-DDTHH:MM:SS
 /// with optional timezone (Z or +/-HH:MM)
-fn parse_iso8601_datetime(datetime_str: &str) -> Option<DateTime<Local>> {
+pub fn parse_iso8601_datetime(datetime_str: &str) -> Option<DateTime<Local>> {
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 
     let trimmed = datetime_str.trim();
