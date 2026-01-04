@@ -73,6 +73,7 @@ fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
 
     for action in &doc.actions {
         if let Some(metadata) = doc.source_map.get(&action.id) {
+            // Rule 1: Missing UUID
             if metadata.is_id_generated {
                 diagnostics.push(Diagnostic {
                     range: source_range_to_lsp_range(metadata.root),
@@ -83,6 +84,47 @@ fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
                         .to_string(),
                     ..Default::default()
                 });
+            }
+
+            // Tree Consistency Rules
+            if action.parent_id.is_none() {
+                let children: Vec<_> = doc.actions.iter()
+                    .filter(|a| a.parent_id == Some(action.id))
+                    .collect();
+
+                if !children.is_empty() {
+                    let all_children_completed = children.iter()
+                        .all(|c| c.state == clearhead_cli::entities::ActionState::Completed);
+                    let any_children_uncompleted = children.iter()
+                        .any(|c| c.state != clearhead_cli::entities::ActionState::Completed);
+                    let is_completed = action.state == clearhead_cli::entities::ActionState::Completed;
+
+                    // Rule 2: Completed parent with uncompleted children (E012)
+                    if is_completed && any_children_uncompleted {
+                        diagnostics.push(Diagnostic {
+                            range: source_range_to_lsp_range(metadata.root),
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: Some(NumberOrString::String("E012".to_string())),
+                            source: Some("clearhead-lsp".to_string()),
+                            message: "Parent is completed but some children are still active (E012)."
+                                .to_string(),
+                            ..Default::default()
+                        });
+                    }
+
+                    // Rule 3: Uncompleted parent with all children completed (E013)
+                    if !is_completed && all_children_completed {
+                        diagnostics.push(Diagnostic {
+                            range: source_range_to_lsp_range(metadata.root),
+                            severity: Some(DiagnosticSeverity::WARNING),
+                            code: Some(NumberOrString::String("E013".to_string())),
+                            source: Some("clearhead-lsp".to_string()),
+                            message: "All children are completed. Should this parent be completed too? (E013)"
+                                .to_string(),
+                            ..Default::default()
+                        });
+                    }
+                }
             }
         }
     }
