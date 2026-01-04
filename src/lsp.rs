@@ -15,7 +15,7 @@ use clearhead_cli::treesitter::get_node_text;
 struct DocumentState {
     text: String,
     tree: Tree,
-    parsed: ParsedDocument,
+    parsed: Option<ParsedDocument>,
 }
 
 #[derive(Debug)]
@@ -36,23 +36,26 @@ impl Backend {
     async fn update_document(&self, uri: Uri, text: String) {
         let mut parser = Self::get_parser();
         if let Some(tree) = parser.parse(&text, None) {
-            // Also parse into our structured document
-            if let Ok(parsed) = get_parsed_document(&text) {
-                let diagnostics = compute_diagnostics(&parsed);
-                
-                self.documents.insert(
-                    uri.clone(),
-                    DocumentState {
-                        text: text.clone(),
-                        tree: tree.clone(),
-                        parsed,
-                    },
-                );
+            let parsed = get_parsed_document(&text).ok();
+            
+            let diagnostics = if let Some(ref p) = parsed {
+                compute_diagnostics(p)
+            } else {
+                Vec::new()
+            };
 
-                self.client
-                    .publish_diagnostics(uri, diagnostics, None)
-                    .await;
-            }
+            self.documents.insert(
+                uri.clone(),
+                DocumentState {
+                    text: text.clone(),
+                    tree: tree.clone(),
+                    parsed,
+                },
+            );
+
+            self.client
+                .publish_diagnostics(uri, diagnostics, None)
+                .await;
         }
     }
 }
@@ -299,8 +302,10 @@ impl LanguageServer for Backend {
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
-            let actions = compute_code_actions(&doc.parsed, &uri, params.range);
-            return Ok(Some(actions));
+            if let Some(ref parsed) = doc.parsed {
+                let actions = compute_code_actions(parsed, &uri, params.range);
+                return Ok(Some(actions));
+            }
         }
         Ok(None)
     }
@@ -349,8 +354,10 @@ impl LanguageServer for Backend {
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
-            let hints = compute_inlay_hints(&doc.parsed, None);
-            return Ok(Some(hints));
+            if let Some(ref parsed) = doc.parsed {
+                let hints = compute_inlay_hints(parsed, None);
+                return Ok(Some(hints));
+            }
         }
         Ok(None)
     }
@@ -398,41 +405,36 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
-            // Use default config for now, or derive from params.options (tab_size etc)
-            // But FormatConfig struct is specific to our app logic (include_id etc)
-            let config = FormatConfig {
-                indent_width: params.options.tab_size as usize,
-                ..Default::default()
-            };
+            if let Some(ref parsed) = doc.parsed {
+                // Use default config for now, or derive from params.options (tab_size etc)
+                let config = FormatConfig {
+                    indent_width: params.options.tab_size as usize,
+                    ..Default::default()
+                };
 
-            // Parse again (inefficient but safe for now to use format logic)
-            // Actually, we already have doc.parsed.actions!
-            // BUT format() takes &ActionList, which we have.
-            // Wait, format() logic is:
-            // pub fn format(action_list: &ActionList, ...)
-            
-            match format(&doc.parsed.actions, OutputFormat::Actions, Some(config)) {
-                Ok(formatted_text) => {
-                    // Replace the entire document
-                    let start = Position::new(0, 0);
-                    // To be safe, finding the end of the document is tricky without iterating lines
-                    // But we can use the tree root range
-                    let root = doc.tree.root_node();
-                    let end = Position::new(
-                        root.end_position().row as u32,
-                        root.end_position().column as u32,
-                    );
+                match format(&parsed.actions, OutputFormat::Actions, Some(config)) {
+                    Ok(formatted_text) => {
+                        // Replace the entire document
+                        let start = Position::new(0, 0);
+                        // To be safe, finding the end of the document is tricky without iterating lines
+                        // But we can use the tree root range
+                        let root = doc.tree.root_node();
+                        let end = Position::new(
+                            root.end_position().row as u32,
+                            root.end_position().column as u32,
+                        );
 
-                    return Ok(Some(vec![TextEdit {
-                        range: Range::new(start, end),
-                        new_text: formatted_text,
-                    }]));
-                }
-                Err(e) => {
-                    self.client
-                        .log_message(MessageType::ERROR, format!("Formatting failed: {}", e))
-                        .await;
-                    return Ok(None);
+                        return Ok(Some(vec![TextEdit {
+                            range: Range::new(start, end),
+                            new_text: formatted_text,
+                        }]));
+                    }
+                    Err(e) => {
+                        self.client
+                            .log_message(MessageType::ERROR, format!("Formatting failed: {}", e))
+                            .await;
+                        return Ok(None);
+                    }
                 }
             }
         }

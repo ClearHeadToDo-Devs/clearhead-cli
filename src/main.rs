@@ -94,15 +94,25 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             println!("{}", formatted);
             Ok(())
         }
-        Commands::Format { file, write, style, indent_width } => {
+        Commands::Format { file, write, style, indent_style, indent_width } => {
             let input_file = file.as_ref();
             let content = read_input(input_file)?;
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
+            // Resolve indent settings: CLI > Config/Env > Default
+            let resolved_indent_style = indent_style
+                .clone()
+                .map(|i| i.into())
+                .unwrap_or_else(|| parse_indent_style(&base_config.indent_style));
+            
+            let resolved_indent_width = indent_width
+                .unwrap_or(base_config.indent_width);
+
             // Format with style options, preserving existing UUIDs
             let format_config = clearhead_cli::FormatConfig {
                 style: style.clone().map(|s| s.into()).unwrap_or(clearhead_cli::FormatStyle::Compact),
-                indent_width: *indent_width.as_ref().unwrap_or(&4),
+                indent_style: resolved_indent_style,
+                indent_width: resolved_indent_width,
                 include_id: true,  // Preserve existing UUIDs (don't add new ones)
             };
 
@@ -129,10 +139,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 // Just output with UUIDs, no formatting
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?
             } else {
+                // Resolve indent settings from config
+                let resolved_indent_style = parse_indent_style(&base_config.indent_style);
+                let resolved_indent_width = base_config.indent_width;
+
                 // Format with default compact style and UUIDs
                 let format_config = clearhead_cli::FormatConfig {
                     style: clearhead_cli::FormatStyle::Compact,
-                    indent_width: 4,
+                    indent_style: resolved_indent_style,
+                    indent_width: resolved_indent_width,
                     include_id: true,
                 };
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config))?
@@ -313,5 +328,12 @@ fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
                 .map_err(|e| format!("Failed to read from stdin: {}", e))?;
             Ok(buffer)
         }
+    }
+}
+
+fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {
+    match s.to_lowercase().as_str() {
+        "tabs" => clearhead_cli::IndentStyle::Tabs,
+        _ => clearhead_cli::IndentStyle::Spaces,
     }
 }

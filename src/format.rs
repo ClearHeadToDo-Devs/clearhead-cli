@@ -1,6 +1,6 @@
 use crate::entities::{Action, ActionList};
 use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 /// Output format options for ActionList serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +16,8 @@ pub enum OutputFormat {
 }
 
 /// Formatting style for .actions files
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FormatStyle {
     /// Compact: metadata on same line
     Compact,
@@ -24,12 +25,24 @@ pub enum FormatStyle {
     List,
 }
 
+/// Indentation style for .actions files
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndentStyle {
+    /// Use spaces for indentation
+    Spaces,
+    /// Use tabs for indentation
+    Tabs,
+}
+
 /// Configuration for .actions file formatting
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormatConfig {
     /// Formatting style (compact or list)
     pub style: FormatStyle,
-    /// Number of spaces per indentation level (for list style)
+    /// Indentation style (spaces or tabs)
+    pub indent_style: IndentStyle,
+    /// Number of units per indentation level
     pub indent_width: usize,
     /// Whether to include UUIDs in formatted output
     pub include_id: bool,
@@ -39,6 +52,7 @@ impl Default for FormatConfig {
     fn default() -> Self {
         Self {
             style: FormatStyle::Compact,
+            indent_style: IndentStyle::Spaces,
             indent_width: 4,
             include_id: true,
         }
@@ -107,6 +121,14 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
             if depth > 100 { break; }
         }
 
+        // Add leading indentation based on depth
+        let indent_char = match config.indent_style {
+            IndentStyle::Spaces => " ",
+            IndentStyle::Tabs => "\t",
+        };
+        let indent_units = depth * config.indent_width;
+        output.push_str(&indent_char.repeat(indent_units));
+
         // Add depth markers (> for each level of nesting)
         if depth > 0 {
             output.push_str(&">".repeat(depth));
@@ -120,32 +142,48 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
         // - Space before each metadata token
         // - Space after $ (description icon only)
         // - No space after other icons
+        
+        let metadata_indent = if config.style == FormatStyle::List {
+            format!("\n{}", indent_char.repeat((depth + 1) * config.indent_width))
+        } else {
+            " ".to_string()
+        };
+
         if let Some(description) = &action.description {
-            write!(output, " $ {}", description).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "$ {}", description).unwrap();
         }
         if let Some(priority) = &action.priority {
-            write!(output, " !{}", priority).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "!{}", priority).unwrap();
         }
         if let Some(story) = &action.story {
-            write!(output, " *{}", story).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "*{}", story).unwrap();
         }
         if let Some(context_list) = &action.context_list {
-            write!(output, " +{}", context_list.join(",")).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "+{}", context_list.join(",")).unwrap();
         }
         if let Some(do_date_time) = &action.do_date_time {
-            write!(output, " @{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "@{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
             if let Some(duration) = action.do_duration {
-                write!(output, " D{}", duration).unwrap();
+                output.push_str(&metadata_indent);
+                write!(output, "D{}", duration).unwrap();
             }
             if let Some(recurrence) = &action.recurrence {
-                write!(output, " {}", recurrence).unwrap();
+                output.push_str(&metadata_indent);
+                write!(output, "{}", recurrence).unwrap();
             }
         }
         if let Some(completed_date_time) = &action.completed_date_time {
-            write!(output, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "%{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
         }
         if config.include_id {
-            write!(output, " #{}", action.id).unwrap();
+            output.push_str(&metadata_indent);
+            write!(output, "#{}", action.id).unwrap();
         }
         output.push('\n');
     }
@@ -351,5 +389,45 @@ mod tests {
         assert!(formatted.contains("Name"));
         assert!(formatted.contains("Task 1"));
         assert!(formatted.contains("Task 2"));
+    }
+
+    #[test]
+    fn test_indentation() {
+        let mut actions = vec![create_test_action("Root", ActionState::NotStarted, None)];
+        let root_id = actions[0].id;
+        actions.push(create_test_action("Child", ActionState::NotStarted, Some(root_id)));
+
+        // Test Spaces
+        let config = FormatConfig {
+            style: FormatStyle::Compact,
+            indent_style: IndentStyle::Spaces,
+            indent_width: 2,
+            ..Default::default()
+        };
+        let formatted = format(&actions, OutputFormat::Actions, Some(config)).unwrap();
+        assert!(formatted.contains("  >[ ] Child"));
+
+        // Test Tabs
+        let config_tabs = FormatConfig {
+            style: FormatStyle::Compact,
+            indent_style: IndentStyle::Tabs,
+            indent_width: 1,
+            ..Default::default()
+        };
+        let formatted_tabs = format(&actions, OutputFormat::Actions, Some(config_tabs)).unwrap();
+        assert!(formatted_tabs.contains("\t>[ ] Child"));
+
+        // Test List Style Indent
+        let mut actions_meta = vec![create_test_action("Root", ActionState::NotStarted, None)];
+        actions_meta[0].description = Some("Desc".to_string());
+        
+        let config_list = FormatConfig {
+            style: FormatStyle::List,
+            indent_style: IndentStyle::Spaces,
+            indent_width: 4,
+            ..Default::default()
+        };
+        let formatted_list = format(&actions_meta, OutputFormat::Actions, Some(config_list)).unwrap();
+        assert!(formatted_list.contains("\n    $ Desc"));
     }
 }

@@ -8,7 +8,7 @@ pub mod entities;
 use entities::{ActionList, ParsedDocument};
 
 pub mod format;
-pub use format::{format, FormatConfig, FormatStyle, OutputFormat};
+pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
 
 pub mod sql;
 

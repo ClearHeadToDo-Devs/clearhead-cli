@@ -14,6 +14,14 @@ pub struct BaseConfig {
     /// Default file name (relative to data_dir)
     #[serde(default = "default_file")]
     pub file: String,
+
+    /// Default indentation style (spaces, tabs)
+    #[serde(default = "default_indent_style")]
+    pub indent_style: String,
+
+    /// Default indentation width
+    #[serde(default = "default_indent_width")]
+    pub indent_width: usize,
 }
 
 fn default_format() -> String {
@@ -24,6 +32,14 @@ fn default_file() -> String {
     "inbox.actions".to_string()
 }
 
+fn default_indent_style() -> String {
+    "spaces".to_string()
+}
+
+fn default_indent_width() -> usize {
+    4
+}
+
 /// Resolved configuration with all values determined
 /// This is what the application uses at runtime
 #[derive(Debug, Clone)]
@@ -32,6 +48,8 @@ pub struct ResolvedConfig {
     pub file: PathBuf,
     pub data_dir: PathBuf,
     pub config_dir: PathBuf,
+    pub indent_style: clearhead_cli::IndentStyle,
+    pub indent_width: usize,
 }
 
 /// Get XDG config directory for clearhead_cli

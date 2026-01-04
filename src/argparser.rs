@@ -66,7 +66,11 @@ pub enum Commands {
         #[arg(short, long, value_enum)]
         style: Option<Style>,
 
-        /// Indentation width in spaces (for list style)
+        /// Indentation style (spaces or tabs)
+        #[arg(long, value_enum)]
+        indent_style: Option<Indent>,
+
+        /// Indentation width (for list style or child padding)
         #[arg(short, long)]
         indent_width: Option<usize>,
     },
@@ -152,6 +156,24 @@ impl From<Style> for clearhead_cli::FormatStyle {
         match s {
             Style::Compact => clearhead_cli::FormatStyle::Compact,
             Style::List => clearhead_cli::FormatStyle::List,
+        }
+    }
+}
+
+/// CLI-specific indent enum that maps to library's IndentStyle
+#[derive(Clone, Copy, ValueEnum)]
+pub enum Indent {
+    /// Use spaces for indentation
+    Spaces,
+    /// Use tabs for indentation
+    Tabs,
+}
+
+impl From<Indent> for clearhead_cli::IndentStyle {
+    fn from(i: Indent) -> Self {
+        match i {
+            Indent::Spaces => clearhead_cli::IndentStyle::Spaces,
+            Indent::Tabs => clearhead_cli::IndentStyle::Tabs,
         }
     }
 }

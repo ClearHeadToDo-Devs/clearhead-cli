@@ -232,6 +232,53 @@ fn test_actions_with_hierarchy() {
         .stdout(predicate::str::contains(">>[ ] Grandchild"));
 }
 
+#[test]
+fn test_format_indentation() {
+    let env = TestEnv::new();
+
+    // 1. Test Compact Style indentation
+    env.write_actions("compact.actions", "[ ] Root\n>[ ] Child");
+    let compact_path = env.data_dir.join("compact.actions");
+
+    env.command()
+        .arg("format")
+        .arg(&compact_path)
+        .arg("--style")
+        .arg("compact")
+        .arg("--indent-width")
+        .arg("2")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("  >[ ] Child")); // 2 spaces indent
+
+    // 2. Test List Style indentation
+    env.write_actions("list.actions", "[ ] Root $ Desc");
+    let list_path = env.data_dir.join("list.actions");
+
+    env.command()
+        .arg("format")
+        .arg(&list_path)
+        .arg("--style")
+        .arg("list")
+        .arg("--indent-width")
+        .arg("4")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\n    $ Desc")); // 4 spaces indent for metadata
+
+    // 3. Test Tab indentation
+    env.command()
+        .arg("format")
+        .arg(&compact_path)
+        .arg("--indent-style")
+        .arg("tabs")
+        .arg("--indent-width")
+        .arg("1")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\t>[ ] Child"));
+}
+
 // Schema validation tests - verify JSON output matches canonical schema
 
 #[test]
