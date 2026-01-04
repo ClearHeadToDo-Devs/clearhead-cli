@@ -150,13 +150,28 @@ clearhead_cli normalize ~/work.actions --write
 clearhead_cli normalize ~/work.actions --no-format --write
 ```
 
-**Patching (Smart Sync)**
+### Patching (Smart Sync)
 Update a Primary file based on a modified Secondary view (even if lines were reordered).
 ```bash
 # Apply changes from a temp file back to the source of truth
 clearhead_cli patch --primary ~/work.actions --secondary ~/tmp/filtered_view.actions --write
 ```
 This is the engine that powers editor plugins, allowing you to filter/sort a view, edit it, and save the changes back to the original file safely.
+
+## Editor Integration
+
+### Neovim
+The official [clearhead.nvim](https://github.com/ClearHeadToDo-Devs/clearhead.nvim) plugin provides:
+- Automatic LSP setup (diagnostics, code actions, inlay hints)
+- Syntax highlighting
+- State cycling and normalization commands
+
+### Built-in LSP
+The CLI includes a built-in Language Server. To use it with any LSP-compatible editor:
+```bash
+clearhead_cli lsp
+```
+See [docs/LSP.md](docs/LSP.md) for configuration details.
 
 ## Development
 

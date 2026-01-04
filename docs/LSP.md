@@ -4,39 +4,60 @@ The ClearHead CLI includes a built-in Language Server Protocol (LSP) server to p
 
 ## Architecture
 
-The LSP is built in Rust using the `tower-lsp-server` library (the community-maintained fork of `tower-lsp`). It leverages the project's existing `tree-sitter-actions` grammar and `clearhead_cli` library for shared logic.
+The LSP follows a **Sidecar Metadata** pattern to keep high-level logic pure and decoupled from file-specific location tracking.
 
-### Core Components (`src/lsp.rs`)
+### The Two-Pronged Model
 
-1.  **Backend Struct**: Implements the `LanguageServer` trait. It holds the state of open documents.
-2.  **DocumentState**: Stores the full text and the parsed `tree-sitter` Tree for each open document.
-3.  **Pure Logic Functions**: The core intelligence is extracted into pure functions to facilitate unit testing:
-    *   `compute_diagnostics`: Scans the tree for errors (e.g., missing UUIDs).
-    *   `compute_code_actions`: Generates quick fixes (e.g., "Hydrate Action").
-    *   `compute_semantic_tokens`: Maps `tree-sitter` nodes to LSP token types (semantic highlighting).
-    *   `compute_inlay_hints`: Computes relative dates (e.g., "due in 3d") and other contextual info.
+When a document is opened or changed, the LSP parses it into a `ParsedDocument` which contains two distinct structures:
+
+1.  **The Domain Model (`ActionList`)**: A flat list of `Action` structs. This is the "What" — it contains task names, states, due dates, etc. It is identical to the data used by the CLI and DB layers.
+2.  **The Source Map (`HashMap<Uuid, SourceMetadata>`)**: A mapping from an action's unique ID to its concrete location in the source file. This is the "Where" — it contains line and column ranges for the action root, due dates, and other metadata.
+
+### Why this split?
+- **Zero Pollution**: The `Action` struct remains a pure domain entity. It doesn't need to know about line numbers, making it easier to sync, serialize, and store.
+- **Ergonomic Logic**: LSP features like "Inlay Hints" or "Diagnostics" simply iterate over the `ActionList` (business logic) and then look up the location in the `SourceMap` (presentation logic).
+- **Performance**: High-level features avoid expensive `O(N^2)` tree traversals by using direct ID lookups.
 
 ## Features
 
-| Feature | Description | Trigger |
+| Feature | Description | Implementation |
 | :--- | :--- | :--- |
-| **Diagnostics** | Warns if an action is missing a UUID (`#...`). | Open/Change file |
-| **Code Actions** | "Hydrate Action": Automatically generates and inserts a UUIDv7. | Ctrl+. on warning |
-| **Semantic Highlighting** | Colors keywords, dates, contexts, and IDs distinctively. | Open/Change file |
-| **Inlay Hints** | Shows relative time for `do_date` ("due in 5d") and `completed_date`. | Open/Change file |
-| **Go to Definition** | Jumps to the *first* occurrence of a Story (`*`) or Context (`+`) tag in the file. | F12 / Cmd+Click |
-| **Find References** | Lists *all* occurrences of a Story (`*`) or Context (`+`) tag in the file. | Shift+F12 |
-| **Formatting** | Formats the document using the canonical `topiary` rules (indentation, spacing). | Shift+Alt+F / On Save |
+| **Diagnostics** | Warns if an action is missing a UUID (`#...`). | Checks `SourceMetadata::is_id_generated` for each action. |
+| **Code Actions** | "Hydrate Action": Automatically generates and inserts a UUIDv7. | Intersects cursor range with `SourceMetadata::root`. |
+| **Inlay Hints** | Shows relative time for `do_date` ("due in 5d") and `completed_date`. | Places hints at `SourceMetadata::do_date` / `completed_date` ranges. |
+| **Semantic Highlighting** | Colors keywords, dates, contexts, and IDs distinctively. | Uses raw `tree-sitter` traversal for fine-grained token coloring. |
+| **Go to Definition** | Jumps to Story (`*`) or Context (`+`) tags. | Uses raw `tree-sitter` to find references by text. |
+| **Formatting** | Formats the document using canonical rules. | Re-serializes the `ActionList` using the library's `format` module. |
 
-## Running the LSP
+## Client Setup
 
-To start the LSP server (usually done by your editor):
+The LSP server is invoked via the `lsp` subcommand: `clearhead_cli lsp`.
 
-```bash
-clearhead-cli lsp
+### Neovim (Manual Setup)
+
+If you are not using a plugin, you can start the LSP manually in your `init.lua`:
+
+```lua
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "actions",
+  callback = function()
+    vim.lsp.start({
+      name = "clearhead-lsp",
+      cmd = { "clearhead_cli", "lsp" },
+      root_dir = vim.fs.dirname(vim.fs.find({ ".git", "inbox.actions" }, { upward = true })[1]),
+    })
+  end,
+})
 ```
 
-## Testing
+### Neovim (via clearhead.nvim)
+
+The [clearhead.nvim](https://github.com/ClearHeadToDo-Devs/clearhead.nvim) plugin is the recommended way to use the LSP. It handles binary detection and provides additional buffer-local keybindings for features like "Hydrate Action".
+
+## Technical Specifications
+- **Transport**: Stdio
+- **Initialization**: Standard LSP `initialize` request.
+- **Capabilities**: Full document sync, diagnostics, code actions, semantic tokens, inlay hints, definition, references, and formatting.
 
 ### Unit Tests
 The logic functions are unit-tested in `src/lsp.rs`. Run them with:

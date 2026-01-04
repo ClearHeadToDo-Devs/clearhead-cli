@@ -42,6 +42,19 @@ ActionList (hub)
     └─> Table format    (via comfy-table)
 ```
 
+### Domain Model vs. Source Metadata
+
+A core architectural principle is the separation of **Domain Data** from **Source Representation**.
+
+1.  **The Domain Model (`Action`)**: Lives in `entities.rs`. It represents the abstract task (name, priority, state). It is kept "pure" and knows nothing about file line numbers or columns. This allows it to be easily used in databases, sync protocols, and serial formats without noise.
+2.  **The Source Metadata (`SourceMetadata`)**: Lives in `entities.rs`. It tracks where an action (and its specific fields) are located in a concrete text file. 
+3.  **The Parsed Document (`ParsedDocument`)**: A container returned by the parser that holds both the clean `ActionList` and a `HashMap<Uuid, SourceMetadata>`.
+
+**Why this matters:**
+- **Syncing**: When we sync actions between files, we only care about the `Action` data. The `SourceMetadata` is transient and file-specific.
+- **LSP Ergonomics**: The LSP can iterate over the "pure" data to perform logic (e.g. "is this overdue?") and then use the sidecar map to find exactly where to place the visual hint in the editor.
+- **Testing**: We can unit test business logic using just the `Action` struct without having to mock line numbers or file ranges.
+
 Adding a new format is easy:
 1. Add variant to `OutputFormat` enum
 2. Implement `format_as_*` function
@@ -223,6 +236,13 @@ fn test_my_feature() {
         .stdout(predicate::str::contains("My task"));
 }
 ```
+
+### Shared Test Helpers
+
+We maintain a suite of shared test helpers in `tests/common/mod.rs` to keep tests functional and dry:
+
+- **`ActionBuilder`**: A fluent interface for constructing `Action` structs in code. Use this instead of manual struct literals to keep tests resilient to changes in the data model.
+- **`read_example` / `get_examples`**: Standardized functions for accessing the vendored specification examples.
 
 ### Snapshot Testing 
 Another interesting approach we use is snapshot testing with `insta`. We do this by actually working through the individual examples provided by the `tree-sitter-actions` grammar tests, parsing them into our IR, and then generating snapshots of the resulting data structures.
