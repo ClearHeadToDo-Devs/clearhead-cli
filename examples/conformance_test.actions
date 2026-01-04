@@ -1,0 +1,34 @@
+# ClearHead Conformance Test File
+# This file contains various action structures to test parsers, linters, and formatters.
+
+[ ] Root action with every field
+    $ This action is used to verify that all metadata is correctly parsed and displayed.
+    !1
+    *Conformance-Project
+    +testing,metadata
+    @2026-01-01T09:00 D60 R:FREQ=DAILY;COUNT=5
+    ^2026-01-03T12:00
+    #01942db4-0000-7000-8000-000000000001
+
+[x] Completed tree (ready for archive)
+    ^2026-01-03T10:00
+    %2026-01-03T11:00
+    #01942db4-0000-7000-8000-000000000002
+    >[x] Completed child ^2026-01-03T10:05 %2026-01-03T10:30 #01942db4-0000-7000-8000-000000000003
+
+[x] Inconsistent tree (E012 error)
+    $ This parent is completed but has active work below.
+    ^2026-01-03T09:00
+    %2026-01-03T10:00
+    #01942db4-0000-7000-8000-000000000004
+    >[ ] Still active! ^2026-01-03T09:05 #01942db4-0000-7000-8000-000000000005
+
+[ ] Completed subtasks (E013 nudge)
+    $ Parent is active but all children are done.
+    ^2026-01-03T08:00
+    #01942db4-0000-7000-8000-000000000006
+    >[x] Done ^2026-01-03T08:05 %2026-01-03T08:10 #01942db4-0000-7000-8000-000000000007
+
+[ ] Action with derivation test
+    $ This action has no ^ field, so date should be derived from the v7 UUID timestamp.
+    #01942db4-ec68-7000-8000-000000000008

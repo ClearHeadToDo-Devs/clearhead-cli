@@ -5,6 +5,7 @@ $ descriptions
 +test_context,another-context
 @2019-01-01T00:01 D120
 %2019-03-01T02:01
+^2018-12-31T23:59
 #01951111-cfa6-718d-b303-d7107f4005b3
 > [ ] child action
 >> [ ] grandchild action
