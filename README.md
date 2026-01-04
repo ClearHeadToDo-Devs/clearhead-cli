@@ -43,17 +43,21 @@ clearhead_cli read inbox.actions
 
 ## Configuration
 
-Optionally create `~/.config/clearhead_cli/config.toml`:
+Optionally create `~/.config/clearhead/config.json`:
 
-```toml
-format = "table"           # Default output format
-file = "inbox.actions"     # Default file in ~/.local/share/clearhead_cli/
+```json
+{
+  "cli_format": "table",
+  "default_file": "inbox.actions"
+}
 ```
+
+Data is stored in `~/.local/share/clearhead/` by default (respects XDG environment variables).
 
 Override with environment variables:
 
 ```bash
-CLICHE_FORMAT=json clearhead_cli read
+CLEARHEAD_CLI_FORMAT=json clearhead_cli read
 ```
 
 Or command-line arguments (highest priority):
@@ -90,7 +94,7 @@ For the full specification see [The Specification](https://github.com/ClearHeadT
 ### Read
 
 ```bash
-# Read default file (~/.local/share/clearhead_cli/inbox.actions)
+# Read default file (~/.local/share/clearhead/inbox.actions)
 clearhead_cli read
 
 # Read specific file

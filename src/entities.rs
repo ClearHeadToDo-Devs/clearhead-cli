@@ -22,6 +22,7 @@ pub struct SourceRange {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SourceMetadata {
     pub root: SourceRange,
+    pub line_range: SourceRange,
     pub do_date: Option<SourceRange>,
     pub completed_date: Option<SourceRange>,
     pub is_id_generated: bool,
@@ -31,6 +32,7 @@ pub struct SourceMetadata {
 pub struct ParsedDocument {
     pub actions: ActionList,
     pub source_map: HashMap<Uuid, SourceMetadata>,
+    pub tag_index: HashMap<String, Vec<SourceRange>>,
 }
 
 /// Recurrence rule per RFC 5545 RRULE specification
@@ -141,6 +143,44 @@ impl fmt::Display for Recurrence {
 }
 
 impl Action {
+    /// Serialize the action content (state, name, metadata) to a formatter
+    pub fn fmt_content(&self, f: &mut fmt::Formatter<'_>, include_id: bool) -> fmt::Result {
+        // State and name (required)
+        write!(f, "[{}] {}", self.state, self.name)?;
+
+        // Add metadata with spec-compliant spacing:
+        // - Space after $ (description icon only)
+        // - No space after other icons
+        if let Some(description) = &self.description {
+            write!(f, " $ {}", description)?;
+        }
+        if let Some(priority) = &self.priority {
+            write!(f, " !{}", priority)?;
+        }
+        if let Some(story) = &self.story {
+            write!(f, " *{}", story)?;
+        }
+        if let Some(context_list) = &self.context_list {
+            write!(f, " +{}", context_list.join(","))?;
+        }
+        if let Some(do_date_time) = &self.do_date_time {
+            write!(f, " @{}", do_date_time.format("%Y-%m-%dT%H:%M"))?;
+            if let Some(duration) = self.do_duration {
+                write!(f, " D{}", duration)?;
+            }
+            if let Some(recurrence) = &self.recurrence {
+                write!(f, " {}", recurrence)?;
+            }
+        }
+        if let Some(completed_date_time) = &self.completed_date_time {
+            write!(f, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M"))?;
+        }
+        if include_id {
+            write!(f, " #{}", self.id)?;
+        }
+        Ok(())
+    }
+
     /// Compute the depth of this action by walking up the parent chain
     pub fn depth(&self, action_list: &ActionList) -> u32 {
         let mut depth = 0;
@@ -202,54 +242,7 @@ impl Action {
 
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // State and name (required)
-        write!(f, "[{}] {}", self.state, self.name)?;
-
-        // Description (optional)
-        if let Some(description) = &self.description {
-            write!(f, " ${}", description)?;
-        }
-
-        // Priority (optional)
-        if let Some(priority) = &self.priority {
-            write!(f, " !{}", priority)?;
-        }
-
-        // Context list (optional)
-        if let Some(context_list) = &self.context_list {
-            let contexts = context_list.join(",");
-            write!(f, " +{}", contexts)?;
-        }
-
-        // Do date time (optional)
-        if let Some(do_date_time) = &self.do_date_time {
-            write!(f, " @{}", do_date_time.format("%Y-%m-%dT%H:%M"))?;
-            
-            // Duration
-            if let Some(duration) = self.do_duration {
-                write!(f, " D{}", duration)?;
-            }
-            
-            // Recurrence
-            if let Some(recurrence) = &self.recurrence {
-                write!(f, " {}", recurrence)?;
-            }
-        }
-
-        // Completed date time (optional)
-        if let Some(completed_date_time) = &self.completed_date_time {
-            write!(f, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M"))?;
-        }
-
-        // ID
-        write!(f, " #{}", self.id)?;
-
-        // Story (optional, only for root actions)
-        if let Some(story) = &self.story {
-            write!(f, " *{}", story)?;
-        }
-
-        Ok(())
+        self.fmt_content(f, true)
     }
 }
 
@@ -267,19 +260,21 @@ impl TryFrom<TreeWrapper> for ParsedDocument {
         let root = value.tree.root_node();
         let mut action_list = Vec::new();
         let mut source_map = HashMap::new();
+        let mut tag_index = HashMap::new();
         let mut cursor = root.walk();
 
         // Iterate through all root actions
         for root_action in root.children(&mut cursor) {
             if root_action.kind() == "root_action" {
                 let wrapper = create_node_wrapper(root_action, value.source.clone());
-                action_list.extend(parse_action_recursive(wrapper, None, &mut source_map)?);
+                action_list.extend(parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)?);
             }
         }
 
         Ok(ParsedDocument {
             actions: action_list,
             source_map,
+            tag_index,
         })
     }
 }
@@ -321,6 +316,7 @@ pub fn parse_action_recursive(
     node: NodeWrapper,
     parent_id: Option<Uuid>,
     source_map: &mut HashMap<Uuid, SourceMetadata>,
+    tag_index: &mut HashMap<String, Vec<SourceRange>>,
 ) -> Result<Vec<Action>, &'static str> {
     let mut actions = Vec::new();
 
@@ -357,6 +353,8 @@ pub fn parse_action_recursive(
         .ok_or("Missing name field")?;
     let name = get_node_text(&name_node, &node.source).trim().to_string();
 
+    let mut line_end_pos = name_node.end_position();
+
     // Parse metadata fields
     let mut description = None;
     let mut priority = None;
@@ -376,6 +374,12 @@ pub fn parse_action_recursive(
         .node
         .children_by_field_name("metadata", &mut metadata_cursor)
     {
+        if metadata_node.end_position().row > line_end_pos.row 
+           || (metadata_node.end_position().row == line_end_pos.row && metadata_node.end_position().column > line_end_pos.column) 
+        {
+            line_end_pos = metadata_node.end_position();
+        }
+
         match metadata_node.kind() {
             "description" => {
                 // Get the text of the description node (skip the $ prefix)
@@ -398,6 +402,15 @@ pub fn parse_action_recursive(
                 let story_text = get_node_text(&metadata_node, &node.source);
                 if story_text.starts_with('*') {
                     story = Some(story_text[1..].trim().to_string());
+                    
+                    // Index tag
+                    let range = SourceRange {
+                        start_row: metadata_node.start_position().row,
+                        start_col: metadata_node.start_position().column,
+                        end_row: metadata_node.end_position().row,
+                        end_col: metadata_node.end_position().column,
+                    };
+                    tag_index.entry(story_text).or_default().push(range);
                 }
             }
             "context" => {
@@ -411,6 +424,15 @@ pub fn parse_action_recursive(
                     if !tags.is_empty() {
                         context_list = Some(tags);
                     }
+
+                    // Index tag (full text including +)
+                    let range = SourceRange {
+                        start_row: metadata_node.start_position().row,
+                        start_col: metadata_node.start_position().column,
+                        end_row: metadata_node.end_position().row,
+                        end_col: metadata_node.end_position().column,
+                    };
+                    tag_index.entry(context_text).or_default().push(range);
                 }
             }
             "do_date" => {
@@ -481,6 +503,12 @@ pub fn parse_action_recursive(
     // Record metadata
     source_map.insert(action_id, SourceMetadata {
         root: action_range,
+        line_range: SourceRange {
+            start_row: action_range.start_row,
+            start_col: action_range.start_col,
+            end_row: line_end_pos.row,
+            end_col: line_end_pos.column,
+        },
         do_date: do_date_range,
         completed_date: completed_date_range,
         is_id_generated,
@@ -506,7 +534,7 @@ pub fn parse_action_recursive(
     let mut child_cursor = node.node.walk();
     for child_node in node.node.children_by_field_name("child", &mut child_cursor) {
         let child_wrapper = create_node_wrapper(child_node, node.source.clone());
-        actions.extend(parse_action_recursive(child_wrapper, Some(action_id), source_map)?);
+        actions.extend(parse_action_recursive(child_wrapper, Some(action_id), source_map, tag_index)?);
     }
 
     Ok(actions)

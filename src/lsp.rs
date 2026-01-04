@@ -100,16 +100,15 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                 let action_range = source_range_to_lsp_range(metadata.root);
                 
                 // Simple intersection check: if cursor range overlaps with action range
-                // For a single point cursor, start==end.
                 if range.start.line <= action_range.end.line 
                    && range.end.line >= action_range.start.line 
                 {
                     let uuid = Uuid::now_v7();
                     let new_text = format!(" #{}", uuid);
 
-                    // Insert at the end of the action body
-                    // We can use the end of the root range
-                    let insert_pos = action_range.end;
+                    // Insert at the end of the action LINE, not the root range
+                    // This ensures the UUID stays on the same line as the action name
+                    let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
 
                     let mut changes = std::collections::HashMap::new();
                     changes.insert(
@@ -373,12 +372,16 @@ impl LanguageServer for Backend {
                 // We only handle jumping for stories and contexts
                 if node.kind() == "story" || node.kind() == "context" {
                     let tag_text = get_node_text(&node, &doc.text);
-                    let locations =
-                        compute_tag_references(&doc.tree, &doc.text, &uri, node.kind(), &tag_text);
-
-                    // For "Definition", we jump to the *first* occurrence
-                    if let Some(first_loc) = locations.first() {
-                        return Ok(Some(GotoDefinitionResponse::Scalar(first_loc.clone())));
+                    if let Some(ref parsed) = doc.parsed {
+                        if let Some(ranges) = parsed.tag_index.get(&tag_text) {
+                            // For "Definition", we jump to the *first* occurrence
+                            if let Some(first_range) = ranges.first() {
+                                return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                                    uri: uri.clone(),
+                                    range: source_range_to_lsp_range(*first_range),
+                                })));
+                            }
+                        }
                     }
                 }
             }
@@ -393,9 +396,15 @@ impl LanguageServer for Backend {
             if let Some(node) = get_node_at_position(&doc.tree, position) {
                 if node.kind() == "story" || node.kind() == "context" {
                     let tag_text = get_node_text(&node, &doc.text);
-                    let locations =
-                        compute_tag_references(&doc.tree, &doc.text, &uri, node.kind(), &tag_text);
-                    return Ok(Some(locations));
+                    if let Some(ref parsed) = doc.parsed {
+                        if let Some(ranges) = parsed.tag_index.get(&tag_text) {
+                            let locations = ranges.iter().map(|r| Location {
+                                uri: uri.clone(),
+                                range: source_range_to_lsp_range(*r),
+                            }).collect();
+                            return Ok(Some(locations));
+                        }
+                    }
                 }
             }
         }
@@ -457,56 +466,6 @@ fn get_node_at_position(tree: &Tree, position: Position) -> Option<tree_sitter::
     let point = tree_sitter::Point::new(position.line as usize, position.character as usize);
     tree.root_node()
         .named_descendant_for_point_range(point, point)
-}
-
-/// Pure logic: Find all locations of a specific tag (story/context)
-fn compute_tag_references(
-    tree: &Tree,
-    source_text: &str,
-    uri: &Uri,
-    target_kind: &str,
-    target_text: &str,
-) -> Vec<Location> {
-    let mut locations = Vec::new();
-    let mut cursor = tree.walk();
-    let mut nodes_to_check = vec![tree.root_node()];
-
-    while let Some(node) = nodes_to_check.pop() {
-        if node.kind() == target_kind {
-            let current_text = get_node_text(&node, source_text);
-            if current_text == target_text {
-                let range = Range {
-                    start: Position::new(
-                        node.start_position().row as u32,
-                        node.start_position().column as u32,
-                    ),
-                    end: Position::new(
-                        node.end_position().row as u32,
-                        node.end_position().column as u32,
-                    ),
-                };
-                locations.push(Location {
-                    uri: uri.clone(),
-                    range,
-                });
-            }
-        }
-
-        for child in node.children(&mut cursor) {
-            nodes_to_check.push(child);
-        }
-    }
-
-    // Sort by position
-    locations.sort_by(|a, b| {
-        if a.range.start.line != b.range.start.line {
-            a.range.start.line.cmp(&b.range.start.line)
-        } else {
-            a.range.start.character.cmp(&b.range.start.character)
-        }
-    });
-
-    locations
 }
 
 #[cfg(test)]

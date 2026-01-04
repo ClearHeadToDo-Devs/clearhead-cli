@@ -9,7 +9,7 @@ use argparser::{parse_cli, Commands};
 mod lsp;
 
 pub mod environment_reader;
-use environment_reader::{ensure_dir_exists, get_data_dir, load_base_config};
+use environment_reader::{ensure_dir_exists, get_data_dir, load_config_with_project_discovery, resolve_file_path};
 
 fn main() {
     let cli = parse_cli();
@@ -26,13 +26,14 @@ fn main() {
 }
 
 fn run_command(cli: &argparser::Cli) -> Result<(), String> {
-    // Load base config (defaults → file → env vars)
-    let base_config = load_base_config(cli.config.clone())
+    // Load config with automatic project discovery
+    // This returns both the config and the discovered project context
+    let (config, project_context) = load_config_with_project_discovery(cli.config.clone())
         .map_err(|e| format!("Failed to load config: {}", e))?;
 
-    // Get XDG directories
-    let data_dir = get_data_dir();
-    let config_dir = environment_reader::get_config_dir();
+    // Resolve directories (with shell expansion)
+    let data_dir = resolve_file_path(&config.data_dir, &get_data_dir());
+    let config_dir = resolve_file_path(&config.config_dir, &environment_reader::get_config_dir());
 
     // Ensure directories exist
     ensure_dir_exists(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
@@ -40,9 +41,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         .map_err(|e| format!("Failed to create config dir: {}", e))?;
 
     if cli.debug > 0 {
+        if let Some(ref ctx) = project_context {
+            eprintln!("Project root discovered: {}", ctx.root.display());
+        }
         eprintln!("Data directory: {}", data_dir.display());
-        eprintln!("Config directory: {}", config_dir.display());
-        eprintln!("Base config: {:?}", base_config);
+        eprintln!("Config: {:?}", config);
     }
 
     match &cli.command {
@@ -50,16 +53,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             // Resolve format: CLI > Env > Config > Default
             let output_format = format
                 .map(|f| f.into())
-                .or_else(|| parse_format(&base_config.format).ok())
+                .or_else(|| parse_format(&config.cli_format).ok())
                 .unwrap_or(clearhead_cli::OutputFormat::Actions);
 
             // Determine input source:
-            // - If file specified on CLI: use it
-            // - Otherwise: use default file from data_dir
+            // 1. Explicit CLI argument
+            // 2. Project-local default (next.actions or .clearhead/inbox.actions)
+            // 3. Global default (from config)
             let input_file = file
                 .as_ref()
                 .map(|p| p.clone())
-                .unwrap_or_else(|| data_dir.join(&base_config.file));
+                .or_else(|| project_context.as_ref().and_then(|ctx| ctx.default_file.clone()))
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
             if cli.debug > 0 {
                 eprintln!("Output format: {:?}", output_format);
@@ -103,10 +108,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let resolved_indent_style = indent_style
                 .clone()
                 .map(|i| i.into())
-                .unwrap_or_else(|| parse_indent_style(&base_config.indent_style));
-            
+                .unwrap_or_else(|| parse_indent_style(&config.cli_indent_style));
+
             let resolved_indent_width = indent_width
-                .unwrap_or(base_config.indent_width);
+                .unwrap_or(config.cli_indent_width);
 
             // Format with style options, preserving existing UUIDs
             let format_config = clearhead_cli::FormatConfig {
@@ -140,8 +145,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?
             } else {
                 // Resolve indent settings from config
-                let resolved_indent_style = parse_indent_style(&base_config.indent_style);
-                let resolved_indent_width = base_config.indent_width;
+                let resolved_indent_style = parse_indent_style(&config.cli_indent_style);
+                let resolved_indent_width = config.cli_indent_width;
 
                 // Format with default compact style and UUIDs
                 let format_config = clearhead_cli::FormatConfig {
@@ -191,7 +196,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let input_file = file
                 .as_ref()
                 .map(|p| p.clone())
-                .unwrap_or_else(|| data_dir.join(&base_config.file));
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
             let content = read_input(Some(&input_file))?;
             let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;

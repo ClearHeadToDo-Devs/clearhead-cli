@@ -136,54 +136,63 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
 
         // Serialize action WITH proper spacing (per formatting specification)
         // Space after state brackets: `[x] Task` not `[x]Task`
-        write!(output, "[{}] {}", action.state, action.name).unwrap();
-
-        // Add metadata with spec-compliant spacing:
-        // - Space before each metadata token
-        // - Space after $ (description icon only)
-        // - No space after other icons
         
-        let metadata_indent = if config.style == FormatStyle::List {
-            format!("\n{}", indent_char.repeat((depth + 1) * config.indent_width))
-        } else {
-            " ".to_string()
-        };
+        if config.style == FormatStyle::List {
+            // In List mode, we handle the metadata lines manually to control indentation
+            write!(output, "[{}] {}", action.state, action.name).unwrap();
+            
+            let indent_char = match config.indent_style {
+                IndentStyle::Spaces => " ",
+                IndentStyle::Tabs => "\t",
+            };
+            let metadata_indent = format!("\n{}", indent_char.repeat((depth + 1) * config.indent_width));
 
-        if let Some(description) = &action.description {
-            output.push_str(&metadata_indent);
-            write!(output, "$ {}", description).unwrap();
-        }
-        if let Some(priority) = &action.priority {
-            output.push_str(&metadata_indent);
-            write!(output, "!{}", priority).unwrap();
-        }
-        if let Some(story) = &action.story {
-            output.push_str(&metadata_indent);
-            write!(output, "*{}", story).unwrap();
-        }
-        if let Some(context_list) = &action.context_list {
-            output.push_str(&metadata_indent);
-            write!(output, "+{}", context_list.join(",")).unwrap();
-        }
-        if let Some(do_date_time) = &action.do_date_time {
-            output.push_str(&metadata_indent);
-            write!(output, "@{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
-            if let Some(duration) = action.do_duration {
+            if let Some(description) = &action.description {
                 output.push_str(&metadata_indent);
-                write!(output, "D{}", duration).unwrap();
+                write!(output, "$ {}", description).unwrap();
             }
-            if let Some(recurrence) = &action.recurrence {
+            if let Some(priority) = &action.priority {
                 output.push_str(&metadata_indent);
-                write!(output, "{}", recurrence).unwrap();
+                write!(output, "!{}", priority).unwrap();
             }
-        }
-        if let Some(completed_date_time) = &action.completed_date_time {
-            output.push_str(&metadata_indent);
-            write!(output, "%{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
-        }
-        if config.include_id {
-            output.push_str(&metadata_indent);
-            write!(output, "#{}", action.id).unwrap();
+            if let Some(story) = &action.story {
+                output.push_str(&metadata_indent);
+                write!(output, "*{}", story).unwrap();
+            }
+            if let Some(context_list) = &action.context_list {
+                output.push_str(&metadata_indent);
+                write!(output, "+{}", context_list.join(",")).unwrap();
+            }
+            if let Some(do_date_time) = &action.do_date_time {
+                output.push_str(&metadata_indent);
+                write!(output, "@{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+                if let Some(duration) = action.do_duration {
+                    output.push_str(&metadata_indent);
+                    write!(output, "D{}", duration).unwrap();
+                }
+                if let Some(recurrence) = &action.recurrence {
+                    output.push_str(&metadata_indent);
+                    write!(output, "{}", recurrence).unwrap();
+                }
+            }
+            if let Some(completed_date_time) = &action.completed_date_time {
+                output.push_str(&metadata_indent);
+                write!(output, "%{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+            }
+            if config.include_id {
+                output.push_str(&metadata_indent);
+                write!(output, "#{}", action.id).unwrap();
+            }
+        } else {
+            // In Compact mode, we can use the centralized fmt_content method
+            use std::fmt;
+            struct ActionContent<'a>(&'a Action, bool);
+            impl<'a> fmt::Display for ActionContent<'a> {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    self.0.fmt_content(f, self.1)
+                }
+            }
+            write!(output, "{}", ActionContent(action, config.include_id)).unwrap();
         }
         output.push('\n');
     }

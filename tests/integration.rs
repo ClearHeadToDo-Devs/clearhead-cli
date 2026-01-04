@@ -8,27 +8,31 @@ struct TestEnv {
     _temp_dir: TempDir, // Keep alive for cleanup
     config_dir: std::path::PathBuf,
     data_dir: std::path::PathBuf,
+    work_dir: std::path::PathBuf,
 }
 
 impl TestEnv {
     fn new() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let config_dir = temp_dir.path().join("config/clearhead_cli");
-        let data_dir = temp_dir.path().join("data/clearhead_cli");
+        let config_dir = temp_dir.path().join("config/clearhead");
+        let data_dir = temp_dir.path().join("data/clearhead");
+        let work_dir = temp_dir.path().join("work");
 
         fs::create_dir_all(&config_dir).expect("Failed to create config dir");
         fs::create_dir_all(&data_dir).expect("Failed to create data dir");
+        fs::create_dir_all(&work_dir).expect("Failed to create work dir");
 
         TestEnv {
             _temp_dir: temp_dir,
             config_dir,
             data_dir,
+            work_dir,
         }
     }
 
-    /// Write a config file to the test environment
+    /// Write a JSON config file to the test environment
     fn write_config(&self, content: &str) {
-        let config_path = self.config_dir.join("config.toml");
+        let config_path = self.config_dir.join("config.json");
         fs::write(config_path, content).expect("Failed to write config");
     }
 
@@ -38,12 +42,13 @@ impl TestEnv {
         fs::write(actions_path, content).expect("Failed to write actions file");
     }
 
-    /// Get a Command with XDG env vars set to test directories
+    /// Get a Command with XDG env vars set to test directories and cwd in isolated work dir
     fn command(&self) -> Command {
         let bin = assert_cmd::cargo::cargo_bin!("clearhead_cli");
         let mut cmd = Command::new(bin);
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
+        cmd.current_dir(&self.work_dir); // Run from temp dir to avoid project detection
         cmd
     }
 }
@@ -67,8 +72,8 @@ fn test_read_with_default_file() {
 fn test_config_file_sets_default_format() {
     let env = TestEnv::new();
 
-    // Write config with table format
-    env.write_config("format = \"table\"");
+    // Write config with table format (JSON with cli_format key)
+    env.write_config(r#"{"cli_format": "table"}"#);
     env.write_actions("inbox.actions", "[x] Completed task");
 
     // Should use table format from config
@@ -85,13 +90,13 @@ fn test_env_var_overrides_config() {
     let env = TestEnv::new();
 
     // Config says table
-    env.write_config("format = \"table\"");
+    env.write_config(r#"{"cli_format": "table"}"#);
     env.write_actions("inbox.actions", "[ ] Task");
 
     // But env var says JSON
     env.command()
         .arg("read")
-        .env("CLICHE_FORMAT", "json")
+        .env("CLEARHEAD_CLI_FORMAT", "json")
         .assert()
         .success()
         .stdout(predicate::str::starts_with("{")) // JSON object
@@ -108,7 +113,7 @@ fn test_cli_arg_overrides_env_var() {
     // Env says JSON, CLI says actions
     env.command()
         .arg("read")
-        .env("CLICHE_FORMAT", "json")
+        .env("CLEARHEAD_CLI_FORMAT", "json")
         .arg("--format")
         .arg("actions")
         .assert()
@@ -202,7 +207,7 @@ fn test_config_with_custom_default_file() {
     let env = TestEnv::new();
 
     // Config specifies a different default file
-    env.write_config("file = \"mytasks.actions\"");
+    env.write_config(r#"{"default_file": "mytasks.actions"}"#);
     env.write_actions("mytasks.actions", "[ ] Custom default task");
 
     env.command()
@@ -360,9 +365,9 @@ fn test_helpful_error_on_missing_specific_file() {
 fn test_error_on_malformed_config() {
     let env = TestEnv::new();
 
-    // Write invalid TOML
-    let config_path = env.config_dir.join("config.toml");
-    fs::write(config_path, "this is not valid toml = = =").expect("Failed to write config");
+    // Write invalid JSON
+    let config_path = env.config_dir.join("config.json");
+    fs::write(config_path, "{this is not valid json}").expect("Failed to write config");
 
     env.write_actions("inbox.actions", "[ ] Task");
 
@@ -378,7 +383,7 @@ fn test_error_on_invalid_format_in_config() {
     let env = TestEnv::new();
 
     // Config with invalid format
-    env.write_config("format = \"invalid_format\"");
+    env.write_config(r#"{"cli_format": "invalid_format"}"#);
     env.write_actions("inbox.actions", "[ ] Task");
 
     // Should use default format (actions) since config format is invalid
