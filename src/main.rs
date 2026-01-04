@@ -298,6 +298,85 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             Ok(())
         }
+        Commands::Archive { file, log_dir, dry_run } => {
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            let content = fs::read_to_string(&input_file)
+                .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
+            
+            let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            let mut active_actions = Vec::new();
+            let mut archived_actions = Vec::new();
+
+            for action in all_actions {
+                if action.state == clearhead_cli::entities::ActionState::Completed {
+                    archived_actions.push(action);
+                } else {
+                    active_actions.push(action);
+                }
+            }
+
+            if archived_actions.is_empty() {
+                println!("No completed actions to archive.");
+                return Ok(());
+            }
+
+            if *dry_run {
+                println!("Would archive {} actions from {}:", archived_actions.len(), input_file.display());
+                for action in &archived_actions {
+                    println!("  - {}", action.name);
+                }
+                return Ok(());
+            }
+
+            // Group by month based on completed_date (fallback to current month)
+            use chrono::Local;
+            let now = Local::now();
+            let month_str = now.format("%Y-%m").to_string();
+            let log_filename = format!("{}.actions", month_str);
+            
+            let resolved_log_dir = log_dir.clone().unwrap_or_else(|| {
+                // If it's a project file, use .clearhead/logs/
+                // Otherwise use data_dir/logs/
+                if input_file.to_string_lossy().contains(".clearhead") {
+                     input_file.parent().unwrap().join("logs")
+                } else {
+                     data_dir.join("logs")
+                }
+            });
+
+            ensure_dir_exists(&resolved_log_dir)
+                .map_err(|e| format!("Failed to create log directory: {}", e))?;
+            let log_path = resolved_log_dir.join(log_filename);
+
+            // Read existing log or start new
+            let mut log_content = if log_path.exists() {
+                fs::read_to_string(&log_path).unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            // Format archived actions and append
+            let archived_text = clearhead_cli::format(&archived_actions, clearhead_cli::OutputFormat::Actions, None)?;
+            log_content.push_str("\n");
+            log_content.push_str(&archived_text);
+
+            // Write log
+            fs::write(&log_path, log_content)
+                .map_err(|e| format!("Failed to write to log file '{}': {}", log_path.display(), e))?;
+
+            // Update original file with only active actions
+            let active_text = clearhead_cli::format(&active_actions, clearhead_cli::OutputFormat::Actions, None)?;
+            fs::write(&input_file, active_text)
+                .map_err(|e| format!("Failed to update source file '{}': {}", input_file.display(), e))?;
+
+            println!("Archived {} actions to {}", archived_actions.len(), log_path.display());
+            Ok(())
+        }
         Commands::Lsp => {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()

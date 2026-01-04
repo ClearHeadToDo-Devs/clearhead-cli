@@ -114,6 +114,20 @@ pub enum Commands {
         days: u32,
     },
 
+    /// Move completed actions to a log file
+    Archive {
+        /// File to archive from. If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// Directory to store logs (defaults to logs/ in data_dir)
+        #[arg(short, long)]
+        log_dir: Option<PathBuf>,
+
+        /// Dry run: show what would be archived without moving
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Start the Language Server Protocol (LSP) server
     Lsp,
 }
