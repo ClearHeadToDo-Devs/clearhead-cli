@@ -137,44 +137,6 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
     Ok(output)
 }
 
-/// Format .actions text using Topiary
-///
-/// Applies the formatting rules defined in queries/actions/topiary.scm
-pub fn format_with_topiary(input: &str, config: &FormatConfig) -> Result<String, String> {
-    use topiary_core::{Language, Operation, TopiaryQuery, formatter};
-
-    // Convert tree-sitter language to Topiary's facade
-    let grammar = topiary_tree_sitter_facade::Language::from(tree_sitter_actions::LANGUAGE);
-
-    // Create the query
-    let query = TopiaryQuery::new(&grammar, tree_sitter_actions::TOPIARY_QUERY)
-        .map_err(|e| format!("Failed to parse Topiary query: {}", e))?;
-
-    // Create language configuration
-    let language = Language {
-        name: "actions".to_string(),
-        query,
-        grammar,
-        indent: Some(" ".repeat(config.indent_width)),
-    };
-
-    // Create operation with formatting options
-    // Note: Topiary's multi-line mode is controlled via query predicates, not operation flags
-    // TODO: Fix remaining idempotence issue, then set skip_idempotence: false
-    let operation = Operation::Format {
-        skip_idempotence: true, // Skip while query has minor idempotence issues
-        tolerate_parsing_errors: config.style == FormatStyle::List,
-    };
-
-    // Format the input
-    let mut output = Vec::new();
-    formatter(&mut input.as_bytes(), &mut output, &language, operation)
-        .map_err(|e| format!("Topiary formatting failed: {}", e))?;
-
-    String::from_utf8(output).map_err(|e| format!("Invalid UTF-8 in formatted output: {}", e))
-}
-
-/// Format ActionList as pretty-printed JSON
 fn format_as_json(list: &ActionList) -> Result<String, String> {
     // Wrapper to match schema format: {"actions": [...]}
     #[derive(Serialize)]

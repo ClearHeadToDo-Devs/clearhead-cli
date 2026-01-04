@@ -1,5 +1,7 @@
 use chrono::{DateTime, Local};
+use clearhead_cli::get_action_list_struct;
 use dashmap::DashMap;
+use serde_json::json;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
@@ -7,8 +9,8 @@ use tree_sitter::{Parser, Tree};
 use uuid::Uuid;
 
 use clearhead_cli::entities::parse_iso8601_datetime;
+use clearhead_cli::format::{FormatConfig, OutputFormat, format};
 use clearhead_cli::treesitter::get_node_text;
-use clearhead_cli::format::{format_with_topiary, FormatConfig};
 
 #[derive(Debug)]
 struct DocumentState {
@@ -34,9 +36,17 @@ impl Backend {
     async fn update_document(&self, uri: Uri, text: String) {
         let mut parser = Self::get_parser();
         if let Some(tree) = parser.parse(&text, None) {
-            self.documents.insert(uri.clone(), DocumentState { text: text.clone(), tree: tree.clone() });
+            self.documents.insert(
+                uri.clone(),
+                DocumentState {
+                    text: text.clone(),
+                    tree: tree.clone(),
+                },
+            );
             let diagnostics = compute_diagnostics(&tree);
-            self.client.publish_diagnostics(uri, diagnostics, None).await;
+            self.client
+                .publish_diagnostics(uri, diagnostics, None)
+                .await;
         }
     }
 }
@@ -73,7 +83,8 @@ fn compute_diagnostics(tree: &Tree) -> Vec<Diagnostic> {
                     severity: Some(DiagnosticSeverity::WARNING),
                     code: Some(NumberOrString::String("missing-id".to_string())),
                     source: Some("clearhead-lsp".to_string()),
-                    message: "Action is missing a UUID. Use 'Hydrate Action' to add one.".to_string(),
+                    message: "Action is missing a UUID. Use 'Hydrate Action' to add one."
+                        .to_string(),
                     ..Default::default()
                 });
             }
@@ -204,7 +215,11 @@ fn compute_semantic_tokens(tree: &Tree) -> Vec<SemanticToken> {
 }
 
 /// Pure logic: Compute inlay hints
-fn compute_inlay_hints(tree: &Tree, source_text: &str, base_time: Option<DateTime<Local>>) -> Vec<InlayHint> {
+fn compute_inlay_hints(
+    tree: &Tree,
+    source_text: &str,
+    base_time: Option<DateTime<Local>>,
+) -> Vec<InlayHint> {
     let mut hints = Vec::new();
     let mut cursor = tree.walk();
     let mut nodes_to_check = vec![tree.root_node()];
@@ -386,11 +401,12 @@ impl LanguageServer for Backend {
                 // We only handle jumping for stories and contexts
                 if node.kind() == "story" || node.kind() == "context" {
                     let tag_text = get_node_text(&node, &doc.text);
-                    let locations = compute_tag_references(&doc.tree, &doc.text, &uri, node.kind(), &tag_text);
-                    
+                    let locations =
+                        compute_tag_references(&doc.tree, &doc.text, &uri, node.kind(), &tag_text);
+
                     // For "Definition", we jump to the *first* occurrence
                     if let Some(first_loc) = locations.first() {
-                         return Ok(Some(GotoDefinitionResponse::Scalar(first_loc.clone())));
+                        return Ok(Some(GotoDefinitionResponse::Scalar(first_loc.clone())));
                     }
                 }
             }
@@ -403,9 +419,10 @@ impl LanguageServer for Backend {
         if let Some(doc) = self.documents.get(&uri) {
             let position = params.text_document_position.position;
             if let Some(node) = get_node_at_position(&doc.tree, position) {
-                 if node.kind() == "story" || node.kind() == "context" {
+                if node.kind() == "story" || node.kind() == "context" {
                     let tag_text = get_node_text(&node, &doc.text);
-                    let locations = compute_tag_references(&doc.tree, &doc.text, &uri, node.kind(), &tag_text);
+                    let locations =
+                        compute_tag_references(&doc.tree, &doc.text, &uri, node.kind(), &tag_text);
                     return Ok(Some(locations));
                 }
             }
@@ -423,7 +440,10 @@ impl LanguageServer for Backend {
                 ..Default::default()
             };
 
-            match format_with_topiary(&doc.text, &config) {
+            let action_list = get_action_list_struct(&json!({}), &doc.text.clone())
+                .map_err(|e| format!("Failed to parse actions for formatting: {}", e))
+                .unwrap();
+            match format(&action_list, OutputFormat::Actions, Some(config)) {
                 Ok(formatted_text) => {
                     // Replace the entire document
                     let start = Position::new(0, 0);
@@ -434,15 +454,17 @@ impl LanguageServer for Backend {
                         root.end_position().row as u32,
                         root.end_position().column as u32,
                     );
-                    
+
                     return Ok(Some(vec![TextEdit {
                         range: Range::new(start, end),
                         new_text: formatted_text,
                     }]));
-                },
+                }
                 Err(e) => {
-                     self.client.log_message(MessageType::ERROR, format!("Formatting failed: {}", e)).await;
-                     return Ok(None);
+                    self.client
+                        .log_message(MessageType::ERROR, format!("Formatting failed: {}", e))
+                        .await;
+                    return Ok(None);
                 }
             }
         }
@@ -454,9 +476,9 @@ pub async fn start_lsp() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { 
-        client, 
-        documents: DashMap::new() 
+    let (service, socket) = LspService::new(|client| Backend {
+        client,
+        documents: DashMap::new(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
@@ -468,16 +490,22 @@ fn get_node_at_position(tree: &Tree, position: Position) -> Option<tree_sitter::
 }
 
 /// Pure logic: Find all locations of a specific tag (story/context)
-fn compute_tag_references(tree: &Tree, source_text: &str, uri: &Uri, target_kind: &str, target_text: &str) -> Vec<Location> {
+fn compute_tag_references(
+    tree: &Tree,
+    source_text: &str,
+    uri: &Uri,
+    target_kind: &str,
+    target_text: &str,
+) -> Vec<Location> {
     let mut locations = Vec::new();
     let mut cursor = tree.walk();
     let mut nodes_to_check = vec![tree.root_node()];
 
     while let Some(node) = nodes_to_check.pop() {
         if node.kind() == target_kind {
-             let current_text = get_node_text(&node, source_text);
-             if current_text == target_text {
-                 let range = Range {
+            let current_text = get_node_text(&node, source_text);
+            if current_text == target_text {
+                let range = Range {
                     start: Position::new(
                         node.start_position().row as u32,
                         node.start_position().column as u32,
@@ -491,23 +519,23 @@ fn compute_tag_references(tree: &Tree, source_text: &str, uri: &Uri, target_kind
                     uri: uri.clone(),
                     range,
                 });
-             }
+            }
         }
 
         for child in node.children(&mut cursor) {
             nodes_to_check.push(child);
         }
     }
-    
+
     // Sort by position
     locations.sort_by(|a, b| {
-         if a.range.start.line != b.range.start.line {
-             a.range.start.line.cmp(&b.range.start.line)
-         } else {
-             a.range.start.character.cmp(&b.range.start.character)
-         }
+        if a.range.start.line != b.range.start.line {
+            a.range.start.line.cmp(&b.range.start.line)
+        } else {
+            a.range.start.character.cmp(&b.range.start.character)
+        }
     });
-    
+
     locations
 }
 
@@ -528,7 +556,7 @@ mod tests {
         let text = "[ ] This action has no ID";
         let mut parser = get_parser();
         let tree = parser.parse(text, None).unwrap();
-        
+
         let diagnostics = compute_diagnostics(&tree);
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].severity, Some(DiagnosticSeverity::WARNING));
@@ -540,7 +568,7 @@ mod tests {
         let text = "[ ] This action has an ID #01942d99-4c27-77f6-9316-107024843939";
         let mut parser = get_parser();
         let tree = parser.parse(text, None).unwrap();
-        
+
         let diagnostics = compute_diagnostics(&tree);
         assert_eq!(diagnostics.len(), 0);
     }
@@ -552,18 +580,18 @@ mod tests {
         let mut parser = get_parser();
         let tree = parser.parse(text, None).unwrap();
         let uri = Uri::from_str("file:///test.actions").unwrap();
-        
+
         // Search for *MyStory
         // *MyStory is at line 0, col 13 and line 1, col 13
         // Note: the tree-sitter node includes the '*' prefix usually, let's verify if get_node_text returns "*MyStory"
         // Yes, get_node_text returns the full text range of the node.
-        
+
         let refs = compute_tag_references(&tree, text, &uri, "story", "*MyStory");
-        
+
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].range.start.line, 0);
         assert_eq!(refs[1].range.start.line, 1);
-        
+
         // Search for *OtherStory
         let refs_other = compute_tag_references(&tree, text, &uri, "story", "*OtherStory");
         assert_eq!(refs_other.len(), 1);
