@@ -1,15 +1,8 @@
 use clearhead_cli::entities::*;
 use clearhead_cli::*;
-use std::fs;
-use std::path::PathBuf;
 
-/// Helper to read example file content
-fn read_example(filename: &str) -> String {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let example_path = manifest_dir.join("examples").join(filename);
-    fs::read_to_string(&example_path)
-        .expect(&format!("Failed to read example file: {}", filename))
-}
+mod common;
+use common::read_example;
 
 /// Test parsing a minimal action
 #[test]

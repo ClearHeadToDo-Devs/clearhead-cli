@@ -4,11 +4,34 @@ use serde::{Deserialize, Serialize};
 use autosurgeon::{Hydrate, Reconcile};
 use crate::sync_utils::{hydrate_date, reconcile_date};
 use std::fmt;
+use std::collections::HashMap;
 
 use crate::treesitter::{create_node_wrapper, get_node_text, NodeWrapper, TreeWrapper};
 use uuid::Uuid;
 
 pub type ActionList = Vec<Action>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SourceRange {
+    pub start_row: usize,
+    pub start_col: usize,
+    pub end_row: usize,
+    pub end_col: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SourceMetadata {
+    pub root: SourceRange,
+    pub do_date: Option<SourceRange>,
+    pub completed_date: Option<SourceRange>,
+    pub is_id_generated: bool,
+}
+
+#[derive(Debug)]
+pub struct ParsedDocument {
+    pub actions: ActionList,
+    pub source_map: HashMap<Uuid, SourceMetadata>,
+}
 
 /// Recurrence rule per RFC 5545 RRULE specification
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
@@ -233,19 +256,31 @@ impl fmt::Display for Action {
 impl TryFrom<TreeWrapper> for ActionList {
     type Error = &'static str;
     fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
+        let parsed: ParsedDocument = value.try_into()?;
+        Ok(parsed.actions)
+    }
+}
+
+impl TryFrom<TreeWrapper> for ParsedDocument {
+    type Error = &'static str;
+    fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
         let root = value.tree.root_node();
         let mut action_list = Vec::new();
+        let mut source_map = HashMap::new();
         let mut cursor = root.walk();
 
         // Iterate through all root actions
         for root_action in root.children(&mut cursor) {
             if root_action.kind() == "root_action" {
                 let wrapper = create_node_wrapper(root_action, value.source.clone());
-                action_list.extend(parse_action_recursive(wrapper, None)?);
+                action_list.extend(parse_action_recursive(wrapper, None, &mut source_map)?);
             }
         }
 
-        Ok(action_list)
+        Ok(ParsedDocument {
+            actions: action_list,
+            source_map,
+        })
     }
 }
 
@@ -285,8 +320,18 @@ pub fn parse_iso8601_datetime(datetime_str: &str) -> Option<DateTime<Local>> {
 pub fn parse_action_recursive(
     node: NodeWrapper,
     parent_id: Option<Uuid>,
+    source_map: &mut HashMap<Uuid, SourceMetadata>,
 ) -> Result<Vec<Action>, &'static str> {
     let mut actions = Vec::new();
+
+    let start_pos = node.node.start_position();
+    let end_pos = node.node.end_position();
+    let action_range = SourceRange {
+        start_row: start_pos.row,
+        start_col: start_pos.column,
+        end_row: end_pos.row,
+        end_col: end_pos.column,
+    };
 
     // Parse state using field access
     let state_node = node
@@ -322,6 +367,9 @@ pub fn parse_action_recursive(
     let mut do_duration = None;
     let mut recurrence = None;
     let mut completed_date_time = None;
+
+    let mut do_date_range = None;
+    let mut completed_date_range = None;
 
     let mut metadata_cursor = node.node.walk();
     for metadata_node in node
@@ -369,6 +417,15 @@ pub fn parse_action_recursive(
                 if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
                     let datetime_str = get_node_text(&datetime_node, &node.source);
                     do_date_time = parse_iso8601_datetime(&datetime_str);
+                    
+                    let start = metadata_node.start_position();
+                    let end = metadata_node.end_position();
+                    do_date_range = Some(SourceRange {
+                        start_row: start.row,
+                        start_col: start.column,
+                        end_row: end.row,
+                        end_col: end.column,
+                    });
                 }
 
                 // Parse duration
@@ -393,6 +450,15 @@ pub fn parse_action_recursive(
                 if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
                     let datetime_str = get_node_text(&datetime_node, &node.source);
                     completed_date_time = parse_iso8601_datetime(&datetime_str);
+
+                    let start = metadata_node.start_position();
+                    let end = metadata_node.end_position();
+                    completed_date_range = Some(SourceRange {
+                        start_row: start.row,
+                        start_col: start.column,
+                        end_row: end.row,
+                        end_col: end.column,
+                    });
                 }
             }
             "id" => {
@@ -408,8 +474,17 @@ pub fn parse_action_recursive(
         }
     }
 
+    let is_id_generated = id.is_none();
     // Generate ID if not present
     let action_id = id.unwrap_or_else(|| Uuid::new_v4());
+
+    // Record metadata
+    source_map.insert(action_id, SourceMetadata {
+        root: action_range,
+        do_date: do_date_range,
+        completed_date: completed_date_range,
+        is_id_generated,
+    });
 
     // Create the action
     actions.push(Action {
@@ -431,7 +506,7 @@ pub fn parse_action_recursive(
     let mut child_cursor = node.node.walk();
     for child_node in node.node.children_by_field_name("child", &mut child_cursor) {
         let child_wrapper = create_node_wrapper(child_node, node.source.clone());
-        actions.extend(parse_action_recursive(child_wrapper, Some(action_id))?);
+        actions.extend(parse_action_recursive(child_wrapper, Some(action_id), source_map)?);
     }
 
     Ok(actions)

@@ -85,15 +85,31 @@ fn format_as_actions(list: &ActionList, config: Option<FormatConfig>) -> Result<
 /// Topiary then handles vertical spacing (newlines, indentation in list mode).
 fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<String, String> {
     use std::fmt::Write as _;
+    use std::collections::HashMap;
 
     let mut output = String::new();
+    
+    // Build a map for O(1) parent lookups
+    let parent_map: HashMap<uuid::Uuid, Option<uuid::Uuid>> = list
+        .iter()
+        .map(|a| (a.id, a.parent_id))
+        .collect();
 
     for action in list {
-        let depth = action.depth(list);
+        // Calculate depth using the map instead of linear search
+        let mut depth = 0;
+        let mut current_parent = action.parent_id;
+        while let Some(parent_id) = current_parent {
+            depth += 1;
+            current_parent = parent_map.get(&parent_id).copied().flatten();
+            
+            // Safety break for cycles (though tree-sitter shouldn't produce them)
+            if depth > 100 { break; }
+        }
 
         // Add depth markers (> for each level of nesting)
         if depth > 0 {
-            output.push_str(&">".repeat(depth.try_into().unwrap()));
+            output.push_str(&">".repeat(depth));
         }
 
         // Serialize action WITH proper spacing (per formatting specification)

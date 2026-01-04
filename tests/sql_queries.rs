@@ -2,8 +2,11 @@
 ///
 /// Tests examples from the canonical SQL schema specification
 
-use clearhead_cli::entities::{Action, ActionList, ActionState};
+use clearhead_cli::entities::{ActionList, ActionState};
 use uuid::Uuid;
+
+mod common;
+use common::ActionBuilder;
 
 fn create_test_actions() -> ActionList {
     let p1_id = Uuid::new_v4();
@@ -13,76 +16,36 @@ fn create_test_actions() -> ActionList {
     let child2_id = Uuid::new_v4();
 
     vec![
-        Action {
-            id: p1_id,
-            parent_id: None,
-            state: ActionState::NotStarted,
-            name: "P1 Action".to_string(),
-            description: Some("High priority task".to_string()),
-            priority: Some(1),
-            context_list: Some(vec!["work".to_string(), "urgent".to_string()]),
-            do_date_time: None,
-            do_duration: None,
-            recurrence: None,
-            completed_date_time: None,
-            story: Some("Sprint 1".to_string()),
-        },
-        Action {
-            id: p2_id,
-            parent_id: None,
-            state: ActionState::InProgress,
-            name: "P2 Action".to_string(),
-            description: None,
-            priority: Some(2),
-            context_list: Some(vec!["work".to_string()]),
-            do_date_time: None,
-            do_duration: None,
-            recurrence: None,
-            completed_date_time: None,
-            story: Some("Sprint 1".to_string()),
-        },
-        Action {
-            id: p3_id,
-            parent_id: None,
-            state: ActionState::Completed,
-            name: "Completed Action".to_string(),
-            description: None,
-            priority: Some(1),
-            context_list: Some(vec!["work".to_string()]),
-            do_date_time: None,
-            do_duration: None,
-            recurrence: None,
-            completed_date_time: None,
-            story: Some("Sprint 1".to_string()),
-        },
-        Action {
-            id: child1_id,
-            parent_id: Some(p2_id),
-            state: ActionState::NotStarted,
-            name: "Child of P2".to_string(),
-            description: None,
-            priority: None,
-            context_list: None,
-            do_date_time: None,
-            do_duration: None,
-            recurrence: None,
-            completed_date_time: None,
-            story: None,
-        },
-        Action {
-            id: child2_id,
-            parent_id: Some(p2_id),
-            state: ActionState::Completed,
-            name: "Completed Child".to_string(),
-            description: None,
-            priority: None,
-            context_list: None,
-            do_date_time: None,
-            do_duration: None,
-            recurrence: None,
-            completed_date_time: None,
-            story: None,
-        },
+        ActionBuilder::new("P1 Action")
+            .id(p1_id)
+            .description("High priority task")
+            .priority(1)
+            .context(vec!["work", "urgent"])
+            .story("Sprint 1")
+            .build(),
+        ActionBuilder::new("P2 Action")
+            .id(p2_id)
+            .state(ActionState::InProgress)
+            .priority(2)
+            .context(vec!["work"])
+            .story("Sprint 1")
+            .build(),
+        ActionBuilder::new("Completed Action")
+            .id(p3_id)
+            .state(ActionState::Completed)
+            .priority(1)
+            .context(vec!["work"])
+            .story("Sprint 1")
+            .build(),
+        ActionBuilder::new("Child of P2")
+            .id(child1_id)
+            .parent(p2_id)
+            .build(),
+        ActionBuilder::new("Completed Child")
+            .id(child2_id)
+            .parent(p2_id)
+            .state(ActionState::Completed)
+            .build(),
     ]
 }
 

@@ -1,6 +1,18 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use clearhead_cli::entities::{Action, ActionState};
+use uuid::Uuid;
+
+/// Helper to read a specific example file content
+pub fn read_example(filename: &str) -> String {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let example_path = manifest_dir.join("examples").join(filename);
+    fs::read_to_string(&example_path)
+        .expect(&format!("Failed to read example file: {}", filename))
+}
+
 pub fn get_examples() -> HashMap<String, String> {
     let mut examples = HashMap::new();
     // Get the project root directory
@@ -31,4 +43,68 @@ pub fn get_examples() -> HashMap<String, String> {
         examples.insert(example_name.to_string(), content);
     }
     return examples;
+}
+
+pub struct ActionBuilder {
+    action: Action,
+}
+
+impl ActionBuilder {
+    pub fn new(name: &str) -> Self {
+        Self {
+            action: Action {
+                id: Uuid::new_v4(),
+                parent_id: None,
+                state: ActionState::NotStarted,
+                name: name.to_string(),
+                description: None,
+                priority: None,
+                context_list: None,
+                do_date_time: None,
+                do_duration: None,
+                recurrence: None,
+                completed_date_time: None,
+                story: None,
+            },
+        }
+    }
+
+    pub fn id(mut self, id: Uuid) -> Self {
+        self.action.id = id;
+        self
+    }
+
+    pub fn parent(mut self, parent_id: Uuid) -> Self {
+        self.action.parent_id = Some(parent_id);
+        self
+    }
+
+    pub fn state(mut self, state: ActionState) -> Self {
+        self.action.state = state;
+        self
+    }
+
+    pub fn description(mut self, desc: &str) -> Self {
+        self.action.description = Some(desc.to_string());
+        self
+    }
+
+    pub fn priority(mut self, priority: u32) -> Self {
+        self.action.priority = Some(priority);
+        self
+    }
+
+    pub fn context(mut self, contexts: Vec<&str>) -> Self {
+        self.action.context_list = Some(contexts.iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    pub fn story(mut self, story: &str) -> Self {
+        self.action.story = Some(story.to_string());
+        self
+    }
+
+    pub fn build(self) -> Action {
+        self.action
+    }
 }

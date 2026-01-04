@@ -5,7 +5,7 @@ pub mod treesitter;
 pub mod sync_utils;
 
 pub mod entities;
-use entities::ActionList;
+use entities::{ActionList, ParsedDocument};
 
 pub mod format;
 pub use format::{format, FormatConfig, FormatStyle, OutputFormat};
@@ -58,6 +58,23 @@ pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList
     };
     let action_list: ActionList = tree_wrapper.try_into().map_err(|e: &str| e.to_string())?;
     Ok(action_list)
+}
+
+/// Parse a .actions file into a ParsedDocument (Actions + Source Metadata)
+///
+/// # Arguments
+/// * `actions` - The .actions file content as a string
+///
+/// # Returns
+/// A ParsedDocument containing the list of actions and their source locations
+pub fn get_parsed_document(actions: &str) -> Result<ParsedDocument, String> {
+    let tree = get_action_list_tree(actions)?;
+    let tree_wrapper = treesitter::TreeWrapper {
+        tree,
+        source: actions.to_string(),
+    };
+    let parsed_doc: ParsedDocument = tree_wrapper.try_into().map_err(|e: &str| e.to_string())?;
+    Ok(parsed_doc)
 }
 
 /// Parse a .actions file and return as JSON Value
