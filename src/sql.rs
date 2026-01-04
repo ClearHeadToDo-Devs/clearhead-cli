@@ -415,6 +415,7 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
             do_duration,
             recurrence,
             completed_date_time,
+            created_date_time: None, // TODO: Update SQL schema to support created_date
             story,
         });
     }

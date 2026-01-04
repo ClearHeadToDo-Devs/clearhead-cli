@@ -154,6 +154,20 @@ clearhead_cli normalize ~/work.actions --write
 clearhead_cli normalize ~/work.actions --no-format --write
 ```
 
+**Archiving**
+Move completed action trees to monthly log files (e.g., `logs/2026-01.actions`). 
+Note: Only entire trees (parent and all descendants) are moved, and only if every action in the tree is completed.
+```bash
+# Archive completed actions from default file
+clearhead_cli archive
+
+# Archive from specific file
+clearhead_cli archive ~/work.actions
+
+# Preview what would be archived
+clearhead_cli archive --dry-run
+```
+
 ### Patching (Smart Sync)
 Update a Primary file based on a modified Secondary view (even if lines were reordered).
 ```bash

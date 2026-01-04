@@ -25,6 +25,7 @@ pub struct SourceMetadata {
     pub line_range: SourceRange,
     pub do_date: Option<SourceRange>,
     pub completed_date: Option<SourceRange>,
+    pub created_date: Option<SourceRange>,
     pub is_id_generated: bool,
 }
 
@@ -90,6 +91,9 @@ pub struct Action {
     #[serde(rename = "completedDate", skip_serializing_if = "Option::is_none")]
     #[autosurgeon(reconcile = "reconcile_date", hydrate = "hydrate_date")]
     pub completed_date_time: Option<DateTime<Local>>,
+    #[serde(rename = "createdDate", skip_serializing_if = "Option::is_none")]
+    #[autosurgeon(reconcile = "reconcile_date", hydrate = "hydrate_date")]
+    pub created_date_time: Option<DateTime<Local>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub story: Option<String>,
 }
@@ -174,6 +178,9 @@ impl Action {
         }
         if let Some(completed_date_time) = &self.completed_date_time {
             write!(f, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M"))?;
+        }
+        if let Some(created_date_time) = &self.created_date_time {
+            write!(f, " ^{}", created_date_time.format("%Y-%m-%dT%H:%M"))?;
         }
         if include_id {
             write!(f, " #{}", self.id)?;
@@ -365,9 +372,11 @@ pub fn parse_action_recursive(
     let mut do_duration = None;
     let mut recurrence = None;
     let mut completed_date_time = None;
+    let mut created_date_time = None;
 
     let mut do_date_range = None;
     let mut completed_date_range = None;
+    let mut created_date_range = None;
 
     let mut metadata_cursor = node.node.walk();
     for metadata_node in node
@@ -483,6 +492,21 @@ pub fn parse_action_recursive(
                     });
                 }
             }
+            "created_date" => {
+                if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
+                    let datetime_str = get_node_text(&datetime_node, &node.source);
+                    created_date_time = parse_iso8601_datetime(&datetime_str);
+
+                    let start = metadata_node.start_position();
+                    let end = metadata_node.end_position();
+                    created_date_range = Some(SourceRange {
+                        start_row: start.row,
+                        start_col: start.column,
+                        end_row: end.row,
+                        end_col: end.column,
+                    });
+                }
+            }
             "id" => {
                 // Get the text of the id node (skip the # prefix)
                 let id_text = get_node_text(&metadata_node, &node.source);
@@ -511,6 +535,7 @@ pub fn parse_action_recursive(
         },
         do_date: do_date_range,
         completed_date: completed_date_range,
+        created_date: created_date_range,
         is_id_generated,
     });
 
@@ -527,6 +552,7 @@ pub fn parse_action_recursive(
         do_duration,
         recurrence,
         completed_date_time,
+        created_date_time,
         story,
     });
 

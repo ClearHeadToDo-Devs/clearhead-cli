@@ -86,7 +86,7 @@ fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
                 });
             }
 
-            // Tree Consistency Rules
+            // Tree Consistency Rules (E012, E013)
             if action.parent_id.is_none() {
                 let children: Vec<_> = doc.actions.iter()
                     .filter(|a| a.parent_id == Some(action.id))
@@ -126,6 +126,60 @@ fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
                     }
                 }
             }
+
+            // Rule 4: Completed action missing date (E001)
+            if action.state == clearhead_cli::entities::ActionState::Completed 
+               && action.completed_date_time.is_none() 
+            {
+                diagnostics.push(Diagnostic {
+                    range: source_range_to_lsp_range(metadata.root),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String("E001".to_string())),
+                    source: Some("clearhead-lsp".to_string()),
+                    message: "Completed action is missing a completion date (E001).".to_string(),
+                    ..Default::default()
+                });
+            }
+
+            // Rule 5: Missing Creation Date (E014)
+            if action.created_date_time.is_none() && metadata.is_id_generated {
+                diagnostics.push(Diagnostic {
+                    range: source_range_to_lsp_range(metadata.root),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String("E014".to_string())),
+                    source: Some("clearhead-lsp".to_string()),
+                    message: "Action is missing a creation date (E014).".to_string(),
+                    ..Default::default()
+                });
+            }
+
+            // Rule 6: Future Creation Date (E015)
+            if let Some(created) = action.created_date_time {
+                if created > Local::now() {
+                    diagnostics.push(Diagnostic {
+                        range: source_range_to_lsp_range(metadata.created_date.unwrap_or(metadata.root)),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        code: Some(NumberOrString::String("E015".to_string())),
+                        source: Some("clearhead-lsp".to_string()),
+                        message: "Creation date cannot be in the future (E015).".to_string(),
+                        ..Default::default()
+                    });
+                }
+
+                // Rule 7: Completion Before Creation (E016)
+                if let Some(completed) = action.completed_date_time {
+                    if completed < created {
+                        diagnostics.push(Diagnostic {
+                            range: source_range_to_lsp_range(metadata.completed_date.unwrap_or(metadata.root)),
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: Some(NumberOrString::String("E016".to_string())),
+                            source: Some("clearhead-lsp".to_string()),
+                            message: "Completion date cannot be before creation date (E016).".to_string(),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
         }
     }
     diagnostics
@@ -135,21 +189,18 @@ fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
 fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<CodeActionOrCommand> {
     let mut actions = Vec::new();
 
-    // Check if cursor intersects with any action that needs hydration
+    // Check if cursor intersects with any action that needs hydration or completion date
     for action in &doc.actions {
         if let Some(metadata) = doc.source_map.get(&action.id) {
-            if metadata.is_id_generated {
-                let action_range = source_range_to_lsp_range(metadata.root);
-                
-                // Simple intersection check: if cursor range overlaps with action range
-                if range.start.line <= action_range.end.line 
-                   && range.end.line >= action_range.start.line 
-                {
+            let action_range = source_range_to_lsp_range(metadata.root);
+            
+            if range.start.line <= action_range.end.line 
+               && range.end.line >= action_range.start.line 
+            {
+                // 1. Hydrate UUID
+                if metadata.is_id_generated {
                     let uuid = Uuid::now_v7();
                     let new_text = format!(" #{}", uuid);
-
-                    // Insert at the end of the action LINE, not the root range
-                    // This ensures the UUID stays on the same line as the action name
                     let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
 
                     let mut changes = std::collections::HashMap::new();
@@ -161,7 +212,7 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                         }],
                     );
 
-                    let code_action = CodeAction {
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
                         title: "Hydrate Action (Add UUID)".to_string(),
                         kind: Some(CodeActionKind::QUICKFIX),
                         edit: Some(WorkspaceEdit {
@@ -169,8 +220,91 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                             ..Default::default()
                         }),
                         ..Default::default()
-                    };
-                    actions.push(CodeActionOrCommand::CodeAction(code_action));
+                    }));
+                }
+
+                // 2. Add Completion Date
+                if action.state == clearhead_cli::entities::ActionState::Completed 
+                   && action.completed_date_time.is_none() 
+                {
+                    let now = Local::now();
+                    let new_text = format!(" %{}", now.format("%Y-%m-%dT%H:%M"));
+                    let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
+
+                    let mut changes = std::collections::HashMap::new();
+                    changes.insert(
+                        uri.clone(),
+                        vec![TextEdit {
+                            range: Range::new(insert_pos, insert_pos),
+                            new_text,
+                        }],
+                    );
+
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: "Set Completion Date (Today)".to_string(),
+                        kind: Some(CodeActionKind::QUICKFIX),
+                        edit: Some(WorkspaceEdit {
+                            changes: Some(changes),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }));
+                }
+
+                // 3. Add Creation Date
+                if action.created_date_time.is_none() {
+                    // Option A: Set to today (for new actions)
+                    let now = Local::now();
+                    let new_text = format!(" ^{}", now.format("%Y-%m-%dT%H:%M"));
+                    let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
+
+                    let mut changes = std::collections::HashMap::new();
+                    changes.insert(
+                        uri.clone(),
+                        vec![TextEdit {
+                            range: Range::new(insert_pos, insert_pos),
+                            new_text,
+                        }],
+                    );
+
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: "Set Creation Date (Today)".to_string(),
+                        kind: Some(CodeActionKind::QUICKFIX),
+                        edit: Some(WorkspaceEdit {
+                            changes: Some(changes),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }));
+
+                    // Option B: Derive from UUID (if not generated)
+                    if !metadata.is_id_generated {
+                        // Extract timestamp from UUID v7
+                        let timestamp_ms = (action.id.as_u128() >> 80) as i64;
+                        if let Some(dt) = DateTime::from_timestamp(timestamp_ms / 1000, ((timestamp_ms % 1000) * 1_000_000) as u32) {
+                            let local_dt: DateTime<Local> = dt.into();
+                            let new_text = format!(" ^{}", local_dt.format("%Y-%m-%dT%H:%M"));
+                            
+                            let mut changes = std::collections::HashMap::new();
+                            changes.insert(
+                                uri.clone(),
+                                vec![TextEdit {
+                                    range: Range::new(insert_pos, insert_pos),
+                                    new_text,
+                                }],
+                            );
+
+                            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                                title: "Derive Creation Date from UUID".to_string(),
+                                kind: Some(CodeActionKind::QUICKFIX),
+                                edit: Some(WorkspaceEdit {
+                                    changes: Some(changes),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }));
+                        }
+                    }
                 }
             }
         }
