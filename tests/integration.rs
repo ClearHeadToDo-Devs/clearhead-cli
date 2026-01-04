@@ -216,10 +216,10 @@ fn test_config_with_custom_default_file() {
 fn test_actions_with_hierarchy() {
     let env = TestEnv::new();
 
-    env.write_actions("test.actions", "[x] Parent\n> [ ] Child\n>> [ ] Grandchild");
+    env.write_actions("test.actions", "[x] Parent\n>[ ] Child\n>>[ ] Grandchild");
     let test_path = env.data_dir.join("test.actions");
 
-    // Actions format should preserve hierarchy
+    // Actions format should preserve hierarchy with proper spacing
     env.command()
         .arg("read")
         .arg(test_path)
@@ -228,8 +228,8 @@ fn test_actions_with_hierarchy() {
         .assert()
         .success()
         .stdout(predicate::str::contains("[x] Parent"))
-        .stdout(predicate::str::contains("> [ ] Child"))
-        .stdout(predicate::str::contains(">> [ ] Grandchild"));
+        .stdout(predicate::str::contains(">[ ] Child"))
+        .stdout(predicate::str::contains(">>[ ] Grandchild"));
 }
 
 // Schema validation tests - verify JSON output matches canonical schema

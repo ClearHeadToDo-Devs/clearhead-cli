@@ -71,21 +71,18 @@ pub fn format(
 
 /// Format ActionList as .actions file format with depth markers
 ///
-/// Uses Topiary for formatting with support for both compact and list styles.
+/// Serializes actions with spec-compliant horizontal and vertical spacing.
+/// Note: Topiary is not used because it cannot preserve horizontal spacing
+/// due to grammar limitations (whitespace is captured as `extras`).
 fn format_as_actions(list: &ActionList, config: Option<FormatConfig>) -> Result<String, String> {
     let config = config.unwrap_or_default();
-
-    // First, serialize the ActionList to unformatted .actions text
-    let unformatted = format_as_actions_basic(list, &config)?;
-
-    // Then format it with Topiary
-    format_with_topiary(&unformatted, &config)
+    format_as_actions_basic(list, &config)
 }
 
-/// Basic serialization of ActionList to .actions format (unformatted)
+/// Basic serialization of ActionList to .actions format with proper spacing
 ///
-/// This produces valid .actions syntax but without any spacing.
-/// Topiary will add all the spacing via the query.
+/// This produces valid .actions syntax with spec-compliant horizontal spacing.
+/// Topiary then handles vertical spacing (newlines, indentation in list mode).
 fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<String, String> {
     use std::fmt::Write as _;
 
@@ -99,36 +96,40 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
             output.push_str(&">".repeat(depth.try_into().unwrap()));
         }
 
-        // Serialize action WITHOUT spacing (Topiary adds it)
-        write!(output, "[{}]{}", action.state, action.name).unwrap();
+        // Serialize action WITH proper spacing (per formatting specification)
+        // Space after state brackets: `[x] Task` not `[x]Task`
+        write!(output, "[{}] {}", action.state, action.name).unwrap();
 
-        // Add metadata without spacing
+        // Add metadata with spec-compliant spacing:
+        // - Space before each metadata token
+        // - Space after $ (description icon only)
+        // - No space after other icons
         if let Some(description) = &action.description {
-            write!(output, "${}", description).unwrap();
+            write!(output, " $ {}", description).unwrap();
         }
         if let Some(priority) = &action.priority {
-            write!(output, "!{}", priority).unwrap();
+            write!(output, " !{}", priority).unwrap();
         }
         if let Some(story) = &action.story {
-            write!(output, "*{}", story).unwrap();
+            write!(output, " *{}", story).unwrap();
         }
         if let Some(context_list) = &action.context_list {
-            write!(output, "+{}", context_list.join(",")).unwrap();
+            write!(output, " +{}", context_list.join(",")).unwrap();
         }
         if let Some(do_date_time) = &action.do_date_time {
-            write!(output, "@{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+            write!(output, " @{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
             if let Some(duration) = action.do_duration {
-                write!(output, "D{}", duration).unwrap();
+                write!(output, " D{}", duration).unwrap();
             }
             if let Some(recurrence) = &action.recurrence {
-                write!(output, "{}", recurrence).unwrap();
+                write!(output, " {}", recurrence).unwrap();
             }
         }
         if let Some(completed_date_time) = &action.completed_date_time {
-            write!(output, "%{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+            write!(output, " %{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
         }
         if config.include_id {
-            write!(output, "#{}", action.id).unwrap();
+            write!(output, " #{}", action.id).unwrap();
         }
         output.push('\n');
     }
@@ -326,13 +327,13 @@ mod tests {
         eprintln!("Formatted output:\n{}", formatted);
 
         assert!(
-            formatted.contains("[x]Root"),
-            "Output doesn't contain '[x]Root': {}",
+            formatted.contains("[x] Root"),
+            "Output doesn't contain '[x] Root' (with space): {}",
             formatted
         );
         assert!(
-            formatted.contains("[ ]Child"),
-            "Output doesn't contain '[ ]Child': {}",
+            formatted.contains(">[ ] Child"),
+            "Output doesn't contain '>[ ] Child' (with space): {}",
             formatted
         );
     }

@@ -4,6 +4,85 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## 2026-01-03
+
+### Changed
+- **Formatter Now Handles All Horizontal Spacing:** Updated `format_as_actions_basic()` to add spec-compliant spacing when serializing from IR to `.actions` format.
+  - Space after state brackets: `[x] Task` not `[x]Task`
+  - Space before all metadata tokens: `Task $ Desc !1` not `Task$Desc!1`
+  - Space after description icon only: `$ Description` not `$Description`
+  - No space after value icons: `!1`, `*Story`, `+Work`, etc.
+  - This change makes the formatter fully compliant with `formatting_specification.md` v1.1.0.
+
+- **Topiary Temporarily Disabled:** Disabled `format_with_topiary()` in the main formatting pipeline because Topiary was stripping the horizontal spacing we're adding.
+  - Root cause: Tree-sitter grammar uses `extras: [/\s/]` which makes whitespace invisible to the AST.
+  - Topiary cannot preserve or control horizontal spacing due to this grammar limitation.
+  - Our IR-based formatter now handles both horizontal and vertical spacing directly.
+  - Note: `format_with_topiary()` still exists and is used by LSP (see "Known Issues" below).
+
+### Fixed
+- **Formatter Now Normalizes Spacing:** Badly spaced input like `[x]Task$desc!1*Story` now correctly formats to `[x] Task $ desc !1 *Story #<uuid>`.
+- **Updated Integration Test:** Fixed `test_actions_with_hierarchy` to expect properly spaced output (with space after state, no space after child markers).
+
+### Known Issues & Decisions Needed
+
+#### 1. Topiary Dependency Should Probably Be Removed
+**Current State:**
+- Topiary cannot handle horizontal spacing due to grammar limitations (whitespace is `extras`)
+- List mode never worked (compact and list produce identical output)
+- We're now doing all formatting in `format_as_actions_basic()` without Topiary
+- Topiary adds ~50 crates to dependency tree for zero benefit
+
+**Decision Needed:**
+- [ ] **Option A:** Remove Topiary entirely (recommended)
+  - Remove `topiary-core` and `topiary-tree-sitter-facade` from `Cargo.toml`
+  - Remove `format_with_topiary()` function
+  - Update LSP to use our IR-based formatter instead
+  - Remove `queries/actions/topiary.scm` from tree-sitter-actions repo
+  - Benefits: Smaller binary, faster compile, cleaner architecture
+
+- [ ] **Option B:** Keep Topiary but document it's broken
+  - Keep dependency for potential future use
+  - Document grammar would need major refactor for Topiary to work
+  - Continue not using it in main formatting pipeline
+
+#### 2. LSP Formatting is Broken
+**Current State:**
+- `src/lsp.rs:426` still calls `format_with_topiary(&doc.text, &config)` directly
+- This means LSP format command strips horizontal spacing
+- LSP is not using the new spec-compliant formatter
+
+**Decision Needed:**
+- [ ] Fix LSP to use IR-based formatter
+  - Parse text → ActionList IR → format_as_actions() → formatted text
+  - Or create a new `format_text()` helper that does this pipeline
+  - Benefits: LSP formatting would actually work correctly
+
+#### 3. List Mode Not Implemented
+**Current State:**
+- `FormatConfig` has a `style: FormatStyle` field with `Compact` and `List` variants
+- List mode is supposed to put metadata on separate indented lines
+- Currently, both modes produce identical output (compact format)
+- Topiary query never implemented list mode correctly
+
+**Decision Needed:**
+- [ ] Implement list mode in `format_as_actions_basic()`
+  - Check `config.style` and format accordingly
+  - Compact: `[x] Task $ Desc !1 *Story`
+  - List:
+    ```
+    [x] Task
+        $ Desc
+        !1
+        *Story
+    ```
+  - Would require modifying the serialization logic to add newlines and indentation
+
+- [ ] Or remove list mode entirely if not needed
+  - Remove `FormatStyle` enum
+  - Simplify `FormatConfig` to just `indent_width` and `include_id`
+  - Update specs to only define compact mode
+
 ## 2026-01-01
 
 ### Added
