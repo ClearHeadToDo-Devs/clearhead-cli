@@ -657,9 +657,16 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = compute_diagnostics(&parsed);
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].severity, Some(DiagnosticSeverity::WARNING));
-        assert!(diagnostics[0].message.contains("missing a UUID"));
+        assert_eq!(diagnostics.len(), 2);
+        // Find the missing-id diagnostic
+        let uuid_diag = diagnostics.iter().find(|d| d.code == Some(NumberOrString::String("missing-id".to_string()))).unwrap();
+        assert_eq!(uuid_diag.severity, Some(DiagnosticSeverity::WARNING));
+        assert!(uuid_diag.message.contains("missing a UUID"));
+
+        // Find the E014 diagnostic
+        let created_diag = diagnostics.iter().find(|d| d.code == Some(NumberOrString::String("E014".to_string()))).unwrap();
+        assert_eq!(created_diag.severity, Some(DiagnosticSeverity::ERROR));
+        assert!(created_diag.message.contains("missing a creation date"));
     }
 
     #[test]

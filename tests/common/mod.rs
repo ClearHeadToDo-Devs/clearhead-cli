@@ -64,6 +64,7 @@ impl ActionBuilder {
                 do_duration: None,
                 recurrence: None,
                 completed_date_time: None,
+                created_date_time: None,
                 story: None,
             },
         }

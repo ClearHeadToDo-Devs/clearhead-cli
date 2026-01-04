@@ -498,6 +498,7 @@ mod tests {
             do_duration: None,
             recurrence: None,
             completed_date_time: None,
+            created_date_time: None,
             story: Some("Test Story".to_string()),
         });
 
@@ -546,6 +547,7 @@ mod tests {
             do_duration: None,
             recurrence: None,
             completed_date_time: None,
+            created_date_time: None,
             story: Some("Epic Story".to_string()),
         });
 
@@ -562,6 +564,7 @@ mod tests {
             do_duration: None,
             recurrence: None,
             completed_date_time: None,
+            created_date_time: None,
             story: None,
         });
 
@@ -626,6 +629,7 @@ mod tests {
             do_duration: None,
             recurrence: None,
             completed_date_time: None,
+            created_date_time: None,
             story: None,
         });
 
@@ -641,6 +645,7 @@ mod tests {
             do_duration: None,
             recurrence: None,
             completed_date_time: None,
+            created_date_time: None,
             story: None,
         });
 
@@ -691,6 +696,7 @@ mod tests {
             do_duration: Some(60),
             recurrence: Some(recurrence.clone()),
             completed_date_time: None,
+            created_date_time: None,
             story: None,
         });
 

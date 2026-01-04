@@ -778,6 +778,7 @@ mod tests {
             do_duration: Some(60),
             recurrence: Some(recurrence),
             completed_date_time: None,
+            created_date_time: None,
             story: None,
         };
         
@@ -824,6 +825,7 @@ mod tests {
             do_duration: None,
             recurrence: Some(recurrence),
             completed_date_time: None,
+            created_date_time: None,
             story: None,
         };
 

@@ -16,6 +16,7 @@ expression: actions
     doDateTime: Some("2019-01-01T00:01:00-08:00"),
     doDuration: Some(120),
     completedDate: Some("2019-03-01T02:01:00-08:00"),
+    createdDate: Some("2018-12-31T23:59:00-08:00"),
     story: Some("Test Story"),
   ),
   Action(
