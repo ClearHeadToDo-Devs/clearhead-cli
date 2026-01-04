@@ -1,0 +1,8 @@
+
+>[ ] No parent for this child
+[ ] Valid parent
+>>[ ] Skipped depth 1 - orphaned
+
+[ ] Another parent
+>[ ] Valid child
+>>>[ ] Skipped depth 2 - orphaned

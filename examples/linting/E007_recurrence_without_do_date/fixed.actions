@@ -1,0 +1,4 @@
+
+[ ] Daily standup @2026-01-10T09:00 R:FREQ=DAILY
+[ ] Weekly review @2026-01-10T16:00 R:FREQ=WEEKLY;BYDAY=FR
+[ ] Monthly report !1 @2026-02-01 R:FREQ=MONTHLY;BYMONTHDAY=1

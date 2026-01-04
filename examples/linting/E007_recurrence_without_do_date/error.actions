@@ -1,0 +1,4 @@
+
+[ ] Daily standup R:FREQ=DAILY
+[ ] Weekly review R:FREQ=WEEKLY;BYDAY=FR
+[ ] Monthly report R:FREQ=MONTHLY;BYMONTHDAY=1 !1

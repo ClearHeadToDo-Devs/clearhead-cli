@@ -1,0 +1,11 @@
+
+[ ] Parent for this child
+>[ ] Now has a parent
+[ ] Valid parent
+>[ ] Proper depth 1
+>>[ ] Now at proper depth 2
+
+[ ] Another parent
+>[ ] Valid child
+>>[ ] Proper depth 2
+>>>[ ] Proper depth 3

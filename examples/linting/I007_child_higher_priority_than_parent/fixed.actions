@@ -1,0 +1,7 @@
+
+[ ] Parent task !1
+>[ ] High priority child !2
+>[ ] Another urgent child !3
+
+[ ] Low priority parent !1
+>[ ] Critical subtask !2

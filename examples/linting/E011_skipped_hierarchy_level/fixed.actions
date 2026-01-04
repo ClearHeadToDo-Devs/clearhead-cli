@@ -1,0 +1,15 @@
+
+[ ] Root action
+>[ ] Proper depth 1
+>>[ ] Proper depth 2
+
+[ ] Another root
+>[ ] Depth 1
+>>[ ] Depth 2
+>>>[ ] Depth 3
+
+[ ] Third root
+>[ ] Depth 1
+>>[ ] Depth 2
+>>>[ ] Depth 3
+>>>>[ ] Depth 4

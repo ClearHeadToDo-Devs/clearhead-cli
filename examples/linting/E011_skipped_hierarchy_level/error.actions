@@ -1,0 +1,10 @@
+
+[ ] Root action
+>>[ ] Skipped depth 1, went straight to 2
+
+[ ] Another root
+>[ ] Depth 1
+>>>[ ] Skipped depth 2, went to 3
+
+[ ] Third root
+>>>>[ ] Jumped all the way to depth 4
