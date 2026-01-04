@@ -1,6 +1,7 @@
 use chrono::{DateTime, Local};
 use clearhead_cli::get_parsed_document;
 use clearhead_cli::entities::{ParsedDocument, SourceRange};
+use clearhead_cli::lint::{lint_document, LintDiagnostic, LintSeverity};
 use dashmap::DashMap;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
@@ -67,122 +68,34 @@ fn source_range_to_lsp_range(src: SourceRange) -> Range {
     }
 }
 
-/// Compute diagnostics using the parsed document model
-fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-
-    for action in &doc.actions {
-        if let Some(metadata) = doc.source_map.get(&action.id) {
-            // Rule 1: Missing UUID
-            if metadata.is_id_generated {
-                diagnostics.push(Diagnostic {
-                    range: source_range_to_lsp_range(metadata.root),
-                    severity: Some(DiagnosticSeverity::WARNING),
-                    code: Some(NumberOrString::String("missing-id".to_string())),
-                    source: Some("clearhead-lsp".to_string()),
-                    message: "Action is missing a UUID. Use 'Hydrate Action' to add one."
-                        .to_string(),
-                    ..Default::default()
-                });
-            }
-
-            // Tree Consistency Rules (E012, E013)
-            if action.parent_id.is_none() {
-                let children: Vec<_> = doc.actions.iter()
-                    .filter(|a| a.parent_id == Some(action.id))
-                    .collect();
-
-                if !children.is_empty() {
-                    let all_children_completed = children.iter()
-                        .all(|c| c.state == clearhead_cli::entities::ActionState::Completed);
-                    let any_children_uncompleted = children.iter()
-                        .any(|c| c.state != clearhead_cli::entities::ActionState::Completed);
-                    let is_completed = action.state == clearhead_cli::entities::ActionState::Completed;
-
-                    // Rule 2: Completed parent with uncompleted children (E012)
-                    if is_completed && any_children_uncompleted {
-                        diagnostics.push(Diagnostic {
-                            range: source_range_to_lsp_range(metadata.root),
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            code: Some(NumberOrString::String("E012".to_string())),
-                            source: Some("clearhead-lsp".to_string()),
-                            message: "Parent is completed but some children are still active (E012)."
-                                .to_string(),
-                            ..Default::default()
-                        });
-                    }
-
-                    // Rule 3: Uncompleted parent with all children completed (E013)
-                    if !is_completed && all_children_completed {
-                        diagnostics.push(Diagnostic {
-                            range: source_range_to_lsp_range(metadata.root),
-                            severity: Some(DiagnosticSeverity::WARNING),
-                            code: Some(NumberOrString::String("E013".to_string())),
-                            source: Some("clearhead-lsp".to_string()),
-                            message: "All children are completed. Should this parent be completed too? (E013)"
-                                .to_string(),
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
-
-            // Rule 4: Completed action missing date (E001)
-            if action.state == clearhead_cli::entities::ActionState::Completed 
-               && action.completed_date_time.is_none() 
-            {
-                diagnostics.push(Diagnostic {
-                    range: source_range_to_lsp_range(metadata.root),
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    code: Some(NumberOrString::String("E001".to_string())),
-                    source: Some("clearhead-lsp".to_string()),
-                    message: "Completed action is missing a completion date (E001).".to_string(),
-                    ..Default::default()
-                });
-            }
-
-            // Rule 5: Missing Creation Date (E014)
-            if action.created_date_time.is_none() && metadata.is_id_generated {
-                diagnostics.push(Diagnostic {
-                    range: source_range_to_lsp_range(metadata.root),
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    code: Some(NumberOrString::String("E014".to_string())),
-                    source: Some("clearhead-lsp".to_string()),
-                    message: "Action is missing a creation date (E014).".to_string(),
-                    ..Default::default()
-                });
-            }
-
-            // Rule 6: Future Creation Date (E015)
-            if let Some(created) = action.created_date_time {
-                if created > Local::now() {
-                    diagnostics.push(Diagnostic {
-                        range: source_range_to_lsp_range(metadata.created_date.unwrap_or(metadata.root)),
-                        severity: Some(DiagnosticSeverity::ERROR),
-                        code: Some(NumberOrString::String("E015".to_string())),
-                        source: Some("clearhead-lsp".to_string()),
-                        message: "Creation date cannot be in the future (E015).".to_string(),
-                        ..Default::default()
-                    });
-                }
-
-                // Rule 7: Completion Before Creation (E016)
-                if let Some(completed) = action.completed_date_time {
-                    if completed < created {
-                        diagnostics.push(Diagnostic {
-                            range: source_range_to_lsp_range(metadata.completed_date.unwrap_or(metadata.root)),
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            code: Some(NumberOrString::String("E016".to_string())),
-                            source: Some("clearhead-lsp".to_string()),
-                            message: "Completion date cannot be before creation date (E016).".to_string(),
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
-        }
+/// Convert LintSeverity to LSP DiagnosticSeverity
+fn lint_severity_to_lsp(severity: LintSeverity) -> DiagnosticSeverity {
+    match severity {
+        LintSeverity::Error => DiagnosticSeverity::ERROR,
+        LintSeverity::Warning => DiagnosticSeverity::WARNING,
+        LintSeverity::Info => DiagnosticSeverity::INFORMATION,
     }
-    diagnostics
+}
+
+/// Convert LintDiagnostic to LSP Diagnostic
+fn lint_diagnostic_to_lsp(diag: LintDiagnostic) -> Diagnostic {
+    Diagnostic {
+        range: source_range_to_lsp_range(diag.range),
+        severity: Some(lint_severity_to_lsp(diag.severity)),
+        code: Some(NumberOrString::String(diag.code)),
+        source: Some("clearhead-lsp".to_string()),
+        message: diag.message,
+        ..Default::default()
+    }
+}
+
+/// Compute diagnostics using the parsed document model
+/// This is a thin adapter that delegates to the pure lint module
+fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
+    lint_document(doc)
+        .into_iter()
+        .map(lint_diagnostic_to_lsp)
+        .collect()
 }
 
 /// Compute code actions using the parsed document model
@@ -648,33 +561,19 @@ fn get_node_at_position(tree: &Tree, position: Position) -> Option<tree_sitter::
 mod tests {
     use super::*;
 
-    // Tests need updating because compute_diagnostics now takes ParsedDocument
-    // We can rely on get_parsed_document in tests.
+    // Integration tests for LSP adapter layer
+    // Core linting logic is tested in src/lint.rs
 
     #[test]
-    fn test_diagnostics_missing_id() {
+    fn test_lsp_adapter_converts_diagnostics() {
         let text = "[ ] This action has no ID";
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = compute_diagnostics(&parsed);
         assert_eq!(diagnostics.len(), 2);
-        // Find the missing-id diagnostic
-        let uuid_diag = diagnostics.iter().find(|d| d.code == Some(NumberOrString::String("missing-id".to_string()))).unwrap();
-        assert_eq!(uuid_diag.severity, Some(DiagnosticSeverity::WARNING));
-        assert!(uuid_diag.message.contains("missing a UUID"));
 
-        // Find the E014 diagnostic
-        let created_diag = diagnostics.iter().find(|d| d.code == Some(NumberOrString::String("E014".to_string()))).unwrap();
-        assert_eq!(created_diag.severity, Some(DiagnosticSeverity::ERROR));
-        assert!(created_diag.message.contains("missing a creation date"));
-    }
-
-    #[test]
-    fn test_diagnostics_has_id() {
-        let text = "[ ] This action has an ID #01942d99-4c27-77f6-9316-107024843939";
-        let parsed = get_parsed_document(text).unwrap();
-
-        let diagnostics = compute_diagnostics(&parsed);
-        assert_eq!(diagnostics.len(), 0);
+        // Verify LSP conversion
+        assert!(diagnostics.iter().all(|d| d.source == Some("clearhead-lsp".to_string())));
+        assert!(diagnostics.iter().all(|d| d.code.is_some()));
     }
 }
