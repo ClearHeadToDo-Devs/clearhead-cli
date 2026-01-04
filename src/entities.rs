@@ -27,6 +27,7 @@ pub struct SourceMetadata {
     pub completed_date: Option<SourceRange>,
     pub created_date: Option<SourceRange>,
     pub is_id_generated: bool,
+    pub raw_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -377,6 +378,7 @@ pub fn parse_action_recursive(
     let mut do_date_range = None;
     let mut completed_date_range = None;
     let mut created_date_range = None;
+    let mut raw_id = None;
 
     let mut metadata_cursor = node.node.walk();
     for metadata_node in node
@@ -511,8 +513,11 @@ pub fn parse_action_recursive(
                 // Get the text of the id node (skip the # prefix)
                 let id_text = get_node_text(&metadata_node, &node.source);
                 if id_text.starts_with('#') {
-                    if let Ok(uuid) = Uuid::parse_str(id_text[1..].trim()) {
+                    let id_val = id_text[1..].trim();
+                    if let Ok(uuid) = Uuid::parse_str(id_val) {
                         id = Some(uuid);
+                    } else {
+                        raw_id = Some(id_val.to_string());
                     }
                 }
             }
@@ -537,6 +542,7 @@ pub fn parse_action_recursive(
         completed_date: completed_date_range,
         created_date: created_date_range,
         is_id_generated,
+        raw_id,
     });
 
     // Create the action

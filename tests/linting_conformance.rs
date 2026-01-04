@@ -52,7 +52,7 @@ fn test_linting_error_detection() {
     // List of currently implemented rules
     // TODO: Remove this filter once all rules are implemented
     let implemented_rules = vec![
-        "E001", "E012", "E013", "E014", "E015", "E016"
+        "E001", "E002", "E003", "E004", "E005", "E008", "E012", "E013", "E014", "E015", "E016"
     ];
 
     let examples = get_linting_examples();
