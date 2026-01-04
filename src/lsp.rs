@@ -98,6 +98,33 @@ fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// Create a quick fix code action that inserts text at a position
+fn create_quick_fix(
+    uri: Uri,
+    pos: Position,
+    new_text: String,
+    title: String,
+) -> CodeActionOrCommand {
+    let mut changes = std::collections::HashMap::new();
+    changes.insert(
+        uri,
+        vec![TextEdit {
+            range: Range::new(pos, pos),
+            new_text,
+        }],
+    );
+
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title,
+        kind: Some(CodeActionKind::QUICKFIX),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..Default::default()
+        }),
+        ..Default::default()
+    })
+}
+
 /// Compute code actions using the parsed document model
 fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<CodeActionOrCommand> {
     let mut actions = Vec::new();
@@ -110,30 +137,17 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
             if range.start.line <= action_range.end.line 
                && range.end.line >= action_range.start.line 
             {
+                let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
+
                 // 1. Hydrate UUID
                 if metadata.is_id_generated {
                     let uuid = Uuid::now_v7();
-                    let new_text = format!(" #{}", uuid);
-                    let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
-
-                    let mut changes = std::collections::HashMap::new();
-                    changes.insert(
+                    actions.push(create_quick_fix(
                         uri.clone(),
-                        vec![TextEdit {
-                            range: Range::new(insert_pos, insert_pos),
-                            new_text,
-                        }],
-                    );
-
-                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-                        title: "Hydrate Action (Add UUID)".to_string(),
-                        kind: Some(CodeActionKind::QUICKFIX),
-                        edit: Some(WorkspaceEdit {
-                            changes: Some(changes),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }));
+                        insert_pos,
+                        format!(" #{}", uuid),
+                        "Hydrate Action (Add UUID)".to_string(),
+                    ));
                 }
 
                 // 2. Add Completion Date
@@ -141,54 +155,24 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                    && action.completed_date_time.is_none() 
                 {
                     let now = Local::now();
-                    let new_text = format!(" %{}", now.format("%Y-%m-%dT%H:%M"));
-                    let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
-
-                    let mut changes = std::collections::HashMap::new();
-                    changes.insert(
+                    actions.push(create_quick_fix(
                         uri.clone(),
-                        vec![TextEdit {
-                            range: Range::new(insert_pos, insert_pos),
-                            new_text,
-                        }],
-                    );
-
-                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-                        title: "Set Completion Date (Today)".to_string(),
-                        kind: Some(CodeActionKind::QUICKFIX),
-                        edit: Some(WorkspaceEdit {
-                            changes: Some(changes),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }));
+                        insert_pos,
+                        format!(" %{}", now.format("%Y-%m-%dT%H:%M")),
+                        "Set Completion Date (Today)".to_string(),
+                    ));
                 }
 
                 // 3. Add Creation Date
                 if action.created_date_time.is_none() {
                     // Option A: Set to today (for new actions)
                     let now = Local::now();
-                    let new_text = format!(" ^{}", now.format("%Y-%m-%dT%H:%M"));
-                    let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
-
-                    let mut changes = std::collections::HashMap::new();
-                    changes.insert(
+                    actions.push(create_quick_fix(
                         uri.clone(),
-                        vec![TextEdit {
-                            range: Range::new(insert_pos, insert_pos),
-                            new_text,
-                        }],
-                    );
-
-                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-                        title: "Set Creation Date (Today)".to_string(),
-                        kind: Some(CodeActionKind::QUICKFIX),
-                        edit: Some(WorkspaceEdit {
-                            changes: Some(changes),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }));
+                        insert_pos,
+                        format!(" ^{}", now.format("%Y-%m-%dT%H:%M")),
+                        "Set Creation Date (Today)".to_string(),
+                    ));
 
                     // Option B: Derive from UUID (if not generated)
                     if !metadata.is_id_generated {
@@ -196,26 +180,12 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                         let timestamp_ms = (action.id.as_u128() >> 80) as i64;
                         if let Some(dt) = DateTime::from_timestamp(timestamp_ms / 1000, ((timestamp_ms % 1000) * 1_000_000) as u32) {
                             let local_dt: DateTime<Local> = dt.into();
-                            let new_text = format!(" ^{}", local_dt.format("%Y-%m-%dT%H:%M"));
-                            
-                            let mut changes = std::collections::HashMap::new();
-                            changes.insert(
+                            actions.push(create_quick_fix(
                                 uri.clone(),
-                                vec![TextEdit {
-                                    range: Range::new(insert_pos, insert_pos),
-                                    new_text,
-                                }],
-                            );
-
-                            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-                                title: "Derive Creation Date from UUID".to_string(),
-                                kind: Some(CodeActionKind::QUICKFIX),
-                                edit: Some(WorkspaceEdit {
-                                    changes: Some(changes),
-                                    ..Default::default()
-                                }),
-                                ..Default::default()
-                            }));
+                                insert_pos,
+                                format!(" ^{}", local_dt.format("%Y-%m-%dT%H:%M")),
+                                "Derive Creation Date from UUID".to_string(),
+                            ));
                         }
                     }
                 }
@@ -224,7 +194,6 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
     }
     actions
 }
-
 /// Compute inlay hints using the parsed document model
 fn compute_inlay_hints(
     doc: &ParsedDocument,
