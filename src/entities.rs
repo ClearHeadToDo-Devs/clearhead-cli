@@ -526,8 +526,15 @@ pub fn parse_action_recursive(
     }
 
     let is_id_generated = id.is_none();
-    // Generate ID if not present
-    let action_id = id.unwrap_or_else(|| Uuid::new_v4());
+
+    // Generate ID if not present (using UUIDv7 for embedded timestamp)
+    let action_id = id.unwrap_or_else(|| Uuid::now_v7());
+
+    // When generating an ID, also inject created_date if missing
+    // This makes logical sense: the action is "created" when it gets its formal ID
+    if is_id_generated && created_date_time.is_none() {
+        created_date_time = Some(chrono::Local::now());
+    }
 
     // Record metadata
     source_map.insert(action_id, SourceMetadata {

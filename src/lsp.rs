@@ -661,7 +661,8 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = compute_diagnostics(&parsed);
-        assert_eq!(diagnostics.len(), 2);
+        // Only 1 diagnostic - created date is auto-injected when ID is generated
+        assert_eq!(diagnostics.len(), 1);
 
         // Verify LSP conversion
         assert!(diagnostics.iter().all(|d| d.source == Some("clearhead-lsp".to_string())));

@@ -4,9 +4,10 @@ use predicates::prelude::*;
 
 #[test]
 fn test_lint_cli_errors() -> Result<(), Box<dyn std::error::Error>> {
-    let file_content = "[ ] Action with no ID and invalid date @2025-99-99";
+    // Test with a real error: completed action missing completion date
+    let file_content = "[x] Completed action with no completion date";
     let file_path = "test_lint_error.actions";
-    
+
     fs::write(file_path, file_content)?;
 
     let mut cmd = Command::cargo_bin("clearhead_cli")?;
@@ -16,7 +17,7 @@ fn test_lint_cli_errors() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert()
         .failure()
-        .stdout(predicate::str::contains("E014"))
+        .stdout(predicate::str::contains("E001"))
         .stdout(predicate::str::contains("ERROR"));
 
     fs::remove_file(file_path)?;

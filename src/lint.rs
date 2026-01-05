@@ -154,12 +154,12 @@ pub fn lint_document(doc: &ParsedDocument) -> Vec<LintDiagnostic> {
                 }
             }
 
-            // E014: Missing Creation Date
+            // E014: Missing Creation Date (Warning - style preference, not correctness)
             let is_v7 = !metadata.is_id_generated && action.id.get_variant() == uuid::Variant::RFC4122 && action.id.get_version_num() == 7;
             if action.created_date_time.is_none() && !is_v7 {
-                diagnostics.push(LintDiagnostic::error(
+                diagnostics.push(LintDiagnostic::warning(
                     "E014",
-                    "Action is missing a creation date (E014).".to_string(),
+                    "Action is missing a creation date. Consider adding ^ or using UUIDv7 (E014).".to_string(),
                     metadata.root,
                 ));
             }
@@ -201,8 +201,8 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        // missing-id (Info) + E014 (Error)
-        assert_eq!(diagnostics.len(), 2);
+        // Only missing-id (Info) - created date is auto-injected when ID is generated
+        assert_eq!(diagnostics.len(), 1);
 
         // Find the missing-id diagnostic
         let uuid_diag = diagnostics
@@ -211,11 +211,6 @@ mod tests {
             .unwrap();
         assert_eq!(uuid_diag.severity, LintSeverity::Info);
         assert!(uuid_diag.message.contains("missing a UUID"));
-
-        // Find the E014 diagnostic
-        let created_diag = diagnostics.iter().find(|d| d.code == "E014").unwrap();
-        assert_eq!(created_diag.severity, LintSeverity::Error);
-        assert!(created_diag.message.contains("missing a creation date"));
     }
 
     #[test]

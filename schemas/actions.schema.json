@@ -83,6 +83,11 @@
           "description": "ISO 8601 formatted completion date/time",
           "pattern": "[^\\n!$*+@#>]+"
         },
+        "createdDate": {
+          "type": "string",
+          "description": "ISO 8601 formatted creation date/time",
+          "pattern": "[^\\n!$*+@%#>]+"
+        },
         "id": {
           "type": "string",
           "description": "UUIDv7 identifier",

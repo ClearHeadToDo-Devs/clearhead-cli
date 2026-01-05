@@ -7,16 +7,19 @@ expression: actions
     id: "[uuid]",
     state: not_started,
     name: "First root task",
+    createdDate: Some("2026-01-04T22:27:53.704642333-08:00"),
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Child of first",
+    createdDate: Some("2026-01-04T22:27:53.704660445-08:00"),
   ),
   Action(
     id: "[uuid]",
     state: not_started,
     name: "Second root task",
+    createdDate: Some("2026-01-04T22:27:53.704669137-08:00"),
   ),
 ]

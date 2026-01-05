@@ -1,4 +1,3 @@
-
-[ ] New task without creation date
-[ ] Another task !1 @2026-01-10
-[ ] Task with metadata $ But no creation date +work
+[ ] Task with UUIDv4 (not v7) but no creation date #550e8400-e29b-41d4-a716-446655440000
+[ ] Another task with v4 UUID !1 @2026-01-10 #550e8400-e29b-41d4-a716-446655440001
+[ ] Task with v4 UUID and metadata $ But no creation date +work #550e8400-e29b-41d4-a716-446655440002

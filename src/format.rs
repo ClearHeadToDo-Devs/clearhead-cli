@@ -1,6 +1,6 @@
 use crate::entities::{Action, ActionList};
 use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Output format options for ActionList serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,16 +98,14 @@ fn format_as_actions(list: &ActionList, config: Option<FormatConfig>) -> Result<
 /// This produces valid .actions syntax with spec-compliant horizontal spacing.
 /// Topiary then handles vertical spacing (newlines, indentation in list mode).
 fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<String, String> {
-    use std::fmt::Write as _;
     use std::collections::HashMap;
+    use std::fmt::Write as _;
 
     let mut output = String::new();
-    
+
     // Build a map for O(1) parent lookups
-    let parent_map: HashMap<uuid::Uuid, Option<uuid::Uuid>> = list
-        .iter()
-        .map(|a| (a.id, a.parent_id))
-        .collect();
+    let parent_map: HashMap<uuid::Uuid, Option<uuid::Uuid>> =
+        list.iter().map(|a| (a.id, a.parent_id)).collect();
 
     for action in list {
         // Calculate depth using the map instead of linear search
@@ -116,9 +114,11 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
         while let Some(parent_id) = current_parent {
             depth += 1;
             current_parent = parent_map.get(&parent_id).copied().flatten();
-            
+
             // Safety break for cycles (though tree-sitter shouldn't produce them)
-            if depth > 100 { break; }
+            if depth > 100 {
+                break;
+            }
         }
 
         // Add leading indentation based on depth
@@ -136,16 +136,19 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
 
         // Serialize action WITH proper spacing (per formatting specification)
         // Space after state brackets: `[x] Task` not `[x]Task`
-        
+
         if config.style == FormatStyle::List {
             // In List mode, we handle the metadata lines manually to control indentation
             write!(output, "[{}] {}", action.state, action.name).unwrap();
-            
+
             let indent_char = match config.indent_style {
                 IndentStyle::Spaces => " ",
                 IndentStyle::Tabs => "\t",
             };
-            let metadata_indent = format!("\n{}", indent_char.repeat((depth + 1) * config.indent_width));
+            let metadata_indent = format!(
+                "\n{}",
+                indent_char.repeat((depth + 1) * config.indent_width)
+            );
 
             if let Some(description) = &action.description {
                 output.push_str(&metadata_indent);
@@ -178,6 +181,10 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
             if let Some(completed_date_time) = &action.completed_date_time {
                 output.push_str(&metadata_indent);
                 write!(output, "%{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
+            }
+            if let Some(created_date_time) = &action.created_date_time {
+                output.push_str(&metadata_indent);
+                write!(output, "^{}", created_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
             }
             if config.include_id {
                 output.push_str(&metadata_indent);
@@ -405,7 +412,11 @@ mod tests {
     fn test_indentation() {
         let mut actions = vec![create_test_action("Root", ActionState::NotStarted, None)];
         let root_id = actions[0].id;
-        actions.push(create_test_action("Child", ActionState::NotStarted, Some(root_id)));
+        actions.push(create_test_action(
+            "Child",
+            ActionState::NotStarted,
+            Some(root_id),
+        ));
 
         // Test Spaces
         let config = FormatConfig {
@@ -430,14 +441,15 @@ mod tests {
         // Test List Style Indent
         let mut actions_meta = vec![create_test_action("Root", ActionState::NotStarted, None)];
         actions_meta[0].description = Some("Desc".to_string());
-        
+
         let config_list = FormatConfig {
             style: FormatStyle::List,
             indent_style: IndentStyle::Spaces,
             indent_width: 4,
             ..Default::default()
         };
-        let formatted_list = format(&actions_meta, OutputFormat::Actions, Some(config_list)).unwrap();
+        let formatted_list =
+            format(&actions_meta, OutputFormat::Actions, Some(config_list)).unwrap();
         assert!(formatted_list.contains("\n    $ Desc"));
     }
 }
