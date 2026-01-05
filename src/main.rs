@@ -307,77 +307,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let content = fs::read_to_string(&input_file)
                 .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
             
-            let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-
-            // 1. Identify "archive-ready" root actions
-            // A root action is archive-ready if it is completed AND all its descendants are completed
-            let mut archive_root_ids = std::collections::HashSet::new();
-            
-            for action in &all_actions {
-                if action.parent_id.is_none() {
-                    // Check if entire tree is completed
-                    let mut tree_completed = action.state == clearhead_cli::entities::ActionState::Completed;
-                    
-                    if tree_completed {
-                        // Check descendants
-                        let mut stack = vec![action.id];
-                        while let Some(current_id) = stack.pop() {
-                            let children: Vec<_> = all_actions.iter().filter(|a| a.parent_id == Some(current_id)).collect();
-                            for child in children {
-                                if child.state != clearhead_cli::entities::ActionState::Completed {
-                                    tree_completed = false;
-                                    break;
-                                }
-                                stack.push(child.id);
-                            }
-                            if !tree_completed { break; }
-                        }
-                    }
-
-                    if tree_completed {
-                        archive_root_ids.insert(action.id);
-                    }
-                }
-            }
-
-            if archive_root_ids.is_empty() {
-                println!("No completed action trees to archive. Note: All children must be completed to archive a parent.");
-                return Ok(());
-            }
-
-            // 2. Separate actions into active and archived
-            let mut active_actions = Vec::new();
-            let mut archived_actions = Vec::new();
-
-            // Clone for lookups during separation
-            let lookup_list = all_actions.clone();
-
-            for action in all_actions {
-                // Find root of this action
-                let mut current_root_id = action.id;
-                let mut current_parent_id = action.parent_id;
-                
-                // Track path to avoid infinite loops in broken data
-                let mut path = std::collections::HashSet::new();
-                path.insert(action.id);
-
-                while let Some(pid) = current_parent_id {
-                    if !path.insert(pid) { break; } // Cycle detected
-                    current_root_id = pid;
-                    current_parent_id = lookup_list
-                        .iter()
-                        .find(|a| a.id == pid)
-                        .and_then(|a| a.parent_id);
-                }
-
-                if archive_root_ids.contains(&current_root_id) {
-                    archived_actions.push(action);
-                } else {
-                    active_actions.push(action);
-                }
-            }
-
             if *dry_run {
+                let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+                let (_, archived_actions) = clearhead_cli::archive::partition_actions_for_archive(&all_actions);
+                
+                if archived_actions.is_empty() {
+                    println!("No completed action trees to archive.");
+                    return Ok(());
+                }
+
                 println!("Would archive {} actions from {}:", archived_actions.len(), input_file.display());
                 for action in &archived_actions {
                     if action.parent_id.is_none() {
@@ -387,12 +325,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 return Ok(());
             }
 
-            // Grouping and writing logic remains same...
-            use chrono::Local;
-            let now = Local::now();
-            let month_str = now.format("%Y-%m").to_string();
-            let log_filename = format!("{}.actions", month_str);
-            
             let resolved_log_dir = log_dir.clone().unwrap_or_else(|| {
                 if input_file.to_string_lossy().contains(".clearhead") {
                      input_file.parent().unwrap().join("logs")
@@ -403,28 +335,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             ensure_dir_exists(&resolved_log_dir)
                 .map_err(|e| format!("Failed to create log directory: {}", e))?;
-            let log_path = resolved_log_dir.join(log_filename);
 
-            let mut log_content = if log_path.exists() {
-                fs::read_to_string(&log_path).unwrap_or_default()
-            } else {
-                String::new()
-            };
+            let (active_text, result) = clearhead_cli::archive::archive_actions(&content, &input_file, &resolved_log_dir)?;
 
-            let archived_text = clearhead_cli::format(&archived_actions, clearhead_cli::OutputFormat::Actions, None)?;
-            if !log_content.is_empty() && !log_content.ends_with('\n') {
-                log_content.push('\n');
-            }
-            log_content.push_str(&archived_text);
-
-            fs::write(&log_path, log_content)
-                .map_err(|e| format!("Failed to write to log file '{}': {}", log_path.display(), e))?;
-
-            let active_text = clearhead_cli::format(&active_actions, clearhead_cli::OutputFormat::Actions, None)?;
             fs::write(&input_file, active_text)
                 .map_err(|e| format!("Failed to update source file '{}': {}", input_file.display(), e))?;
 
-            println!("Archived {} actions to {}", archived_actions.len(), log_path.display());
+            println!("Archived {} actions to {}", result.archived_count, result.log_path.display());
             Ok(())
         }
         Commands::Lsp => {
@@ -434,6 +351,50 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .map_err(|e| format!("Failed to start async runtime: {}", e))?;
             
             rt.block_on(lsp::start_lsp());
+            Ok(())
+        }
+        Commands::Lint { file } => {
+            let input_file = file.as_ref();
+            let content = read_input(input_file)?;
+            
+            // We need the parsed document with source map for linting
+            let parsed = clearhead_cli::get_parsed_document(&content)
+                .map_err(|e| format!("Failed to parse document: {}", e))?;
+
+            let diagnostics = clearhead_cli::lint::lint_document(&parsed);
+
+            if diagnostics.is_empty() {
+                // No output on success, standard unix philosophy
+                return Ok(());
+            }
+
+            let mut has_errors = false;
+            for diag in diagnostics {
+                let severity_str = match diag.severity {
+                    clearhead_cli::LintSeverity::Error => {
+                        has_errors = true;
+                        "ERROR"
+                    },
+                    clearhead_cli::LintSeverity::Warning => "WARN",
+                    clearhead_cli::LintSeverity::Info => "INFO",
+                };
+
+                // Simple format: file:line:col: severity: message [code]
+                let file_str = input_file.map(|p| p.display().to_string()).unwrap_or_else(|| "<stdin>".to_string());
+                println!(
+                    "{}:{}:{}: {}: {} [{}]",
+                    file_str,
+                    diag.range.start_row + 1,
+                    diag.range.start_col + 1,
+                    severity_str,
+                    diag.message,
+                    diag.code
+                );
+            }
+
+            if has_errors {
+                std::process::exit(1);
+            }
             Ok(())
         }
     }

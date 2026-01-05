@@ -13,6 +13,8 @@ pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
 pub mod lint;
 pub use lint::{lint_document, LintDiagnostic, LintSeverity};
 
+pub mod archive;
+
 pub mod sql;
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)

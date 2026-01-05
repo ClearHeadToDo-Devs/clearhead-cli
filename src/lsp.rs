@@ -11,6 +11,9 @@ use uuid::Uuid;
 
 use clearhead_cli::format::{FormatConfig, OutputFormat, format};
 use clearhead_cli::treesitter::get_node_text;
+use clearhead_cli::archive::archive_actions;
+use serde_json::Value;
+use tower_lsp_server::jsonrpc::Error;
 
 #[derive(Debug)]
 struct DocumentState {
@@ -57,6 +60,8 @@ impl Backend {
             self.client
                 .publish_diagnostics(uri, diagnostics, None)
                 .await;
+        } else {
+             self.client.log_message(MessageType::ERROR, format!("Failed to parse document: {:?}", uri)).await;
         }
     }
 }
@@ -305,6 +310,14 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![
+                        "@".to_string(),
+                        "%".to_string(),
+                        "^".to_string(),
+                    ]),
+                    ..Default::default()
+                }),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -335,6 +348,10 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                execute_command_provider: Some(ExecuteCommandOptions {
+                    commands: vec!["clearhead/archive".to_string()],
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         })
@@ -469,6 +486,64 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        
+        if let Some(doc) = self.documents.get(&uri) {
+            // Simple line-based check for trigger characters
+            // Note: This assumes ASCII alignment for column index, which is safe for @%^
+            let line_idx = position.line as usize;
+            let lines: Vec<&str> = doc.text.lines().collect();
+            
+            if line_idx < lines.len() {
+                let line = lines[line_idx];
+                let char_idx = position.character as usize;
+                
+                if char_idx > 0 {
+                    // Check character before cursor
+                    let char_before = line.chars().nth(char_idx - 1);
+                    
+                    if let Some(c) = char_before {
+                        match c {
+                            '@' | '%' | '^' => {
+                                let now = Local::now();
+                                let mut items = Vec::new();
+                                
+                                let make_item = |label: String, detail: &str| -> CompletionItem {
+                                    CompletionItem {
+                                        label: label.clone(),
+                                        kind: Some(CompletionItemKind::VALUE),
+                                        detail: Some(detail.to_string()),
+                                        insert_text: Some(label),
+                                        ..Default::default()
+                                    }
+                                };
+
+                                // 1. Full ISO DateTime (Now)
+                                let now_str = now.format("%Y-%m-%dT%H:%M").to_string();
+                                items.push(make_item(now_str, "Now"));
+                                
+                                // 2. Date Only (Today)
+                                let today_str = now.format("%Y-%m-%d").to_string();
+                                items.push(make_item(today_str, "Today"));
+                                
+                                // 3. Tomorrow
+                                let tomorrow = now + chrono::Duration::days(1);
+                                let tomorrow_str = tomorrow.format("%Y-%m-%d").to_string();
+                                items.push(make_item(tomorrow_str, "Tomorrow"));
+
+                                return Ok(Some(CompletionResponse::Array(items)));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
@@ -481,15 +556,9 @@ impl LanguageServer for Backend {
 
                 match format(&parsed.actions, OutputFormat::Actions, Some(config)) {
                     Ok(formatted_text) => {
-                        // Replace the entire document
+                        // Replace the entire document using a standard large range
                         let start = Position::new(0, 0);
-                        // To be safe, finding the end of the document is tricky without iterating lines
-                        // But we can use the tree root range
-                        let root = doc.tree.root_node();
-                        let end = Position::new(
-                            root.end_position().row as u32,
-                            root.end_position().column as u32,
-                        );
+                        let end = Position::new(u32::MAX, 0);
 
                         return Ok(Some(vec![TextEdit {
                             range: Range::new(start, end),
@@ -506,6 +575,59 @@ impl LanguageServer for Backend {
             }
         }
         Ok(None)
+    }
+
+    async fn execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
+        match params.command.as_str() {
+            "clearhead/archive" => {
+                if let Some(uri_val) = params.arguments.first() {
+                    if let Ok(uri) = serde_json::from_value::<Uri>(uri_val.clone()) {
+                        if let Some(doc) = self.documents.get(&uri) {
+                            // Determine log directory (defaulting to data_dir/logs)
+                            // In a real setup we might get this from the client config
+                            let source_path = uri.to_file_path().ok_or_else(|| Error::invalid_params("Invalid URI"))?;
+                            let log_dir = source_path.parent().unwrap().join("logs");
+                            
+                            // Ensure log directory exists (ignoring errors for brevity in this step)
+                            let _ = std::fs::create_dir_all(&log_dir);
+
+                            match archive_actions(&doc.text, &source_path.to_path_buf(), &log_dir) {
+                                Ok((new_content, result)) => {
+                                    // Apply the change to the editor via WorkspaceEdit
+                                    let edit = WorkspaceEdit {
+                                        changes: Some({
+                                            let mut map = std::collections::HashMap::new();
+                                            map.insert(uri.clone(), vec![TextEdit {
+                                                range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
+                                                new_text: new_content,
+                                            }]);
+                                            map
+                                        }),
+                                        ..Default::default()
+                                    };
+
+                                    self.client.apply_edit(edit).await.map_err(|e| {
+                                        let err = format!("Failed to apply edit: {}", e);
+                                        Error {
+                                            code: tower_lsp_server::jsonrpc::ErrorCode::InternalError,
+                                            message: err.into(),
+                                            data: None,
+                                        }
+                                    })?;
+
+                                    self.client.show_message(MessageType::INFO, format!("Archived {} actions to {}", result.archived_count, result.log_path.display())).await;
+                                }
+                                Err(e) => {
+                                    self.client.show_message(MessageType::WARNING, format!("Archive failed: {}", e)).await;
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
     }
 }
 
@@ -544,5 +666,22 @@ mod tests {
         // Verify LSP conversion
         assert!(diagnostics.iter().all(|d| d.source == Some("clearhead-lsp".to_string())));
         assert!(diagnostics.iter().all(|d| d.code.is_some()));
+    }
+
+    #[test]
+    fn test_lsp_format_normalizes() {
+        let text = "[ ] Task without ID";
+        let parsed = get_parsed_document(text).unwrap();
+        
+        let config = FormatConfig {
+            include_id: true,
+            ..Default::default()
+        };
+
+        let formatted = format(&parsed.actions, OutputFormat::Actions, Some(config)).unwrap();
+        
+        // Should contain a UUID
+        assert!(formatted.contains("#"));
+        assert!(formatted.contains("[ ] Task without ID"));
     }
 }

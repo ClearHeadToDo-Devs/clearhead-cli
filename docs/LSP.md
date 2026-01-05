@@ -27,6 +27,7 @@ When a document is opened or changed, the LSP parses it into a `ParsedDocument` 
 | **Inlay Hints** | Shows relative time for `do_date` ("due in 5d") and `completed_date`. | Places hints at `SourceMetadata::do_date` / `completed_date` ranges. |
 | **Semantic Highlighting** | Colors keywords, dates, contexts, and IDs distinctively. | Uses raw `tree-sitter` traversal for fine-grained token coloring. |
 | **Go to Definition** | Jumps to Story (`*`) or Context (`+`) tags. | Uses raw `tree-sitter` to find references by text. |
+| **Completion** | Suggestions for dates: "Now", "Today", "Tomorrow". | Triggered by `@`, `%`, `^`. |
 | **Formatting** | Formats the document using canonical rules. | Re-serializes the `ActionList` using the library's `format` module. |
 
 ## Client Setup

@@ -168,6 +168,16 @@ clearhead_cli archive ~/work.actions
 clearhead_cli archive --dry-run
 ```
 
+**Linting**
+Check your files for syntax errors, missing IDs, or convention violations.
+```bash
+# Lint a specific file
+clearhead_cli lint ~/work.actions
+
+# Lint output from another command
+cat ~/work.actions | clearhead_cli lint
+```
+
 ### Patching (Smart Sync)
 Update a Primary file based on a modified Secondary view (even if lines were reordered).
 ```bash

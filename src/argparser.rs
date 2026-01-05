@@ -130,6 +130,12 @@ pub enum Commands {
 
     /// Start the Language Server Protocol (LSP) server
     Lsp,
+
+    /// Lint an actions file for errors and warnings
+    Lint {
+        /// File to lint. If not provided, reads from stdin
+        file: Option<PathBuf>,
+    },
 }
 
 /// CLI-specific format enum that maps to library's OutputFormat
