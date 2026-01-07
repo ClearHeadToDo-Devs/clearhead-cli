@@ -344,12 +344,31 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             println!("Archived {} actions to {}", result.archived_count, result.log_path.display());
             Ok(())
         }
+        Commands::Export { file, output, open_only } => {
+            // Read input from file or stdin
+            let content = read_input(file.as_ref())?;
+
+            // Parse actions
+            let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            // Format as iCalendar
+            let icalendar = clearhead_cli::format_as_icalendar(&actions, *open_only)?;
+
+            // Write to output file or stdout
+            if let Some(output_path) = output {
+                fs::write(output_path, icalendar)
+                    .map_err(|e| format!("Failed to write to file: {}", e))?;
+            } else {
+                println!("{}", icalendar);
+            }
+            Ok(())
+        }
         Commands::Lsp => {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .map_err(|e| format!("Failed to start async runtime: {}", e))?;
-            
+
             rt.block_on(lsp::start_lsp());
             Ok(())
         }

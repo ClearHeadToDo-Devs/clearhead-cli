@@ -16,6 +16,7 @@ comfy-table = "7.1"
 config = "0.14"
 dashmap = "6.1.0"
 dirs = "5.0"
+icalendar = "0.16"
 quick-xml = { version = "0.31", features = ["serialize"] }
 reqwest = { version = "0.11", features = ["blocking"] }
 rrule = "0.14.0"

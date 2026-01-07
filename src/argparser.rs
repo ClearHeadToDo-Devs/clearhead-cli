@@ -136,6 +136,20 @@ pub enum Commands {
         /// File to lint. If not provided, reads from stdin
         file: Option<PathBuf>,
     },
+
+    /// Export actions to calendar format (iCalendar)
+    Export {
+        /// File to export (.actions format). If not provided, reads from stdin
+        file: Option<PathBuf>,
+
+        /// Output file path. If not provided, writes to stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Only export open actions (pending, in-progress, blocked)
+        #[arg(long)]
+        open_only: bool,
+    },
 }
 
 /// CLI-specific format enum that maps to library's OutputFormat

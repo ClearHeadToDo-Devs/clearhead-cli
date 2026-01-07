@@ -8,7 +8,7 @@ pub mod entities;
 use entities::{ActionList, ParsedDocument};
 
 pub mod format;
-pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
+pub use format::{format, format_as_icalendar, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
 
 pub mod lint;
 pub use lint::{lint_document, LintDiagnostic, LintSeverity};

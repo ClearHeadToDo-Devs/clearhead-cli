@@ -37,6 +37,7 @@ clearhead_cli read inbox.actions
 
 ## Features
 
+- **Calendar export**: Export actions with due dates to iCalendar (`.ics`) format with full recurrence support
 - **SQL queries**: Filter actions with WHERE clauses or full SQL (JOINs, CTEs, aggregations)
 - **Multiple output formats**: actions, json, xml, table
 - **Zero lock-in**: Plain text files, use any editor
@@ -84,8 +85,13 @@ For the full specification see [The Specification](https://github.com/ClearHeadT
 
 **Metadata:**
 - `$description` - Task description
-- `!N` - Priority (1-5)
+- `!N` - Priority (1-4, where 1 is highest)
 - `+tag,tag` - Context tags
+- `@YYYY-MM-DDTHH:MM` - Do date/time (when task should be done)
+- `DN` - Duration in minutes (e.g., `D30` for 30 minutes)
+- `R:FREQ=...` - Recurrence rule (RRULE format)
+- `%YYYY-MM-DDTHH:MM` - Completed date/time
+- `^YYYY-MM-DDTHH:MM` - Created date/time
 - `#uuid` - Unique ID (auto-generated if omitted)
 - `*story` - Story/project (root actions only)
 
@@ -128,6 +134,54 @@ clearhead_cli read --sql "WITH RECURSIVE descendants AS (
 ```
 
 See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL queries.
+
+### Export to Calendar
+
+Export actions with due dates to iCalendar (`.ics`) format for import into Google Calendar, Apple Calendar, Outlook, or any calendar app.
+
+```bash
+# Export to stdout
+clearhead_cli export inbox.actions
+
+# Export to a file
+clearhead_cli export inbox.actions -o calendar.ics
+
+# Export only open actions (skip completed/cancelled)
+clearhead_cli export inbox.actions --open-only -o calendar.ics
+
+# Export from stdin
+cat work.actions | clearhead_cli export > work.ics
+```
+
+**Supported features:**
+- **Recurring events** - RRULE patterns (daily, weekly, monthly, yearly) are preserved
+- **Event duration** - Uses `do_duration` or defaults to 15 minutes
+- **Descriptions** - Action descriptions become event descriptions
+- **Priority** - Mapped from ClearHead priority (1-4) to iCalendar (1-9)
+- **Categories** - Context tags become event categories
+- **Status** - Action states map to event statuses (tentative, confirmed, cancelled)
+
+**Example:**
+```actions
+[ ] Daily standup @2026-01-20T09:00 D15 R:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR
+    $ Check in with team
+    !2
+    +Work,Meeting
+```
+
+Exports to:
+```ical
+BEGIN:VEVENT
+SUMMARY:Daily standup
+DESCRIPTION:Check in with team
+DTSTART:20260120T170000Z
+DTEND:20260120T171500Z
+RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR
+PRIORITY:3
+CATEGORIES:Work,Meeting
+STATUS:TENTATIVE
+END:VEVENT
+```
 
 ### Advanced Workflows
 

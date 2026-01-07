@@ -1,6 +1,8 @@
-use crate::entities::{Action, ActionList};
+use crate::entities::{Action, ActionList, ActionState};
 use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 use serde::{Deserialize, Serialize};
+use icalendar::{Calendar, Component, Event, EventLike, EventStatus};
+use chrono::Utc;
 
 /// Output format options for ActionList serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,6 +320,121 @@ fn format_as_table(list: &ActionList) -> Result<String, String> {
     }
 
     Ok(table.to_string())
+}
+
+/// Format ActionList as iCalendar (.ics) format
+///
+/// Converts actions with do_date_time into VEVENT components following RFC 5545.
+/// Only includes actions that have a do_date_time set.
+///
+/// # Arguments
+/// * `list` - The ActionList to export
+/// * `open_only` - If true, only export actions with state: NotStarted, InProgress, or BlockedorAwaiting
+///
+/// # Returns
+/// A formatted iCalendar string, or an error message if formatting fails
+pub fn format_as_icalendar(list: &ActionList, open_only: bool) -> Result<String, String> {
+    let mut calendar = Calendar::new()
+        .name("ClearHead Actions")
+        .description("Actions exported from ClearHead")
+        .done();
+
+    for action in list {
+        // Skip actions without do_date_time (can't create calendar event without a time)
+        if action.do_date_time.is_none() {
+            continue;
+        }
+
+        // Filter by state if open_only is true
+        if open_only {
+            match action.state {
+                ActionState::NotStarted | ActionState::InProgress | ActionState::BlockedorAwaiting => {
+                    // Include these states
+                }
+                ActionState::Completed | ActionState::Cancelled => {
+                    // Skip completed and cancelled actions
+                    continue;
+                }
+            }
+        }
+
+        // Create event
+        let mut event = Event::new();
+
+        // UID: required by iCalendar spec
+        event.uid(&action.id.to_string());
+
+        // SUMMARY: action name
+        event.summary(&action.name);
+
+        // DESCRIPTION: optional description
+        if let Some(description) = &action.description {
+            event.description(description);
+        }
+
+        // DTSTART: do_date_time (required, we already checked it exists)
+        // Convert DateTime<Local> to DateTime<Utc> for icalendar compatibility
+        let start_time_utc = action.do_date_time.unwrap().with_timezone(&Utc);
+        event.starts(start_time_utc);
+
+        // DTEND: calculate end time based on duration (default 15 minutes if not specified)
+        let duration_minutes = action.do_duration.unwrap_or(15);
+        let end_time_utc = start_time_utc + chrono::Duration::minutes(duration_minutes as i64);
+        event.ends(end_time_utc);
+
+        // RRULE: recurrence rule
+        if let Some(recurrence) = &action.recurrence {
+            // Convert our Recurrence struct to RRULE string
+            let rrule_str = format!("{}", recurrence);
+            // Strip the "R:" prefix that our format uses
+            let rrule = rrule_str.strip_prefix("R:").unwrap_or(&rrule_str);
+            // Add as property using add_property
+            event.add_property("RRULE", rrule);
+        }
+
+        // STATUS: map action state to iCalendar status
+        let status = match action.state {
+            ActionState::NotStarted => EventStatus::Tentative,
+            ActionState::InProgress => EventStatus::Confirmed,
+            ActionState::Completed => EventStatus::Confirmed, // Completed events are still CONFIRMED
+            ActionState::BlockedorAwaiting => EventStatus::Tentative,
+            ActionState::Cancelled => EventStatus::Cancelled,
+        };
+        event.status(status);
+
+        // COMPLETED: completion date for completed actions
+        if action.state == ActionState::Completed {
+            if let Some(completed_date_time) = action.completed_date_time {
+                event.timestamp(completed_date_time.with_timezone(&Utc));
+            }
+        }
+
+        // PRIORITY: map our 1-4 priority to iCalendar 1-9 scale
+        // Our priority: 1 (highest) to 4 (lowest)
+        // iCalendar: 1 (highest) to 9 (lowest), 0 = undefined
+        // Mapping: our 1→iCal 1, our 2→iCal 3, our 3→iCal 5, our 4→iCal 7
+        if let Some(priority) = action.priority {
+            let ical_priority = match priority {
+                1 => 1,
+                2 => 3,
+                3 => 5,
+                4 => 7,
+                _ => 5, // default to medium
+            };
+            event.priority(ical_priority);
+        }
+
+        // CATEGORIES: context list (comma-separated per RFC 5545)
+        if let Some(context_list) = &action.context_list {
+            let categories = context_list.join(",");
+            event.add_property("CATEGORIES", &categories);
+        }
+
+        // Add event to calendar
+        calendar.push(event);
+    }
+
+    Ok(calendar.to_string())
 }
 
 #[cfg(test)]
