@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -12,6 +13,6 @@ expression: actions
     recurrence: Some(Recurrence(
       frequency: "daily",
     )),
-    createdDate: Some("2026-01-04T22:27:53.787429306-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

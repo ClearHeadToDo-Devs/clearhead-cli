@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -7,27 +8,27 @@ expression: actions
     id: "[uuid]",
     state: completed,
     name: "Parent task",
-    createdDate: Some("2026-01-04T22:27:53.797420257-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Child task one",
-    createdDate: Some("2026-01-04T22:27:53.797441233-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Grandchild task",
-    createdDate: Some("2026-01-04T22:27:53.797457071-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Child task two",
-    createdDate: Some("2026-01-04T22:27:53.797464425-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

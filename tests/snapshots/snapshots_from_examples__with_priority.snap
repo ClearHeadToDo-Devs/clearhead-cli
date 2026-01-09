@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -8,6 +9,6 @@ expression: actions
     state: completed,
     name: "buy groceries",
     priority: Some(1),
-    createdDate: Some("2026-01-04T22:27:53.771958058-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

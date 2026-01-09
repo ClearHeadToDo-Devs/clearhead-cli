@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -7,6 +8,6 @@ expression: actions
     id: "[uuid]",
     state: not_started,
     name: "test",
-    createdDate: Some("2026-01-04T22:27:53.753813389-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

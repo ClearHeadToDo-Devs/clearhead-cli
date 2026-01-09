@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [

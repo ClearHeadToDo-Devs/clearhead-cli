@@ -1,0 +1,40 @@
+---
+source: tests/linting_conformance.rs
+assertion_line: 98
+expression: diagnostics
+---
+[
+    LintDiagnostic {
+        code: "E014",
+        severity: Warning,
+        message: "Action is missing a creation date. Consider adding ^ or using UUIDv7 (E014).",
+        range: SourceRange {
+            start_row: 0,
+            start_col: 0,
+            end_row: 0,
+            end_col: 88,
+        },
+    },
+    LintDiagnostic {
+        code: "E014",
+        severity: Warning,
+        message: "Action is missing a creation date. Consider adding ^ or using UUIDv7 (E014).",
+        range: SourceRange {
+            start_row: 1,
+            start_col: 0,
+            end_row: 1,
+            end_col: 82,
+        },
+    },
+    LintDiagnostic {
+        code: "E014",
+        severity: Warning,
+        message: "Action is missing a creation date. Consider adding ^ or using UUIDv7 (E014).",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 101,
+        },
+    },
+]

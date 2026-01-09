@@ -37,6 +37,16 @@ pub struct ParsedDocument {
     pub tag_index: HashMap<String, Vec<SourceRange>>,
 }
 
+/// Reference to a predecessor action, which can be either a UUID or a name reference
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
+pub struct PredecessorRef {
+    /// The raw reference text from the source (could be a UUID string or an action name)
+    pub raw_ref: String,
+    /// The resolved UUID if we were able to parse/resolve it
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_uuid: Option<Uuid>,
+}
+
 /// Recurrence rule per RFC 5545 RRULE specification
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct Recurrence {
@@ -95,6 +105,8 @@ pub struct Action {
     #[serde(rename = "createdDate", skip_serializing_if = "Option::is_none")]
     #[autosurgeon(reconcile = "reconcile_date", hydrate = "hydrate_date")]
     pub created_date_time: Option<DateTime<Local>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predecessors: Option<Vec<PredecessorRef>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub story: Option<String>,
 }
@@ -182,6 +194,11 @@ impl Action {
         }
         if let Some(created_date_time) = &self.created_date_time {
             write!(f, " ^{}", created_date_time.format("%Y-%m-%dT%H:%M"))?;
+        }
+        if let Some(predecessors) = &self.predecessors {
+            for pred in predecessors {
+                write!(f, " <{}", pred.raw_ref)?;
+            }
         }
         if include_id {
             write!(f, " #{}", self.id)?;
@@ -374,6 +391,7 @@ pub fn parse_action_recursive(
     let mut recurrence = None;
     let mut completed_date_time = None;
     let mut created_date_time = None;
+    let mut predecessors = Vec::new();
 
     let mut do_date_range = None;
     let mut completed_date_range = None;
@@ -521,6 +539,21 @@ pub fn parse_action_recursive(
                     }
                 }
             }
+            "predecessor" => {
+                // Get the text of the predecessor node (skip the < prefix)
+                let pred_text = get_node_text(&metadata_node, &node.source);
+                if pred_text.starts_with('<') {
+                    let pred_val = pred_text[1..].trim().to_string();
+                    // Try to parse as UUID first
+                    let resolved_uuid = Uuid::parse_str(&pred_val).ok();
+
+                    // Always store both the raw reference and the resolved UUID (if available)
+                    predecessors.push(PredecessorRef {
+                        raw_ref: pred_val,
+                        resolved_uuid,
+                    });
+                }
+            }
             _ => {}
         }
     }
@@ -566,6 +599,7 @@ pub fn parse_action_recursive(
         recurrence,
         completed_date_time,
         created_date_time,
+        predecessors: if predecessors.is_empty() { None } else { Some(predecessors) },
         story,
     });
 
@@ -792,6 +826,7 @@ mod tests {
             recurrence: Some(recurrence),
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: None,
         };
         
@@ -839,6 +874,7 @@ mod tests {
             recurrence: Some(recurrence),
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: None,
         };
 
@@ -851,5 +887,80 @@ mod tests {
         assert_eq!(occurrences[0].format("%Y-%m-%d").to_string(), "2025-01-01");
         assert_eq!(occurrences[1].format("%Y-%m-%d").to_string(), "2025-01-02");
         assert_eq!(occurrences[2].format("%Y-%m-%d").to_string(), "2025-01-03");
+    }
+
+    #[test]
+    fn test_parse_with_predecessors_uuid() {
+        let pred_uuid = "01951111-cfa6-718d-b303-d7107f4005b3";
+        let source = format!("[ ] Task B < {}", pred_uuid);
+        let actions = parse_actions(&source);
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].name, "Task B");
+        assert!(actions[0].predecessors.is_some());
+        let preds = actions[0].predecessors.as_ref().unwrap();
+        assert_eq!(preds.len(), 1);
+        assert_eq!(preds[0].raw_ref, pred_uuid);
+        assert_eq!(preds[0].resolved_uuid.unwrap().to_string(), pred_uuid);
+    }
+
+    #[test]
+    fn test_parse_with_multiple_predecessors() {
+        let uuid1 = "01951111-cfa6-718d-b303-d7107f4005b3";
+        let uuid2 = "02961111-cfa6-718d-b303-d7107f4005b3";
+        let source = format!("[ ] Deploy < {} < {}", uuid1, uuid2);
+        let actions = parse_actions(&source);
+
+        assert_eq!(actions.len(), 1);
+        assert!(actions[0].predecessors.is_some());
+        let preds = actions[0].predecessors.as_ref().unwrap();
+        assert_eq!(preds.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_with_predecessor_name() {
+        let source = "[ ] Task B < Task A";
+        let actions = parse_actions(&source);
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].name, "Task B");
+        assert!(actions[0].predecessors.is_some());
+        let preds = actions[0].predecessors.as_ref().unwrap();
+        assert_eq!(preds.len(), 1);
+        assert_eq!(preds[0].raw_ref, "Task A");
+        assert_eq!(preds[0].resolved_uuid, None); // Name doesn't resolve to UUID yet
+
+        // Verify round-trip formatting preserves the name
+        let formatted = format!("{}", actions[0]);
+        assert!(formatted.contains("<Task A"));
+    }
+
+    #[test]
+    fn test_format_with_predecessors() {
+        let pred_uuid = Uuid::parse_str("01951111-cfa6-718d-b303-d7107f4005b3").unwrap();
+        let pred_ref = PredecessorRef {
+            raw_ref: pred_uuid.to_string(),
+            resolved_uuid: Some(pred_uuid),
+        };
+        let action = Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Task B".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,
+            do_duration: None,
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: Some(vec![pred_ref]),
+            story: None,
+        };
+
+        let formatted = format!("{}", action);
+        assert!(formatted.contains(&pred_uuid.to_string()));
+        assert!(formatted.contains("<"));
     }
 }

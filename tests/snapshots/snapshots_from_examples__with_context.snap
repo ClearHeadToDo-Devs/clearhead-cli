@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -11,6 +12,6 @@ expression: actions
       "office",
       "computer",
     ]),
-    createdDate: Some("2026-01-04T22:27:53.835092271-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

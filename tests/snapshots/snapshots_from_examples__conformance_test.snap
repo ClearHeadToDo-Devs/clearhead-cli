@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -19,7 +20,7 @@ expression: actions
       frequency: "daily",
       count: Some(5),
     )),
-    createdDate: Some("2026-01-03T12:00:00-08:00"),
+    createdDate: "[timestamp]",
     story: Some("Conformance-Project"),
   ),
   Action(
@@ -27,7 +28,7 @@ expression: actions
     state: completed,
     name: "Completed tree (ready for archive)",
     completedDate: Some("2026-01-03T11:00:00-08:00"),
-    createdDate: Some("2026-01-03T10:00:00-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -35,7 +36,7 @@ expression: actions
     state: completed,
     name: "Completed child",
     completedDate: Some("2026-01-03T10:30:00-08:00"),
-    createdDate: Some("2026-01-03T10:05:00-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -43,21 +44,21 @@ expression: actions
     name: "Inconsistent tree (E012 error)",
     description: Some("This parent is completed but has active work below."),
     completedDate: Some("2026-01-03T10:00:00-08:00"),
-    createdDate: Some("2026-01-03T09:00:00-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Still active",
-    createdDate: Some("2026-01-03T09:05:00-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     state: not_started,
     name: "Completed subtasks (E013 nudge)",
     description: Some("Parent is active but all children are done."),
-    createdDate: Some("2026-01-03T08:00:00-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -65,7 +66,7 @@ expression: actions
     state: completed,
     name: "Done",
     completedDate: Some("2026-01-03T08:10:00-08:00"),
-    createdDate: Some("2026-01-03T08:05:00-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",

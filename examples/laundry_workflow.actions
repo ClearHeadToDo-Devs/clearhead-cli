@@ -1,0 +1,8 @@
+[ ] Complete laundry
+* Household Chores
++Home,Cleaning
+> [ ] Put clothes in hamper
+> [ ] Wash clothes < Put clothes in hamper
+> [ ] Dry clothes < Wash clothes
+> [ ] Fold clothes < Dry clothes
+> [ ] Put away clothes < Fold clothes

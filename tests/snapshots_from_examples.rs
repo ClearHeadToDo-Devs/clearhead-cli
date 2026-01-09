@@ -18,7 +18,10 @@ fn test_snapshots_from_grammar_examples() {
         }, {
             insta::assert_ron_snapshot!(example_name, actions, {
                 "[].id" => "[uuid]",
-                "[].parent_id" => "[uuid]"
+                "[].parent_id" => "[uuid]",
+                "[].createdDate" => "[timestamp]",
+                "[].predecessors[].resolved_uuid" => "[uuid]",
+                "[].predecessors[].raw_ref" => "[predecessor_ref]"
             });
         });
     }

@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -9,6 +10,6 @@ expression: actions
     name: "meeting with team",
     doDateTime: Some("2025-01-20T14:30:00-08:00"),
     doDuration: Some(90),
-    createdDate: Some("2026-01-04T22:27:53.854400058-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

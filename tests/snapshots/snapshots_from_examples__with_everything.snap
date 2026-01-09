@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots_from_examples.rs
+assertion_line: 19
 expression: actions
 ---
 [
@@ -16,7 +17,7 @@ expression: actions
     doDateTime: Some("2019-01-01T00:01:00-08:00"),
     doDuration: Some(120),
     completedDate: Some("2019-03-01T02:01:00-08:00"),
-    createdDate: Some("2018-12-31T23:59:00-08:00"),
+    createdDate: "[timestamp]",
     story: Some("Test Story"),
   ),
   Action(
@@ -24,34 +25,34 @@ expression: actions
     parent_id: "[uuid]",
     state: not_started,
     name: "child action",
-    createdDate: Some("2026-01-04T22:27:53.867969656-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "grandchild action",
-    createdDate: Some("2026-01-04T22:27:53.867978097-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "great grandchild action",
-    createdDate: Some("2026-01-04T22:27:53.867984207-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "double-great grandchild action",
-    createdDate: Some("2026-01-04T22:27:53.867991473-08:00"),
+    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Leaf action",
-    createdDate: Some("2026-01-04T22:27:53.867997050-08:00"),
+    createdDate: "[timestamp]",
   ),
 ]

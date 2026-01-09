@@ -416,6 +416,7 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
             recurrence,
             completed_date_time,
             created_date_time: None, // TODO: Update SQL schema to support created_date
+            predecessors: None,
             story,
         });
     }
@@ -499,6 +500,7 @@ mod tests {
             recurrence: None,
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: Some("Test Story".to_string()),
         });
 
@@ -548,6 +550,7 @@ mod tests {
             recurrence: None,
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: Some("Epic Story".to_string()),
         });
 
@@ -565,6 +568,7 @@ mod tests {
             recurrence: None,
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: None,
         });
 
@@ -630,6 +634,7 @@ mod tests {
             recurrence: None,
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: None,
         });
 
@@ -646,6 +651,7 @@ mod tests {
             recurrence: None,
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: None,
         });
 
@@ -697,6 +703,7 @@ mod tests {
             recurrence: Some(recurrence.clone()),
             completed_date_time: None,
             created_date_time: None,
+            predecessors: None,
             story: None,
         });
 

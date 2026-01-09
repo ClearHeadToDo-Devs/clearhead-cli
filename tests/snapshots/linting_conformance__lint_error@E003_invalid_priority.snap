@@ -1,0 +1,95 @@
+---
+source: tests/linting_conformance.rs
+assertion_line: 98
+expression: diagnostics
+---
+[
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 1,
+            start_col: 0,
+            end_row: 1,
+            end_col: 30,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Priority must be 1-5 (got 0) (E003).",
+        range: SourceRange {
+            start_row: 1,
+            start_col: 0,
+            end_row: 1,
+            end_col: 30,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 34,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Priority must be 1-5 (got 6) (E003).",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 34,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 3,
+            start_col: 0,
+            end_row: 3,
+            end_col: 39,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Priority must be 1-5 (got 10) (E003).",
+        range: SourceRange {
+            start_row: 3,
+            start_col: 0,
+            end_row: 3,
+            end_col: 39,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 4,
+            start_col: 0,
+            end_row: 4,
+            end_col: 15,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Priority must be 1-5 (got 99) (E003).",
+        range: SourceRange {
+            start_row: 4,
+            start_col: 0,
+            end_row: 4,
+            end_col: 15,
+        },
+    },
+]
