@@ -1,6 +1,15 @@
+[ ] Implement better reference system for predecessors $ Support 8-char UUID prefixes and improve DX for task dependencies !2 +enhancement +ux ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa1c7f5e157e
+    >[ ] Spec: Document UUID prefix syntax and resolution rules $ Add to specification: 8-char prefixes, collision detection, normalization !2 +specification ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa2a553d9fc6
+    >[ ] Tree-sitter: Add grammar support for short UUID prefixes $ Update grammar to accept 8 !2 +grammar ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa3912e25d22
+    >[ ] CLI: Implement UUID prefix resolution $ Parse short UUIDs, detect collisions, expand to full UUID on save !2 +implementation ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa4de68ce557
+    >[ ] CLI: Add normalize command to expand short refs $ clearhead normalize command expands all short UUIDs to full !3 +implementation ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa533f399fd7
+    >[ ] CLI: Add ref helper command $ clearhead ref name - copies UUID prefix to clipboard for easy reference !3 +implementation ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa64474ee613
+    >[ ] LSP: Autocomplete predecessors when typing less-than $ Show task list with names, insert UUID prefix on select !2 +lsp ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa72387a4fef
+    >[ ] LSP: Hover shows full task name for UUID prefix $ Hovering over short UUID shows full task details !3 +lsp ^2026-01-09T23:16 #019ba6c3-5b81-7372-a521-aa8115213cfa
 [ ] Get automerge repo server working $ now that the LSP is built out we can start thinking about the automerge repo @2026-01-04T15:21 ^2026-01-04T22:35 #019b8cde-39a9-7702-8e7e-9a5b3ab446ae
 [ ] during archiving ensure that the action has a story or is given the story of the filename $ This is final point we need for tracking so we can track WHERE these actions were completed ^2026-01-04T22:37 #019b8cdf-b31b-7113-8e93-a8ca34a1f766
 [ ] Complete the CUD in CRUD ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d21f50e6cf74
-        >[ ] Come up with a good update language ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d22bb609cee9
-        >[ ] and a good way to delete stuff ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d233e9885107
-        >[ ] and an easy creation interface ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d24d0b02b33f
+    >[ ] Come up with a good update language ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d22bb609cee9
+    >[ ] and a good way to delete stuff ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d233e9885107
+    >[ ] and an easy creation interface ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d24d0b02b33f
+

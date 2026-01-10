@@ -1,0 +1,31 @@
+#[test]
+fn test_json_output_includes_context() {
+    use clearhead_cli::format::{format, OutputFormat};
+    use clearhead_cli::entities::{Action, ActionState};
+    use uuid::Uuid;
+
+    let actions = vec![
+        Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            name: String::from("Test action"),
+            state: ActionState::NotStarted,
+            description: None,
+            priority: Some(1),
+            context_list: None,
+            do_date_time: None,
+            do_duration: None,
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+        }
+    ];
+
+    let result = format(&actions, OutputFormat::Json, None).unwrap();
+
+    // The JSON should contain @context reference
+    assert!(result.contains("@context"));
+    assert!(result.contains("actions.context.json"));
+}
