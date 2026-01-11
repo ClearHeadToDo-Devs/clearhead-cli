@@ -37,6 +37,7 @@ clearhead_cli read inbox.actions
 
 ## Features
 
+- **Event logging**: Persistent append-only history of all action changes (completions, additions, deletions) for analytics.
 - **Calendar export**: Export actions with due dates to iCalendar (`.ics`) format with full recurrence support
 - **SQL queries**: Filter actions with WHERE clauses or full SQL (JOINs, CTEs, aggregations)
 - **Multiple output formats**: actions, json, xml, table
@@ -134,6 +135,30 @@ clearhead_cli read --sql "WITH RECURSIVE descendants AS (
 ```
 
 See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL queries.
+
+### Add
+
+Add a new action to a file. If the file doesn't exist, it will be created.
+
+```bash
+# Add a simple task
+clearhead_cli add "Buy groceries" --write
+
+# Add with metadata
+clearhead_cli add "Fix critical bug" --priority 1 --context work --description "Check logs" --write
+```
+
+### Complete
+
+Mark an action as completed. Can match by name or UUID prefix.
+
+```bash
+# Complete by name
+clearhead_cli complete "Buy groceries" --write
+
+# Complete by UUID prefix
+clearhead_cli complete 019baae --write
+```
 
 ### Export to Calendar
 
@@ -239,6 +264,16 @@ Update a Primary file based on a modified Secondary view (even if lines were reo
 clearhead_cli patch --primary ~/work.actions --secondary ~/tmp/filtered_view.actions --write
 ```
 This is the engine that powers editor plugins, allowing you to filter/sort a view, edit it, and save the changes back to the original file safely.
+
+### Event Logging (Analytics)
+
+ClearHead maintains a persistent history of all changes in a SQLite database. This enables time-series analytics like completion rates, streaks, and audit trails.
+
+Events are emitted automatically by:
+- The `add` and `complete` CLI commands.
+- The LSP server whenever a `.actions` file is saved (detects hand-edits via structural diff).
+
+The database is stored at `~/.local/state/clearhead/events.db` by default.
 
 ## Editor Integration
 

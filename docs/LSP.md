@@ -29,6 +29,7 @@ When a document is opened or changed, the LSP parses it into a `ParsedDocument` 
 | **Go to Definition** | Jumps to Story (`*`) or Context (`+`) tags. | Uses raw `tree-sitter` to find references by text. |
 | **Completion** | Suggestions for dates: "Now", "Today", "Tomorrow". | Triggered by `@`, `%`, `^`. |
 | **Formatting** | Formats the document using canonical rules. | Re-serializes the `ActionList` using the library's `format` module. |
+| **Event Logging** | Emits lifecycle events on save. | Diffs current domain model vs last saved state on `didSave`. |
 
 ## Client Setup
 

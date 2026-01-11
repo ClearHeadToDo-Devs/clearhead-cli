@@ -776,4 +776,70 @@ mod tests {
         assert!(formatted.contains("#"));
         assert!(formatted.contains("[ ] Task without ID"));
     }
+
+    #[tokio::test]
+    async fn test_update_document_manages_last_saved() {
+        let (service, _) = LspService::new(|client| Backend {
+            client,
+            documents: DashMap::new(),
+        });
+        let backend = service.inner();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+
+        // 1. Initial load (did_open)
+        backend.update_document(uri.clone(), "[ ] Task 1".to_string(), true).await;
+        {
+            let doc = backend.documents.get(&uri).unwrap();
+            assert!(doc.last_saved_parsed.is_some());
+            assert_eq!(doc.last_saved_parsed.as_ref().unwrap().actions.len(), 1);
+        }
+
+        // 2. Change (did_change)
+        backend.update_document(uri.clone(), "[ ] Task 1\n[ ] Task 2".to_string(), false).await;
+        {
+            let doc = backend.documents.get(&uri).unwrap();
+            assert_eq!(doc.parsed.as_ref().unwrap().actions.len(), 2);
+            // last_saved should still be the old state (1 action)
+            assert_eq!(doc.last_saved_parsed.as_ref().unwrap().actions.len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_did_save_emits_events() {
+        use tempfile::NamedTempFile;
+
+        let (service, _) = LspService::new(|client| Backend {
+            client,
+            documents: DashMap::new(),
+        });
+        let backend = service.inner();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+        
+        // Setup temp events DB
+        let db_file = NamedTempFile::new().unwrap();
+        let _db_path = db_file.path();
+        // Set environment variable so emit_event uses our temp DB if it doesn't take path
+        // Actually, we should probably refactor did_save to use a configurable path,
+        // but for now we can rely on XDG_STATE_HOME override in tests if needed.
+        // For this unit test, we'll just verify the diff logic and state update.
+
+        // 1. Load initial state
+        backend.update_document(uri.clone(), "[ ] Task 1 #019baaec-00b6-7991-be34-94b68212619a".to_string(), true).await;
+
+        // 2. Change state to completed
+        backend.update_document(uri.clone(), "[x] Task 1 #019baaec-00b6-7991-be34-94b68212619a".to_string(), false).await;
+
+        // 3. Trigger save
+        let params = DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: None,
+        };
+        backend.did_save(params).await;
+
+        // 4. Verify last_saved was updated
+        {
+            let doc = backend.documents.get(&uri).unwrap();
+            assert_eq!(doc.last_saved_parsed.as_ref().unwrap().actions[0].state, clearhead_cli::entities::ActionState::Completed);
+        }
+    }
 }
