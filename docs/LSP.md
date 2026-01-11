@@ -41,15 +41,15 @@ If you are not using a plugin, you can start the LSP manually in your `init.lua`
 
 ```lua
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "actions",
-  callback = function()
-    vim.lsp.start({
-      name = "clearhead-lsp",
-      cmd = { "clearhead_cli", "lsp" },
-      root_dir = vim.fs.dirname(vim.fs.find({ ".git", "inbox.actions" }, { upward = true })[1]),
-    })
-  end,
-})
+        pattern = "actions",
+        callback = function()
+        vim.lsp.start({
+                name = "clearhead-lsp",
+                cmd = { "clearhead_cli", "lsp" },
+                root_dir = vim.fs.dirname(vim.fs.find({ ".git", "inbox.actions" }, { upward = true })[1]),
+                })
+        end,
+        })
 ```
 
 ### Neovim (via clearhead.nvim)

@@ -169,6 +169,16 @@ pub enum Commands {
         write: bool,
     },
 
+    /// Synchronize existing actions with the events database (backfill missing events)
+    SyncEvents {
+        /// File to sync. If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// Dry run: show what would be synced without writing to DB
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Lint an actions file for errors and warnings
     Lint {
         /// File to lint. If not provided, reads from stdin

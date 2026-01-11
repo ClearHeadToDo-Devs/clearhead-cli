@@ -618,3 +618,39 @@ fn test_complete_command_idempotent_fail() {
         .failure() // Should fail as no *open* action found
         .stderr(predicate::str::contains("No open action found"));
 }
+
+#[test]
+fn test_sync_events_command() {
+    let env = TestEnv::new();
+    let uuid1 = "019baaec-00b6-7991-be34-94b68212619a";
+    let uuid2 = "019baaec-00b6-7991-be34-94b68212619b";
+    
+    // Create file with two actions
+    env.write_actions("inbox.actions", &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}", uuid1, uuid2));
+
+    // 1. First sync - should sync both
+    env.command()
+        .arg("sync-events")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 events backfilled"));
+
+    // 2. Second sync - should skip both
+    env.command()
+        .arg("sync-events")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 events backfilled"))
+        .stdout(predicate::str::contains("2 already present"));
+
+    // 3. Add a third action and sync again
+    let uuid3 = "019baaec-00b6-7991-be34-94b68212619c";
+    env.write_actions("inbox.actions", &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}\n[ ] Task 3 #{}", uuid1, uuid2, uuid3));
+
+    env.command()
+        .arg("sync-events")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 events backfilled"))
+        .stdout(predicate::str::contains("2 already present"));
+}

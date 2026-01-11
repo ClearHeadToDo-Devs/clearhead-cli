@@ -129,7 +129,18 @@ pub fn emit_event(
     emit_event_with_db(event_type, action_uuid, file_path, metadata, None)
 }
 
-/// Internal function with optional DB path override for testing
+/// Emit a single event to the events database with a custom timestamp.
+pub fn emit_event_with_timestamp(
+    event_type: &str,
+    action_uuid: &str,
+    file_path: Option<&str>,
+    metadata: JsonValue,
+    timestamp: &str,
+) -> Result<(), String> {
+    emit_event_with_db_timestamp(event_type, action_uuid, file_path, metadata, None, Some(timestamp))
+}
+
+/// Internal function with optional DB path override and optional timestamp
 pub fn emit_event_with_db(
     event_type: &str,
     action_uuid: &str,
@@ -137,20 +148,35 @@ pub fn emit_event_with_db(
     metadata: JsonValue,
     db_path: Option<&Path>,
 ) -> Result<(), String> {
+    emit_event_with_db_timestamp(event_type, action_uuid, file_path, metadata, db_path, None)
+}
+
+/// Full internal emission function
+fn emit_event_with_db_timestamp(
+    event_type: &str,
+    action_uuid: &str,
+    file_path: Option<&str>,
+    metadata: JsonValue,
+    db_path: Option<&Path>,
+    timestamp: Option<&str>,
+) -> Result<(), String> {
     let conn = init_events_db_inner(db_path)?;
 
     // Generate UUIDv7 for event
     let event_id = uuid::Uuid::now_v7().to_string();
 
-    // Get current timestamp in ISO 8601 format
-    let timestamp = chrono::Utc::now().to_rfc3339();
+    // Use provided timestamp or current time
+    let ts = match timestamp {
+        Some(t) => t.to_string(),
+        None => chrono::Utc::now().to_rfc3339(),
+    };
 
     conn.execute(
         "INSERT INTO events (event_id, timestamp, event_type, action_uuid, file_path, metadata)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             event_id,
-            timestamp,
+            ts,
             event_type,
             action_uuid,
             file_path,
@@ -160,6 +186,25 @@ pub fn emit_event_with_db(
     .map_err(|e| format!("Failed to insert event: {}", e))?;
 
     Ok(())
+}
+
+/// Check if an action already has any events logged.
+pub fn action_has_events(action_uuid: &str) -> Result<bool, String> {
+    action_has_events_inner(action_uuid, None)
+}
+
+/// Internal function with optional DB path override
+fn action_has_events_inner(action_uuid: &str, db_path: Option<&Path>) -> Result<bool, String> {
+    let conn = init_events_db_inner(db_path)?;
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM events WHERE action_uuid = ?1",
+            params![action_uuid],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to query events: {}", e))?;
+
+    Ok(count > 0)
 }
 
 #[cfg(test)]
@@ -284,5 +329,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(ids, vec![1, 2, 3], "IDs should be sequential");
+    }
+
+    #[test]
+    fn test_action_has_events() {
+        let (_temp, db_path) = temp_db_path();
+        let uuid = "uuid-789";
+
+        // Initially false
+        assert!(!action_has_events_inner(uuid, Some(&db_path)).unwrap());
+
+        // After emitting, true
+        emit_event_with_db("action_created", uuid, None, json!({}), Some(&db_path)).unwrap();
+        assert!(action_has_events_inner(uuid, Some(&db_path)).unwrap());
     }
 }

@@ -160,6 +160,18 @@ clearhead_cli complete "Buy groceries" --write
 clearhead_cli complete 019baae --write
 ```
 
+### Sync Events
+
+Synchronize existing actions with the events database. This is useful for backfilling history from files created before event logging was enabled. It automatically skips actions that already have events logged.
+
+```bash
+# Backfill events for default file
+clearhead_cli sync-events
+
+# Preview what would be backfilled
+clearhead_cli sync-events --dry-run
+```
+
 ### Export to Calendar
 
 Export actions with due dates to iCalendar (`.ics`) format for import into Google Calendar, Apple Calendar, Outlook, or any calendar app.
@@ -274,6 +286,14 @@ Events are emitted automatically by:
 - The LSP server whenever a `.actions` file is saved (detects hand-edits via structural diff).
 
 The database is stored at `~/.local/state/clearhead/events.db` by default.
+
+### System Logging (Operational)
+
+ClearHead uses tiered logging for full transparency:
+1. **Data Level**: `events.db` stores semantic user actions (Audit trail).
+2. **Application Level**: Standard structured logs (via `tracing`) are emitted to `stderr` for system loggers like `journald`.
+
+Use the `-v`, `-vv`, or `-vvv` flags to increase CLI verbosity.
 
 ## Editor Integration
 

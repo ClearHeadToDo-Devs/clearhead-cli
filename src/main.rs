@@ -2,6 +2,8 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process;
+use tracing::{info, debug, warn, error, Level};
+use tracing_subscriber::{FmtSubscriber, EnvFilter};
 
 mod argparser;
 use argparser::{parse_cli, Commands};
@@ -14,13 +16,28 @@ use environment_reader::{ensure_dir_exists, get_data_dir, load_config_with_proje
 fn main() {
     let cli = parse_cli();
 
-    if cli.debug > 0 {
-        eprintln!("Debug mode enabled (level: {})", cli.debug);
-        eprintln!("Config file: {:?}", cli.config);
+    // Initialize tracing
+    let log_level = match cli.debug {
+        0 => Level::INFO,
+        1 => Level::DEBUG,
+        _ => Level::TRACE,
+    };
+
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(log_level)
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(io::stderr) // System logs usually go to stderr
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
+    debug!(debug_level = cli.debug, "Debug mode enabled");
+    if let Some(ref config_path) = cli.config {
+        debug!(config = ?config_path, "Custom config file specified");
     }
 
     if let Err(e) = run_command(&cli) {
-        eprintln!("Error: {}", e);
+        error!(error = %e, "Command failed");
         process::exit(1);
     }
 }
@@ -40,13 +57,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     ensure_dir_exists(&config_dir)
         .map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-    if cli.debug > 0 {
-        if let Some(ref ctx) = project_context {
-            eprintln!("Project root discovered: {}", ctx.root.display());
-        }
-        eprintln!("Data directory: {}", data_dir.display());
-        eprintln!("Config: {:?}", config);
+    if let Some(ref ctx) = project_context {
+        debug!(project_root = %ctx.root.display(), "Project root discovered");
     }
+    debug!(data_dir = %data_dir.display(), "Data directory resolved");
 
     match &cli.command {
         Commands::Read { file, format, where_clause, sql, select, from, all: _ } => {
@@ -66,21 +80,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .or_else(|| project_context.as_ref().and_then(|ctx| ctx.default_file.clone()))
                 .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
-            if cli.debug > 0 {
-                eprintln!("Output format: {:?}", output_format);
-                eprintln!("Input file: {}", input_file.display());
-            }
+            debug!(format = ?output_format, input_file = %input_file.display(), "Executing Read command");
 
             // Read input from file
             let content = read_input(Some(&input_file))?;
 
             // Parse, then optionally filter with SQL
             let actions = if let Some(sql_query) = sql {
-                // Full SQL query
+                debug!(sql = %sql_query, "Filtering with custom SQL query");
                 let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
                 clearhead_cli::run_sql_query(&all_actions, sql_query)?
             } else if let Some(where_clause) = where_clause {
-                // SQL WHERE clause
+                debug!(where_clause = %where_clause, "Filtering with SQL WHERE clause");
                 let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
                 clearhead_cli::run_sql_where(
                     &all_actions,
@@ -93,6 +104,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
             };
 
+            info!(action_count = actions.len(), "Parsed actions successfully");
+
             // Format and output
             let formatted = clearhead_cli::format(&actions, output_format, None)?;
 
@@ -101,6 +114,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         }
         Commands::Format { file, write, style, indent_style, indent_width } => {
             let input_file = file.as_ref();
+            debug!(input_file = ?input_file, write = *write, "Executing Format command");
             let content = read_input(input_file)?;
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
@@ -125,6 +139,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             if *write {
                 if let Some(path) = input_file {
+                    info!(path = %path.display(), "Writing formatted output to file");
                     fs::write(path, formatted).map_err(|e| format!("Failed to write to file: {}", e))?;
                 } else {
                     return Err("Cannot use --write without specifying a file".to_string());
@@ -136,6 +151,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         }
         Commands::Normalize { file, write, no_format } => {
             let input_file = file.as_ref();
+            debug!(input_file = ?input_file, write = *write, "Executing Normalize command");
             let content = read_input(input_file)?;
             // Parse and ensure all actions have UUIDs (parser adds them automatically)
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
@@ -160,6 +176,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             if *write {
                 if let Some(path) = input_file {
+                    info!(path = %path.display(), "Writing normalized output to file");
                     fs::write(path, output).map_err(|e| format!("Failed to write to file: {}", e))?;
                 } else {
                     return Err("Cannot use --write without specifying a file".to_string());
@@ -170,6 +187,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             Ok(())
         }
         Commands::Patch { primary, secondary, write } => {
+            debug!(primary = %primary.display(), secondary = %secondary.display(), write = *write, "Executing Patch command");
             let primary_content = fs::read_to_string(primary)
                 .map_err(|e| format!("Failed to read primary file: {}", e))?;
             let secondary_content = fs::read_to_string(secondary)
@@ -183,6 +201,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let formatted = clearhead_cli::format(&primary_actions, clearhead_cli::OutputFormat::Actions, None)?;
 
             if *write {
+                info!(path = %primary.display(), "Writing patched output to primary file");
                 fs::write(primary, formatted).map_err(|e| format!("Failed to write to primary file: {}", e))?;
             } else {
                 println!("{}", formatted);
@@ -198,6 +217,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .map(|p| p.clone())
                 .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
+            debug!(input_file = %input_file.display(), days = *days, "Executing Agenda command");
+
             let content = read_input(Some(&input_file))?;
             let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
@@ -206,9 +227,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let start_of_day = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_local_timezone(Local).unwrap();
             let end_date = start_of_day + Duration::days(*days as i64);
 
-            if cli.debug > 0 {
-                eprintln!("Agenda range: {} to {}", start_of_day.format("%Y-%m-%d"), end_date.format("%Y-%m-%d"));
-            }
+            debug!(range_start = %start_of_day.format("%Y-%m-%d"), range_end = %end_date.format("%Y-%m-%d"), "Agenda projection range");
 
             // Project occurrences
             let mut agenda_items = Vec::new();
@@ -254,6 +273,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     }
                 }
             }
+
+            info!(item_count = agenda_items.len(), "Projected agenda items");
 
             // Sort by date
             agenda_items.sort_by_key(|(dt, _)| *dt);
@@ -304,6 +325,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .map(|p| p.clone())
                 .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
+            debug!(input_file = %input_file.display(), dry_run = *dry_run, "Executing Archive command");
+
             let content = fs::read_to_string(&input_file)
                 .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
             
@@ -333,6 +356,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 }
             });
 
+            debug!(log_dir = %resolved_log_dir.display(), "Log directory resolved for archiving");
+
             ensure_dir_exists(&resolved_log_dir)
                 .map_err(|e| format!("Failed to create log directory: {}", e))?;
 
@@ -341,10 +366,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             fs::write(&input_file, active_text)
                 .map_err(|e| format!("Failed to update source file '{}': {}", input_file.display(), e))?;
 
+            info!(archived_count = result.archived_count, log_path = %result.log_path.display(), "Actions archived successfully");
             println!("Archived {} actions to {}", result.archived_count, result.log_path.display());
             Ok(())
         }
         Commands::Export { file, output, open_only } => {
+            debug!(input_file = ?file, output = ?output, open_only = *open_only, "Executing Export command");
             // Read input from file or stdin
             let content = read_input(file.as_ref())?;
 
@@ -356,6 +383,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             // Write to output file or stdout
             if let Some(output_path) = output {
+                info!(output_path = %output_path.display(), "Writing iCalendar export to file");
                 fs::write(output_path, icalendar)
                     .map_err(|e| format!("Failed to write to file: {}", e))?;
             } else {
@@ -364,12 +392,74 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             Ok(())
         }
         Commands::Lsp => {
+            info!("Starting Language Server");
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .map_err(|e| format!("Failed to start async runtime: {}", e))?;
 
             rt.block_on(lsp::start_lsp());
+            Ok(())
+        }
+        Commands::SyncEvents { file, dry_run } => {
+            use clearhead_cli::events::{action_has_events, emit_event_with_timestamp};
+            
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            debug!(input_file = %input_file.display(), dry_run = *dry_run, "Executing SyncEvents command");
+
+            let content = fs::read_to_string(&input_file)
+                .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
+            
+            let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+            let mut sync_count = 0;
+            let mut skip_count = 0;
+
+            for action in &actions {
+                let uuid_str = action.id.to_string();
+                if action_has_events(&uuid_str)? {
+                    skip_count += 1;
+                    continue;
+                }
+
+                if *dry_run {
+                    println!("Would sync: {} #{}", action.name, uuid_str);
+                } else {
+                    let metadata = serde_json::json!({
+                        "name": action.name,
+                        "priority": action.priority,
+                        "contexts": action.context_list,
+                        "state": action.state.to_string(),
+                        "backfilled": true,
+                    });
+
+                    // Use created date if available, otherwise now
+                    let timestamp = action.created_date_time
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+                    emit_event_with_timestamp(
+                        "action_created",
+                        &uuid_str,
+                        Some(input_file.to_string_lossy().as_ref()),
+                        metadata,
+                        &timestamp
+                    )?;
+                    debug!(action_uuid = %uuid_str, "Backfilled event for action");
+                }
+                sync_count += 1;
+            }
+
+            if *dry_run {
+                info!(sync_count, skip_count, "SyncEvents dry run complete");
+                println!("Dry run complete. {} actions to sync, {} already present.", sync_count, skip_count);
+            } else {
+                info!(sync_count, skip_count, "SyncEvents complete");
+                println!("Sync complete. {} events backfilled, {} already present.", sync_count, skip_count);
+            }
             Ok(())
         }
         Commands::Add { file, name, priority, context, description, write } => {
@@ -384,8 +474,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .map(|p| p.clone())
                 .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
+            debug!(name = %name, input_file = %input_file.display(), "Executing Add command");
+
             // If file doesn't exist, create it
             if !input_file.exists() {
+                info!(input_file = %input_file.display(), "Creating new actions file");
                 if let Some(parent) = input_file.parent() {
                     fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
                 }
@@ -428,9 +521,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 });
                 
                 if let Err(e) = emit_event("action_created", &new_id.to_string(), Some(input_file.to_string_lossy().as_ref()), metadata) {
-                    eprintln!("Warning: Failed to log event: {}", e);
+                    warn!(error = %e, "Failed to log data event");
                 }
                 
+                info!(name = %name, id = %new_id, "Action added successfully");
                 println!("Added action: {} #{}", name, new_id);
             } else {
                 println!("{}", formatted);
@@ -447,6 +541,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .as_ref()
                 .map(|p| p.clone())
                 .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            debug!(query = %query, input_file = %input_file.display(), "Executing Complete command");
 
             let content = read_input(Some(&input_file))?;
             let mut actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
@@ -474,6 +570,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             }
 
             if !found {
+                warn!(query = %query, "No matching open action found");
                 return Err(format!("No open action found matching '{}'", query));
             }
 
@@ -488,9 +585,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 });
 
                 if let Err(e) = emit_event("action_completed", &action_id, Some(input_file.to_string_lossy().as_ref()), metadata) {
-                    eprintln!("Warning: Failed to log event: {}", e);
+                    warn!(error = %e, "Failed to log data event");
                 }
 
+                info!(name = %action_name, id = %action_id, "Action completed successfully");
                 println!("Completed action: {} #{}", action_name, action_id);
             } else {
                 println!("{}", formatted);
@@ -499,6 +597,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         }
         Commands::Lint { file } => {
             let input_file = file.as_ref();
+            debug!(input_file = ?input_file, "Executing Lint command");
             let content = read_input(input_file)?;
             
             // We need the parsed document with source map for linting
@@ -508,6 +607,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let diagnostics = clearhead_cli::lint::lint_document(&parsed);
 
             if diagnostics.is_empty() {
+                info!("No linting errors found");
                 // No output on success, standard unix philosophy
                 return Ok(());
             }
@@ -537,6 +637,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             }
 
             if has_errors {
+                warn!("Linting failed with errors");
                 std::process::exit(1);
             }
             Ok(())

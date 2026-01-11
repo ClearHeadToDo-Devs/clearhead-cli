@@ -8,6 +8,7 @@ use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 use tree_sitter::{Parser, Tree};
 use uuid::Uuid;
+use tracing::{info, debug, warn, error};
 
 use clearhead_cli::format::{FormatConfig, OutputFormat, format};
 use clearhead_cli::treesitter::get_node_text;
@@ -46,8 +47,10 @@ impl Backend {
             let parsed = get_parsed_document(&text).ok();
             
             let diagnostics = if let Some(ref p) = parsed {
+                debug!(uri = ?uri, action_count = p.actions.len(), "Document updated");
                 compute_diagnostics(p)
             } else {
+                warn!(uri = ?uri, "Document update failed to parse");
                 Vec::new()
             };
 
@@ -72,6 +75,7 @@ impl Backend {
                 .publish_diagnostics(uri, diagnostics, None)
                 .await;
         } else {
+             error!(uri = ?uri, "Failed to parse document tree");
              self.client.log_message(MessageType::ERROR, format!("Failed to parse document: {:?}", uri)).await;
         }
     }
@@ -388,29 +392,45 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let file_path = uri.to_file_path().map(|p| p.to_string_lossy().to_string());
 
+        debug!(uri = ?uri, "Processing didSave notification");
+
         if let Some(mut doc) = self.documents.get_mut(&uri) {
             // Diff existing parsed vs last_saved
             if let (Some(current), Some(last)) = (&doc.parsed, &doc.last_saved_parsed) {
                 let diff = diff_actions(&last.actions, &current.actions);
                 
+                if !diff.is_empty() {
+                    info!(
+                        uri = ?uri,
+                        added = diff.added.len(),
+                        removed = diff.removed.len(),
+                        modified = diff.modified.len(),
+                        "Changes detected on save"
+                    );
+                }
+
                 // Emit events for added actions
                 for action in &diff.added {
+                    debug!(id = %action.id, name = %action.name, "Emitting action_created event");
                     let metadata = json!({
                         "name": action.name,
                         "priority": action.priority,
                         "contexts": action.context_list,
                     });
                     if let Err(e) = emit_event("action_created", &action.id.to_string(), file_path.as_deref(), metadata) {
+                        error!(error = %e, "Failed to log action_created");
                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_created: {}", e)).await;
                     }
                 }
 
                 // Emit events for removed actions
                 for action in &diff.removed {
+                    debug!(id = %action.id, name = %action.name, "Emitting action_deleted event");
                      let metadata = json!({
                         "name": action.name,
                     });
                     if let Err(e) = emit_event("action_deleted", &action.id.to_string(), file_path.as_deref(), metadata) {
+                        error!(error = %e, "Failed to log action_deleted");
                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_deleted: {}", e)).await;
                     }
                 }
@@ -420,29 +440,35 @@ impl LanguageServer for Backend {
                     for change in &mod_action.changes {
                         match change {
                             FieldChange::State { old, new } => {
+                                debug!(id = %mod_action.id, old = ?old, new = ?new, "Emitting action state change event");
                                 if *new == clearhead_cli::entities::ActionState::Completed {
                                     // Completed
                                     let metadata = json!({ "previous_state": old.to_string() });
                                     if let Err(e) = emit_event("action_completed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                         error!(error = %e, "Failed to log action_completed");
                                          self.client.log_message(MessageType::WARNING, format!("Failed to log action_completed: {}", e)).await;
                                     }
                                 } else if *old == clearhead_cli::entities::ActionState::Completed {
                                     // Un-completed (re-opened)
                                     let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
                                     if let Err(e) = emit_event("action_reopened", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                         error!(error = %e, "Failed to log action_reopened");
                                          self.client.log_message(MessageType::WARNING, format!("Failed to log action_reopened: {}", e)).await;
                                     }
                                 } else {
                                     // Other state change
                                     let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
                                     if let Err(e) = emit_event("action_state_changed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                         error!(error = %e, "Failed to log action_state_changed");
                                          self.client.log_message(MessageType::WARNING, format!("Failed to log action_state_changed: {}", e)).await;
                                     }
                                 }
                             },
                             FieldChange::Name { old, new } => {
+                                debug!(id = %mod_action.id, old = %old, new = %new, "Emitting action rename event");
                                 let metadata = json!({ "old_name": old, "new_name": new });
                                 if let Err(e) = emit_event("action_renamed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                     error!(error = %e, "Failed to log action_renamed");
                                      self.client.log_message(MessageType::WARNING, format!("Failed to log action_renamed: {}", e)).await;
                                 }
                             },
@@ -453,9 +479,6 @@ impl LanguageServer for Backend {
                             }
                         }
                     }
-                     // If there were any changes, emit a generic update? 
-                     // Or just stick to the specific ones above. 
-                     // For "lifecycle" events (complete, add), we have covered them.
                 }
             }
 
