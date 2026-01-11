@@ -22,6 +22,8 @@ pub mod sql;
 
 pub mod events;
 
+pub mod diff;
+
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
 ///
 /// This is a simple shallow merge utility for combining configuration

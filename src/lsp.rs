@@ -12,7 +12,9 @@ use uuid::Uuid;
 use clearhead_cli::format::{FormatConfig, OutputFormat, format};
 use clearhead_cli::treesitter::get_node_text;
 use clearhead_cli::archive::archive_actions;
-use serde_json::Value;
+use clearhead_cli::diff::{diff_actions, FieldChange};
+use clearhead_cli::events::emit_event;
+use serde_json::{json, Value};
 use tower_lsp_server::jsonrpc::Error;
 
 #[derive(Debug)]
@@ -20,6 +22,7 @@ struct DocumentState {
     text: String,
     tree: Tree,
     parsed: Option<ParsedDocument>,
+    last_saved_parsed: Option<ParsedDocument>,
 }
 
 #[derive(Debug)]
@@ -37,7 +40,7 @@ impl Backend {
         parser
     }
 
-    async fn update_document(&self, uri: Uri, text: String) {
+    async fn update_document(&self, uri: Uri, text: String, is_fresh_load: bool) {
         let mut parser = Self::get_parser();
         if let Some(tree) = parser.parse(&text, None) {
             let parsed = get_parsed_document(&text).ok();
@@ -48,12 +51,20 @@ impl Backend {
                 Vec::new()
             };
 
+            // Preserve last_saved_parsed from existing state unless this is a fresh load (did_open)
+            let last_saved_parsed = if is_fresh_load {
+                parsed.clone()
+            } else {
+                self.documents.get(&uri).and_then(|d| d.last_saved_parsed.clone())
+            };
+
             self.documents.insert(
                 uri.clone(),
                 DocumentState {
                     text: text.clone(),
                     tree: tree.clone(),
                     parsed,
+                    last_saved_parsed,
                 },
             );
 
@@ -362,14 +373,94 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.update_document(params.text_document.uri, params.text_document.text)
+        self.update_document(params.text_document.uri, params.text_document.text, true)
             .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Some(change) = params.content_changes.into_iter().next() {
-            self.update_document(params.text_document.uri, change.text)
+            self.update_document(params.text_document.uri, change.text, false)
                 .await;
+        }
+    }
+
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        let uri = params.text_document.uri;
+        let file_path = uri.to_file_path().map(|p| p.to_string_lossy().to_string());
+
+        if let Some(mut doc) = self.documents.get_mut(&uri) {
+            // Diff existing parsed vs last_saved
+            if let (Some(current), Some(last)) = (&doc.parsed, &doc.last_saved_parsed) {
+                let diff = diff_actions(&last.actions, &current.actions);
+                
+                // Emit events for added actions
+                for action in &diff.added {
+                    let metadata = json!({
+                        "name": action.name,
+                        "priority": action.priority,
+                        "contexts": action.context_list,
+                    });
+                    if let Err(e) = emit_event("action_created", &action.id.to_string(), file_path.as_deref(), metadata) {
+                        self.client.log_message(MessageType::WARNING, format!("Failed to log action_created: {}", e)).await;
+                    }
+                }
+
+                // Emit events for removed actions
+                for action in &diff.removed {
+                     let metadata = json!({
+                        "name": action.name,
+                    });
+                    if let Err(e) = emit_event("action_deleted", &action.id.to_string(), file_path.as_deref(), metadata) {
+                        self.client.log_message(MessageType::WARNING, format!("Failed to log action_deleted: {}", e)).await;
+                    }
+                }
+
+                // Emit events for modified actions
+                for mod_action in &diff.modified {
+                    for change in &mod_action.changes {
+                        match change {
+                            FieldChange::State { old, new } => {
+                                if *new == clearhead_cli::entities::ActionState::Completed {
+                                    // Completed
+                                    let metadata = json!({ "previous_state": old.to_string() });
+                                    if let Err(e) = emit_event("action_completed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_completed: {}", e)).await;
+                                    }
+                                } else if *old == clearhead_cli::entities::ActionState::Completed {
+                                    // Un-completed (re-opened)
+                                    let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
+                                    if let Err(e) = emit_event("action_reopened", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_reopened: {}", e)).await;
+                                    }
+                                } else {
+                                    // Other state change
+                                    let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
+                                    if let Err(e) = emit_event("action_state_changed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_state_changed: {}", e)).await;
+                                    }
+                                }
+                            },
+                            FieldChange::Name { old, new } => {
+                                let metadata = json!({ "old_name": old, "new_name": new });
+                                if let Err(e) = emit_event("action_renamed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
+                                     self.client.log_message(MessageType::WARNING, format!("Failed to log action_renamed: {}", e)).await;
+                                }
+                            },
+                            // Log generic update for other fields
+                            _ => {
+                                // We could be more specific, but for now just "action_updated"
+                                // or skip if we only care about lifecycle
+                            }
+                        }
+                    }
+                     // If there were any changes, emit a generic update? 
+                     // Or just stick to the specific ones above. 
+                     // For "lifecycle" events (complete, add), we have covered them.
+                }
+            }
+
+            // Update last_saved_parsed to current
+            doc.last_saved_parsed = doc.parsed.clone();
         }
     }
 

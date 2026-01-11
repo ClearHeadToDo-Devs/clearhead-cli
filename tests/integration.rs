@@ -8,6 +8,7 @@ struct TestEnv {
     _temp_dir: TempDir, // Keep alive for cleanup
     config_dir: std::path::PathBuf,
     data_dir: std::path::PathBuf,
+    state_dir: std::path::PathBuf,
     work_dir: std::path::PathBuf,
 }
 
@@ -16,16 +17,19 @@ impl TestEnv {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let config_dir = temp_dir.path().join("config/clearhead");
         let data_dir = temp_dir.path().join("data/clearhead");
+        let state_dir = temp_dir.path().join("state/clearhead");
         let work_dir = temp_dir.path().join("work");
 
         fs::create_dir_all(&config_dir).expect("Failed to create config dir");
         fs::create_dir_all(&data_dir).expect("Failed to create data dir");
+        fs::create_dir_all(&state_dir).expect("Failed to create state dir");
         fs::create_dir_all(&work_dir).expect("Failed to create work dir");
 
         TestEnv {
             _temp_dir: temp_dir,
             config_dir,
             data_dir,
+            state_dir,
             work_dir,
         }
     }
@@ -48,6 +52,7 @@ impl TestEnv {
         let mut cmd = Command::new(bin);
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
+        cmd.env("XDG_STATE_HOME", &self.state_dir);
         cmd.current_dir(&self.work_dir); // Run from temp dir to avoid project detection
         cmd
     }
@@ -519,4 +524,97 @@ fn test_patch_appends_new_actions() {
     let content = fs::read_to_string(&primary_path).unwrap();
     assert!(content.contains("Task A"));
     assert!(content.contains("Task B"));
+}
+
+#[test]
+fn test_add_command() {
+    let env = TestEnv::new();
+
+    env.command()
+        .arg("add")
+        .arg("New Task")
+        .arg("--write")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Added action: New Task"));
+
+    // Check file content
+    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
+    assert!(content.contains("[ ] New Task"));
+    assert!(content.contains("#")); // UUID should be there
+}
+
+#[test]
+fn test_add_command_with_options() {
+    let env = TestEnv::new();
+
+    env.command()
+        .arg("add")
+        .arg("High Priority Task")
+        .arg("--priority")
+        .arg("1")
+        .arg("--context")
+        .arg("work")
+        .arg("--context")
+        .arg("urgent")
+        .arg("--description")
+        .arg("Do it now")
+        .arg("--write")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
+    assert!(content.contains("[ ] High Priority Task"));
+    assert!(content.contains("!1"));
+    assert!(content.contains("+work,urgent"));
+    assert!(content.contains("$ Do it now"));
+}
+
+#[test]
+fn test_complete_command() {
+    let env = TestEnv::new();
+    let uuid = "019baaec-00b6-7991-be34-94b68212619a";
+    env.write_actions("inbox.actions", &format!("[ ] Task to complete #{}", uuid));
+
+    env.command()
+        .arg("complete")
+        .arg(uuid)
+        .arg("--write")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Completed action"));
+
+    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
+    assert!(content.contains("[x] Task to complete"));
+    assert!(content.contains("%")); // Completed date
+}
+
+#[test]
+fn test_complete_command_by_name() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Unique Task Name");
+
+    env.command()
+        .arg("complete")
+        .arg("Unique Task")
+        .arg("--write")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
+    assert!(content.contains("[x] Unique Task Name"));
+}
+
+#[test]
+fn test_complete_command_idempotent_fail() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[x] Already Done");
+
+    env.command()
+        .arg("complete")
+        .arg("Already Done")
+        .arg("--write")
+        .assert()
+        .failure() // Should fail as no *open* action found
+        .stderr(predicate::str::contains("No open action found"));
 }

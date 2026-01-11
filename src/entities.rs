@@ -30,7 +30,7 @@ pub struct SourceMetadata {
     pub raw_id: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParsedDocument {
     pub actions: ActionList,
     pub source_map: HashMap<Uuid, SourceMetadata>,

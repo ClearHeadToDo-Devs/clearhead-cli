@@ -131,6 +131,44 @@ pub enum Commands {
     /// Start the Language Server Protocol (LSP) server
     Lsp,
 
+    /// Add a new action to a file
+    Add {
+        /// Name of the action
+        name: String,
+
+        /// File to add to. If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// Priority of the action (1-9)
+        #[arg(short, long)]
+        priority: Option<u32>,
+
+        /// Contexts for the action (can be specified multiple times)
+        #[arg(short, long)]
+        context: Vec<String>,
+
+        /// Description of the action
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Overwrite the input file with the added action
+        #[arg(short, long)]
+        write: bool,
+    },
+
+    /// Mark an action as completed
+    Complete {
+        /// UUID or name of the action to complete
+        query: String,
+
+        /// File containing the action. If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// Overwrite the input file with the completed action
+        #[arg(short, long)]
+        write: bool,
+    },
+
     /// Lint an actions file for errors and warnings
     Lint {
         /// File to lint. If not provided, reads from stdin

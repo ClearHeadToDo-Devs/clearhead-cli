@@ -372,6 +372,131 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             rt.block_on(lsp::start_lsp());
             Ok(())
         }
+        Commands::Add { file, name, priority, context, description, write } => {
+            use chrono::Local;
+            use uuid::Uuid;
+            use clearhead_cli::entities::{Action, ActionState};
+            use clearhead_cli::events::emit_event;
+            use clearhead_cli::format::{format, OutputFormat};
+
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            // If file doesn't exist, create it
+            if !input_file.exists() {
+                if let Some(parent) = input_file.parent() {
+                    fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+                }
+                fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
+            }
+
+            let content = read_input(Some(&input_file))?;
+            let mut actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            let new_id = Uuid::now_v7();
+            let new_action = Action {
+                id: new_id,
+                parent_id: None,
+                state: ActionState::NotStarted,
+                name: name.clone(),
+                description: description.clone(),
+                priority: *priority,
+                context_list: if context.is_empty() { None } else { Some(context.clone()) },
+                do_date_time: None,
+                do_duration: None,
+                recurrence: None,
+                completed_date_time: None,
+                created_date_time: Some(Local::now()),
+                predecessors: None,
+                story: None,
+            };
+
+            actions.push(new_action.clone());
+
+            let formatted = format(&actions, OutputFormat::Actions, None)?;
+
+            if *write {
+                fs::write(&input_file, formatted).map_err(|e| format!("Failed to write to file: {}", e))?;
+                
+                // Emit event
+                let metadata = serde_json::json!({
+                    "name": name,
+                    "priority": priority,
+                    "contexts": context,
+                });
+                
+                if let Err(e) = emit_event("action_created", &new_id.to_string(), Some(input_file.to_string_lossy().as_ref()), metadata) {
+                    eprintln!("Warning: Failed to log event: {}", e);
+                }
+                
+                println!("Added action: {} #{}", name, new_id);
+            } else {
+                println!("{}", formatted);
+            }
+            Ok(())
+        }
+        Commands::Complete { file, query, write } => {
+            use chrono::Local;
+            use clearhead_cli::entities::ActionState;
+            use clearhead_cli::events::emit_event;
+            use clearhead_cli::format::{format, OutputFormat};
+
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            let content = read_input(Some(&input_file))?;
+            let mut actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            let mut found = false;
+            let mut action_id = String::new();
+            let mut action_name = String::new();
+
+            for action in &mut actions {
+                // Check if query matches ID or Name
+                let id_match = action.id.to_string().starts_with(query); // Prefix match for ID
+                let name_match = action.name.contains(query);
+
+                if id_match || name_match {
+                    if action.state != ActionState::Completed {
+                        action.state = ActionState::Completed;
+                        action.completed_date_time = Some(Local::now());
+                        
+                        found = true;
+                        action_id = action.id.to_string();
+                        action_name = action.name.clone();
+                        break; // Only complete the first match for now
+                    }
+                }
+            }
+
+            if !found {
+                return Err(format!("No open action found matching '{}'", query));
+            }
+
+            let formatted = format(&actions, OutputFormat::Actions, None)?;
+
+            if *write {
+                fs::write(&input_file, formatted).map_err(|e| format!("Failed to write to file: {}", e))?;
+
+                // Emit event
+                let metadata = serde_json::json!({
+                    "name": action_name,
+                });
+
+                if let Err(e) = emit_event("action_completed", &action_id, Some(input_file.to_string_lossy().as_ref()), metadata) {
+                    eprintln!("Warning: Failed to log event: {}", e);
+                }
+
+                println!("Completed action: {} #{}", action_name, action_id);
+            } else {
+                println!("{}", formatted);
+            }
+            Ok(())
+        }
         Commands::Lint { file } => {
             let input_file = file.as_ref();
             let content = read_input(input_file)?;

@@ -126,11 +126,11 @@ pub fn emit_event(
     file_path: Option<&str>,
     metadata: JsonValue,
 ) -> Result<(), String> {
-    emit_event_inner(event_type, action_uuid, file_path, metadata, None)
+    emit_event_with_db(event_type, action_uuid, file_path, metadata, None)
 }
 
 /// Internal function with optional DB path override for testing
-fn emit_event_inner(
+pub fn emit_event_with_db(
     event_type: &str,
     action_uuid: &str,
     file_path: Option<&str>,
@@ -212,7 +212,7 @@ mod tests {
             "priority": 1
         });
 
-        emit_event_inner(
+        emit_event_with_db(
             "action_completed",
             "test-uuid-123",
             Some("inbox.actions"),
@@ -246,7 +246,7 @@ mod tests {
 
         let metadata = json!({"test": true});
 
-        emit_event_inner("action_created", "uuid-456", None, metadata, Some(&db_path)).unwrap();
+        emit_event_with_db("action_created", "uuid-456", None, metadata, Some(&db_path)).unwrap();
 
         let conn = init_events_db_inner(Some(&db_path)).unwrap();
         let file_path: Option<String> = conn
@@ -264,9 +264,9 @@ mod tests {
     fn test_multiple_events_sequential_ids() {
         let (_temp, db_path) = temp_db_path();
 
-        emit_event_inner("action_created", "uuid-1", None, json!({}), Some(&db_path)).unwrap();
-        emit_event_inner("action_completed", "uuid-1", None, json!({}), Some(&db_path)).unwrap();
-        emit_event_inner("action_deleted", "uuid-1", None, json!({}), Some(&db_path)).unwrap();
+        emit_event_with_db("action_created", "uuid-1", None, json!({}), Some(&db_path)).unwrap();
+        emit_event_with_db("action_completed", "uuid-1", None, json!({}), Some(&db_path)).unwrap();
+        emit_event_with_db("action_deleted", "uuid-1", None, json!({}), Some(&db_path)).unwrap();
 
         let conn = init_events_db_inner(Some(&db_path)).unwrap();
         let count: i64 = conn
