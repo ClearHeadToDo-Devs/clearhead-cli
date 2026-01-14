@@ -5,6 +5,8 @@ pub mod treesitter;
 pub mod sync_utils;
 
 pub mod entities;
+
+pub mod crdt;
 use entities::{ActionList, ParsedDocument};
 
 pub mod format;

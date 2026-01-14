@@ -963,4 +963,19 @@ mod tests {
         assert!(formatted.contains(&pred_uuid.to_string()));
         assert!(formatted.contains("<"));
     }
+
+    #[test]
+    fn test_parse_empty_context_behavior() {
+        // This test confirms that the current grammar/parser treats a standalone "+" 
+        // as NOT being a context node. If it were a context node, it would be Some([""]).
+        // If this test passes, it confirms why the linter misses it.
+        let source = "[ ] Task +";
+        let actions = parse_actions(source);
+        assert_eq!(actions.len(), 1);
+        
+        // If the grammar rejects "+", then context_list will be None
+        // If the grammar accepts "+", then context_list will be Some(vec![""])
+        // We assert what we observe to confirm the hypothesis
+        assert!(actions[0].context_list.is_none(), "Expected '+' to be ignored by parser, resulting in None context");
+    }
 }

@@ -467,7 +467,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             use uuid::Uuid;
             use clearhead_cli::entities::{Action, ActionState};
             use clearhead_cli::events::emit_event;
-            use clearhead_cli::format::{format, OutputFormat};
+            use clearhead_cli::crdt::ActionRepository;
 
             let input_file = file
                 .as_ref()
@@ -485,8 +485,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
             }
 
-            let content = read_input(Some(&input_file))?;
-            let mut actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+            // Phase 1: Load Repo (Sync In)
+            // This loads CRDT and reconciles any manual file edits
+            let mut repo = ActionRepository::load(input_file.clone())
+                .map_err(|e| format!("Failed to load repository: {}", e))?;
+            
+            // Get current state from Source of Truth
+            let mut actions = repo.get_actions()
+                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
 
             let new_id = Uuid::now_v7();
             let new_action = Action {
@@ -508,12 +514,16 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             actions.push(new_action.clone());
 
-            let formatted = format(&actions, OutputFormat::Actions, None)?;
+            // Preview formatted output
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
 
             if *write {
-                fs::write(&input_file, formatted).map_err(|e| format!("Failed to write to file: {}", e))?;
+                // Phase 2: Save Repo (Sync Out)
+                // Updates CRDT, persists to disk, and updates file
+                repo.save(&actions)
+                    .map_err(|e| format!("Failed to save repository: {}", e))?;
                 
-                // Emit event
+                // Emit event (Analytics/History)
                 let metadata = serde_json::json!({
                     "name": name,
                     "priority": priority,
@@ -535,7 +545,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             use chrono::Local;
             use clearhead_cli::entities::ActionState;
             use clearhead_cli::events::emit_event;
-            use clearhead_cli::format::{format, OutputFormat};
+            use clearhead_cli::crdt::ActionRepository;
 
             let input_file = file
                 .as_ref()
@@ -544,8 +554,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             debug!(query = %query, input_file = %input_file.display(), "Executing Complete command");
 
-            let content = read_input(Some(&input_file))?;
-            let mut actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+            // Phase 1: Load Repo (Sync In)
+            let mut repo = ActionRepository::load(input_file.clone())
+                .map_err(|e| format!("Failed to load repository: {}", e))?;
+            
+            let mut actions = repo.get_actions()
+                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
 
             let mut found = false;
             let mut action_id = String::new();
@@ -574,10 +588,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 return Err(format!("No open action found matching '{}'", query));
             }
 
-            let formatted = format(&actions, OutputFormat::Actions, None)?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
 
             if *write {
-                fs::write(&input_file, formatted).map_err(|e| format!("Failed to write to file: {}", e))?;
+                // Phase 2: Save Repo (Sync Out)
+                repo.save(&actions)
+                    .map_err(|e| format!("Failed to save repository: {}", e))?;
 
                 // Emit event
                 let metadata = serde_json::json!({
