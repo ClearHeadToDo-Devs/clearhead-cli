@@ -49,10 +49,17 @@ fn get_linting_examples() -> Vec<(String, String, String)> {
 
 #[test]
 fn test_linting_error_detection() {
-    // List of currently implemented rules
-    // TODO: Remove this filter once all rules are implemented
+    // List of currently implemented rules (updated to match spec codes)
+    // Note: E001/E002 (duration/recurrence without do-date) are implemented but
+    // can't be tested via parsing - the grammar requires D/R: to be inside do_date.
+    // These are tested via unit tests with constructed Action objects.
+    // E003, E006: Errors (parser correctness)
+    // W002-W006: Warnings (temporal/semantic issues)
+    // I001-I004: Info (style preferences)
     let implemented_rules = vec![
-        "E001", "E002", "E003", "E004", "E005", "E008", "E012", "E013", "E014", "E015", "E016"
+        "E003", "E006",  // Errors (E001, E002 tested via unit tests only)
+        "W002", "W003", "W004", "W005", "W006",  // Warnings
+        "I001", "I002", "I003", "I004",  // Info
     ];
 
     let examples = get_linting_examples();
@@ -104,7 +111,9 @@ fn test_linting_error_detection() {
 fn test_linting_fixed_version_passes() {
     // List of currently implemented rules (same as above)
     let implemented_rules = vec![
-        "E001", "E012", "E013", "E014", "E015", "E016"
+        "E003", "E006",  // Errors (E001, E002 tested via unit tests only)
+        "W002", "W003", "W004", "W005", "W006",  // Warnings
+        "I001", "I002", "I003", "I004",  // Info
     ];
 
     let examples = get_linting_examples();

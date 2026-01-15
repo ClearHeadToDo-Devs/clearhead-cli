@@ -1,0 +1,50 @@
+---
+source: tests/linting_conformance.rs
+expression: diagnostics
+---
+[
+    LintDiagnostic {
+        code: "E006",
+        severity: Error,
+        message: "Invalid UUID format: '123'. UUIDs must follow standard format (E006).",
+        range: SourceRange {
+            start_row: 1,
+            start_col: 0,
+            end_row: 1,
+            end_col: 27,
+        },
+    },
+    LintDiagnostic {
+        code: "E006",
+        severity: Error,
+        message: "Invalid UUID format: '12345678-1234'. UUIDs must follow standard format (E006).",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 43,
+        },
+    },
+    LintDiagnostic {
+        code: "E006",
+        severity: Error,
+        message: "Invalid UUID format: 'abc-def-abc-def'. UUIDs must follow standard format (E006).",
+        range: SourceRange {
+            start_row: 3,
+            start_col: 0,
+            end_row: 3,
+            end_col: 44,
+        },
+    },
+    LintDiagnostic {
+        code: "E006",
+        severity: Error,
+        message: "Invalid UUID format: '01950000-0000-7000-8000'. UUIDs must follow standard format (E006).",
+        range: SourceRange {
+            start_row: 4,
+            start_col: 0,
+            end_row: 4,
+            end_col: 54,
+        },
+    },
+]

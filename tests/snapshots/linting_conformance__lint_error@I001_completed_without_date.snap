@@ -1,6 +1,5 @@
 ---
 source: tests/linting_conformance.rs
-assertion_line: 98
 expression: diagnostics
 ---
 [
@@ -12,40 +11,40 @@ expression: diagnostics
             start_row: 1,
             start_col: 0,
             end_row: 1,
-            end_col: 43,
+            end_col: 40,
         },
     },
     LintDiagnostic {
-        code: "E016",
-        severity: Error,
-        message: "Completion date cannot be before creation date (E016).",
+        code: "I001",
+        severity: Info,
+        message: "Completed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 1,
-            start_col: 32,
+            start_col: 0,
             end_row: 1,
-            end_col: 43,
+            end_col: 40,
         },
     },
     LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        code: "E006",
+        severity: Error,
+        message: "Invalid UUID format: '123'. UUIDs must follow standard format (E006).",
         range: SourceRange {
             start_row: 2,
             start_col: 0,
             end_row: 2,
-            end_col: 52,
+            end_col: 27,
         },
     },
     LintDiagnostic {
-        code: "E016",
-        severity: Error,
-        message: "Completion date cannot be before creation date (E016).",
+        code: "I001",
+        severity: Info,
+        message: "Completed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 2,
-            start_col: 35,
+            start_col: 0,
             end_row: 2,
-            end_col: 52,
+            end_col: 27,
         },
     },
     LintDiagnostic {
@@ -56,18 +55,18 @@ expression: diagnostics
             start_row: 3,
             start_col: 0,
             end_row: 3,
-            end_col: 52,
+            end_col: 81,
         },
     },
     LintDiagnostic {
-        code: "E016",
-        severity: Error,
-        message: "Completion date cannot be before creation date (E016).",
+        code: "I001",
+        severity: Info,
+        message: "Completed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 3,
-            start_col: 41,
+            start_col: 0,
             end_row: 3,
-            end_col: 52,
+            end_col: 81,
         },
     },
 ]

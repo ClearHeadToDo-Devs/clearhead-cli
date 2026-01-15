@@ -45,6 +45,32 @@ impl LintDiagnostic {
 // Individual Linting Rules (Pure Functions - Independently Testable)
 // ============================================================================
 
+/// Check if duration is present without a do-date (E001)
+fn check_duration_without_do_date(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
+    if action.do_duration.is_some() && action.do_date_time.is_none() {
+        Some(LintDiagnostic::error(
+            "E001",
+            "Duration requires a do-date to be meaningful (E001).".to_string(),
+            metadata.root,
+        ))
+    } else {
+        None
+    }
+}
+
+/// Check if recurrence is present without a do-date (E002)
+fn check_recurrence_without_do_date(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
+    if action.recurrence.is_some() && action.do_date_time.is_none() {
+        Some(LintDiagnostic::error(
+            "E002",
+            "Recurrence requires a do-date as the starting point (E002).".to_string(),
+            metadata.root,
+        ))
+    } else {
+        None
+    }
+}
+
 /// Check if action is missing a UUID (Info - style preference)
 fn check_missing_id(metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     if metadata.is_id_generated && metadata.raw_id.is_none() {
@@ -58,23 +84,23 @@ fn check_missing_id(metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     }
 }
 
-/// Check if UUID format is invalid (E004)
+/// Check if UUID format is invalid (E006)
 fn check_invalid_uuid(metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     metadata.raw_id.as_ref().map(|raw_id| {
         LintDiagnostic::error(
-            "E004",
-            format!("Invalid UUID format: '{}' (E004).", raw_id),
+            "E006",
+            format!("Invalid UUID format: '{}'. UUIDs must follow standard format (E006).", raw_id),
             metadata.root,
         )
     })
 }
 
-/// Check for duplicate UUIDs (E005)
+/// Check for duplicate UUIDs (I004)
 fn check_duplicate_id(action: &Action, metadata: &SourceMetadata, seen_ids: &mut HashSet<Uuid>) -> Option<LintDiagnostic> {
     if !metadata.is_id_generated && !seen_ids.insert(action.id) {
-        Some(LintDiagnostic::error(
-            "E005",
-            format!("Duplicate action ID found: {} (E005)", action.id),
+        Some(LintDiagnostic::info(
+            "I004",
+            format!("Duplicate action ID found: {} (I004)", action.id),
             metadata.root,
         ))
     } else {
@@ -82,7 +108,7 @@ fn check_duplicate_id(action: &Action, metadata: &SourceMetadata, seen_ids: &mut
     }
 }
 
-/// Check tree consistency rules (E012, E013)
+/// Check tree consistency rules (W002, W003)
 fn check_tree_consistency(action: &Action, children: &[&Action], metadata: &SourceMetadata) -> Vec<LintDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -94,20 +120,20 @@ fn check_tree_consistency(action: &Action, children: &[&Action], metadata: &Sour
     let any_children_uncompleted = children.iter().any(|c| c.state != ActionState::Completed);
     let is_completed = action.state == ActionState::Completed;
 
-    // E012: Completed parent with uncompleted children
+    // W002: Completed parent with uncompleted children
     if is_completed && any_children_uncompleted {
-        diagnostics.push(LintDiagnostic::error(
-            "E012",
-            "Parent is completed but some children are still active (E012).".to_string(),
+        diagnostics.push(LintDiagnostic::warning(
+            "W002",
+            "Parent is completed but some children are still active (W002).".to_string(),
             metadata.root,
         ));
     }
 
-    // E013: Uncompleted parent with all children completed
+    // W003: Uncompleted parent with all children completed
     if !is_completed && all_children_completed {
         diagnostics.push(LintDiagnostic::warning(
-            "E013",
-            "All children are completed. Should this parent be completed too? (E013)".to_string(),
+            "W003",
+            "All children are completed. Should this parent be completed too? (W003)".to_string(),
             metadata.root,
         ));
     }
@@ -115,12 +141,12 @@ fn check_tree_consistency(action: &Action, children: &[&Action], metadata: &Sour
     diagnostics
 }
 
-/// Check if completed action is missing completion date (E001)
+/// Check if completed action is missing completion date (I001)
 fn check_missing_completion_date(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     if action.state == ActionState::Completed && action.completed_date_time.is_none() {
-        Some(LintDiagnostic::error(
-            "E001",
-            "Completed action is missing a completion date (E001).".to_string(),
+        Some(LintDiagnostic::info(
+            "I001",
+            "Completed action is missing a completion date (I001).".to_string(),
             metadata.root,
         ))
     } else {
@@ -128,12 +154,12 @@ fn check_missing_completion_date(action: &Action, metadata: &SourceMetadata) -> 
     }
 }
 
-/// Check if action has completion date but isn't completed (E002)
+/// Check if action has completion date but isn't completed (I002)
 fn check_completion_date_without_state(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     if action.state != ActionState::Completed && action.completed_date_time.is_some() {
-        Some(LintDiagnostic::error(
-            "E002",
-            "Action has a completion date but is not marked as completed (E002).".to_string(),
+        Some(LintDiagnostic::info(
+            "I002",
+            "Action has a completion date but is not marked as completed (I002).".to_string(),
             metadata.completed_date.unwrap_or(metadata.root),
         ))
     } else {
@@ -141,13 +167,13 @@ fn check_completion_date_without_state(action: &Action, metadata: &SourceMetadat
     }
 }
 
-/// Check if priority is in valid range 1-5 (E003)
+/// Check if priority is in valid range 1-5 (I003)
 fn check_priority_range(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     action.priority.and_then(|priority| {
         if priority == 0 || priority > 5 {
-            Some(LintDiagnostic::error(
-                "E003",
-                format!("Priority must be 1-5 (got {}) (E003).", priority),
+            Some(LintDiagnostic::info(
+                "I003",
+                format!("Priority must be 1-5 (got {}) (I003).", priority),
                 metadata.root,
             ))
         } else {
@@ -156,13 +182,13 @@ fn check_priority_range(action: &Action, metadata: &SourceMetadata) -> Option<Li
     })
 }
 
-/// Check for empty context tags (E008)
+/// Check for empty context tags (E003)
 fn check_empty_context(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     action.context_list.as_ref().and_then(|contexts| {
         if contexts.iter().any(|c| c.is_empty()) {
             Some(LintDiagnostic::error(
-                "E008",
-                "Context tags cannot be empty (E008).".to_string(),
+                "E003",
+                "Context tags cannot be empty (E003).".to_string(),
                 metadata.root,
             ))
         } else {
@@ -171,7 +197,7 @@ fn check_empty_context(action: &Action, metadata: &SourceMetadata) -> Option<Lin
     })
 }
 
-/// Check if action is missing creation date (E014 - Warning, style preference)
+/// Check if action is missing creation date (W004)
 fn check_missing_creation_date(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
     let is_v7 = !metadata.is_id_generated
         && action.id.get_variant() == uuid::Variant::RFC4122
@@ -179,8 +205,8 @@ fn check_missing_creation_date(action: &Action, metadata: &SourceMetadata) -> Op
 
     if action.created_date_time.is_none() && !is_v7 {
         Some(LintDiagnostic::warning(
-            "E014",
-            "Action is missing a creation date. Consider adding ^ or using UUIDv7 (E014).".to_string(),
+            "W004",
+            "Action is missing a creation date. Consider adding ^ or using UUIDv7 (W004).".to_string(),
             metadata.root,
         ))
     } else {
@@ -188,26 +214,26 @@ fn check_missing_creation_date(action: &Action, metadata: &SourceMetadata) -> Op
     }
 }
 
-/// Check creation date validity - future dates and completion before creation (E015, E016)
+/// Check creation date validity - future dates and completion before creation (W005, W006)
 fn check_creation_date_validity(action: &Action, metadata: &SourceMetadata) -> Vec<LintDiagnostic> {
     let mut diagnostics = Vec::new();
 
     if let Some(created) = action.created_date_time {
-        // E015: Future Creation Date
+        // W005: Future Creation Date
         if created > Local::now() {
-            diagnostics.push(LintDiagnostic::error(
-                "E015",
-                "Creation date cannot be in the future (E015).".to_string(),
+            diagnostics.push(LintDiagnostic::warning(
+                "W005",
+                "Creation date cannot be in the future (W005).".to_string(),
                 metadata.created_date.unwrap_or(metadata.root),
             ));
         }
 
-        // E016: Completion Before Creation
+        // W006: Completion Before Creation
         if let Some(completed) = action.completed_date_time {
             if completed < created {
-                diagnostics.push(LintDiagnostic::error(
-                    "E016",
-                    "Completion date cannot be before creation date (E016).".to_string(),
+                diagnostics.push(LintDiagnostic::warning(
+                    "W006",
+                    "Completion date cannot be before creation date (W006).".to_string(),
                     metadata.completed_date.unwrap_or(metadata.root),
                 ));
             }
@@ -227,17 +253,27 @@ pub fn lint_document(doc: &ParsedDocument) -> Vec<LintDiagnostic> {
 
     for action in &doc.actions {
         if let Some(metadata) = doc.source_map.get(&action.id) {
+            // E001: Duration without do-date
+            if let Some(diag) = check_duration_without_do_date(action, metadata) {
+                diagnostics.push(diag);
+            }
+
+            // E002: Recurrence without do-date
+            if let Some(diag) = check_recurrence_without_do_date(action, metadata) {
+                diagnostics.push(diag);
+            }
+
             // Check missing ID
             if let Some(diag) = check_missing_id(metadata) {
                 diagnostics.push(diag);
             }
 
-            // Check invalid UUID format
+            // Check invalid UUID format (E006)
             if let Some(diag) = check_invalid_uuid(metadata) {
                 diagnostics.push(diag);
             }
 
-            // Check duplicate ID
+            // Check duplicate ID (I004)
             if let Some(diag) = check_duplicate_id(action, metadata, &mut seen_ids) {
                 diagnostics.push(diag);
             }
@@ -317,12 +353,15 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_check_missing_completion_date_error() {
+    fn test_check_missing_completion_date_info() {
         let text = "[x] Completed task with no completion date #01942d99-4c27-77f6-9316-107024843939";
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E001"));
+        assert!(diagnostics.iter().any(|d| d.code == "I001"));
+        // Verify it's Info severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "I001").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Info);
     }
 
     #[test]
@@ -331,7 +370,7 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(!diagnostics.iter().any(|d| d.code == "E001"));
+        assert!(!diagnostics.iter().any(|d| d.code == "I001"));
     }
 
     #[test]
@@ -360,7 +399,7 @@ mod tests {
 
         let result = check_invalid_uuid(&metadata);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().code, "E004");
+        assert_eq!(result.unwrap().code, "E006");
     }
 
     #[test]
@@ -369,7 +408,10 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E005"));
+        assert!(diagnostics.iter().any(|d| d.code == "I004"));
+        // Verify it's Info severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "I004").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Info);
     }
 
     #[test]
@@ -378,7 +420,10 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E012"));
+        assert!(diagnostics.iter().any(|d| d.code == "W002"));
+        // Verify it's Warning severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "W002").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Warning);
     }
 
     #[test]
@@ -387,7 +432,10 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E013"));
+        assert!(diagnostics.iter().any(|d| d.code == "W003"));
+        // Verify it's Warning severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "W003").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Warning);
     }
 
     #[test]
@@ -396,7 +444,10 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E003"));
+        assert!(diagnostics.iter().any(|d| d.code == "I003"));
+        // Verify it's Info severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "I003").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Info);
     }
 
     #[test]
@@ -405,7 +456,7 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E003"));
+        assert!(diagnostics.iter().any(|d| d.code == "I003"));
     }
 
     #[test]
@@ -414,7 +465,7 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(!diagnostics.iter().any(|d| d.code == "E003"));
+        assert!(!diagnostics.iter().any(|d| d.code == "I003"));
     }
 
     #[test]
@@ -459,7 +510,9 @@ mod tests {
 
         let result = check_empty_context(&action, &metadata);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().code, "E008");
+        let diag = result.unwrap();
+        assert_eq!(diag.code, "E003");
+        assert_eq!(diag.severity, LintSeverity::Error);
     }
 
     #[test]
@@ -473,7 +526,10 @@ mod tests {
         let parsed = get_parsed_document(&text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E015"));
+        assert!(diagnostics.iter().any(|d| d.code == "W005"));
+        // Verify it's Warning severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "W005").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Warning);
     }
 
     #[test]
@@ -482,6 +538,222 @@ mod tests {
         let parsed = get_parsed_document(text).unwrap();
 
         let diagnostics = lint_document(&parsed);
-        assert!(diagnostics.iter().any(|d| d.code == "E016"));
+        assert!(diagnostics.iter().any(|d| d.code == "W006"));
+        // Verify it's Warning severity per spec
+        let diag = diagnostics.iter().find(|d| d.code == "W006").unwrap();
+        assert_eq!(diag.severity, LintSeverity::Warning);
+    }
+
+    // ========================================================================
+    // New E001/E002 Tests (Duration and Recurrence without Do-Date)
+    // ========================================================================
+
+    #[test]
+    fn test_check_duration_without_do_date() {
+        // Test the function directly since parsing D without @ may not be valid in grammar
+        use crate::entities::{Action, SourceMetadata, SourceRange};
+        let action = Action {
+            id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Meeting".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,  // No do-date
+            do_duration: Some(60),  // Has duration
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+        };
+        let metadata = SourceMetadata {
+            root: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            line_range: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            do_date: None,
+            completed_date: None,
+            created_date: None,
+            is_id_generated: false,
+            raw_id: None,
+        };
+
+        let result = check_duration_without_do_date(&action, &metadata);
+        assert!(result.is_some());
+        let diag = result.unwrap();
+        assert_eq!(diag.code, "E001");
+        assert_eq!(diag.severity, LintSeverity::Error);
+    }
+
+    #[test]
+    fn test_check_duration_with_do_date_ok() {
+        use crate::entities::{Action, SourceMetadata, SourceRange};
+        let action = Action {
+            id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Meeting".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: Some(Local::now()),  // Has do-date
+            do_duration: Some(60),  // Has duration
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+        };
+        let metadata = SourceMetadata {
+            root: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            line_range: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            do_date: None,
+            completed_date: None,
+            created_date: None,
+            is_id_generated: false,
+            raw_id: None,
+        };
+
+        let result = check_duration_without_do_date(&action, &metadata);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_check_recurrence_without_do_date() {
+        use crate::entities::{Action, Recurrence, SourceMetadata, SourceRange};
+        let action = Action {
+            id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Daily standup".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,  // No do-date
+            do_duration: None,
+            recurrence: Some(Recurrence {  // Has recurrence
+                frequency: "daily".to_string(),
+                interval: None,
+                count: None,
+                until: None,
+                by_second: None,
+                by_minute: None,
+                by_hour: None,
+                by_day: None,
+                by_month_day: None,
+                by_year_day: None,
+                by_week_no: None,
+                by_month: None,
+                by_set_pos: None,
+                week_start: None,
+            }),
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+        };
+        let metadata = SourceMetadata {
+            root: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            line_range: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            do_date: None,
+            completed_date: None,
+            created_date: None,
+            is_id_generated: false,
+            raw_id: None,
+        };
+
+        let result = check_recurrence_without_do_date(&action, &metadata);
+        assert!(result.is_some());
+        let diag = result.unwrap();
+        assert_eq!(diag.code, "E002");
+        assert_eq!(diag.severity, LintSeverity::Error);
+    }
+
+    #[test]
+    fn test_check_recurrence_with_do_date_ok() {
+        use crate::entities::{Action, Recurrence, SourceMetadata, SourceRange};
+        let action = Action {
+            id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Daily standup".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: Some(Local::now()),  // Has do-date
+            do_duration: None,
+            recurrence: Some(Recurrence {  // Has recurrence
+                frequency: "daily".to_string(),
+                interval: None,
+                count: None,
+                until: None,
+                by_second: None,
+                by_minute: None,
+                by_hour: None,
+                by_day: None,
+                by_month_day: None,
+                by_year_day: None,
+                by_week_no: None,
+                by_month: None,
+                by_set_pos: None,
+                week_start: None,
+            }),
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+        };
+        let metadata = SourceMetadata {
+            root: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            line_range: SourceRange {
+                start_row: 0,
+                start_col: 0,
+                end_row: 0,
+                end_col: 20,
+            },
+            do_date: None,
+            completed_date: None,
+            created_date: None,
+            is_id_generated: false,
+            raw_id: None,
+        };
+
+        let result = check_recurrence_without_do_date(&action, &metadata);
+        assert!(result.is_none());
     }
 }

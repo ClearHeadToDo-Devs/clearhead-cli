@@ -15,9 +15,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "E016",
-        severity: Error,
-        message: "Completion date cannot be before creation date (E016).",
+        code: "W006",
+        severity: Warning,
+        message: "Completion date cannot be before creation date (W006).",
         range: SourceRange {
             start_row: 1,
             start_col: 32,
@@ -37,9 +37,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "E016",
-        severity: Error,
-        message: "Completion date cannot be before creation date (E016).",
+        code: "W006",
+        severity: Warning,
+        message: "Completion date cannot be before creation date (W006).",
         range: SourceRange {
             start_row: 2,
             start_col: 35,
@@ -59,9 +59,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "E016",
-        severity: Error,
-        message: "Completion date cannot be before creation date (E016).",
+        code: "W006",
+        severity: Warning,
+        message: "Completion date cannot be before creation date (W006).",
         range: SourceRange {
             start_row: 3,
             start_col: 41,

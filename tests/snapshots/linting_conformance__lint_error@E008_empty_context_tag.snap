@@ -1,6 +1,5 @@
 ---
 source: tests/linting_conformance.rs
-assertion_line: 98
 expression: diagnostics
 ---
 [
@@ -30,17 +29,6 @@ expression: diagnostics
         code: "missing-id",
         severity: Info,
         message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
-        range: SourceRange {
-            start_row: 3,
-            start_col: 0,
-            end_row: 3,
-            end_col: 37,
-        },
-    },
-    LintDiagnostic {
-        code: "E008",
-        severity: Error,
-        message: "Context tags cannot be empty (E008).",
         range: SourceRange {
             start_row: 3,
             start_col: 0,
