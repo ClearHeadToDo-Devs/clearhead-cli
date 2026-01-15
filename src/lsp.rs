@@ -15,6 +15,7 @@ use clearhead_cli::treesitter::get_node_text;
 use clearhead_cli::archive::archive_actions;
 use clearhead_cli::diff::{diff_actions, FieldChange};
 use clearhead_cli::events::emit_event;
+use clearhead_cli::crdt::sync_file_to_crdt;
 use serde_json::{json, Value};
 use tower_lsp_server::jsonrpc::Error;
 
@@ -478,6 +479,20 @@ impl LanguageServer for Backend {
                                 // or skip if we only care about lifecycle
                             }
                         }
+                    }
+                }
+            }
+
+            // Sync to CRDT (source of truth)
+            if let (Some(parsed), Some(path_str)) = (&doc.parsed, &file_path) {
+                let path = std::path::Path::new(path_str);
+                match sync_file_to_crdt(path, &parsed.actions) {
+                    Ok(_) => {
+                        debug!(uri = ?uri, "Synced changes to CRDT");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to sync to CRDT");
+                        self.client.log_message(MessageType::WARNING, format!("CRDT sync failed: {}", e)).await;
                     }
                 }
             }

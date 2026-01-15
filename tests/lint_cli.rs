@@ -1,6 +1,11 @@
 use std::fs;
-use assert_cmd::Command; // Changed import
+use assert_cmd::Command;
 use predicates::prelude::*;
+
+/// Helper to get the binary path using the non-deprecated macro
+fn get_cmd() -> Command {
+    Command::new(assert_cmd::cargo::cargo_bin!("clearhead_cli"))
+}
 
 #[test]
 fn test_lint_cli_errors() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,7 +15,7 @@ fn test_lint_cli_errors() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::write(file_path, file_content)?;
 
-    let mut cmd = Command::cargo_bin("clearhead_cli")?;
+    let mut cmd = get_cmd();
 
     cmd.arg("lint")
         .arg(file_path); // Positional argument
@@ -32,7 +37,7 @@ fn test_lint_cli_success() -> Result<(), Box<dyn std::error::Error>> {
     
     fs::write(file_path, file_content)?;
 
-    let mut cmd = Command::cargo_bin("clearhead_cli")?;
+    let mut cmd = get_cmd();
 
     cmd.arg("lint")
         .arg(file_path); // Positional argument
