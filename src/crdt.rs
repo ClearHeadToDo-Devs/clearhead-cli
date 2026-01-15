@@ -3,16 +3,29 @@ use crate::entities::ActionList;
 ///
 /// This module provides the core CRDT functionality for ClearHead:
 /// - Converting ActionList to/from Automerge documents
-/// - Managing local CRDT storage (~/.clearhead/repos/)
+/// - Managing local CRDT storage per XDG spec
 /// - Syncing operations between devices
 ///
-/// Architecture:
-/// - CRDT stores current active state (templates + recent completions)
-/// - events.db stores full history (local, append-only)
-/// - .actions files are generated views of CRDT state
+/// Architecture (CRDT-first):
+/// - CRDT is the source of truth (stored in XDG_STATE_HOME)
+/// - DSL files are projections of CRDT state
+/// - events.db stores full history for analytics (see event_logging_specification)
+///
+/// Storage locations:
+/// - Global workspace: $XDG_STATE_HOME/clearhead/workspace.crdt
+/// - Project workspace: <project>/.clearhead/workspace.crdt
+/// - Shadow files: /tmp/clearhead-shadow/ (for 3-way merge)
+///
+/// See: specifications/sync_architecture.md
 use automerge::AutoCommit;
 use autosurgeon::{Hydrate, Reconcile, hydrate, reconcile};
 use std::path::{Path, PathBuf};
+
+/// Name of the CRDT file within a workspace
+const CRDT_FILENAME: &str = "workspace.crdt";
+
+/// Directory for shadow files (used in 3-way merge)
+const SHADOW_DIR: &str = "/tmp/clearhead-shadow";
 
 /// Wrapper struct for ActionList to satisfy autosurgeon's map requirement
 #[derive(Debug, Clone, Reconcile, Hydrate)]
@@ -24,32 +37,139 @@ struct ActionListWrapper {
 #[derive(Debug)]
 pub struct ActionListDoc {
     doc: AutoCommit,
-    /// Path to the .actions file this CRDT represents
-    file_path: PathBuf,
+    /// The workspace this document belongs to
+    workspace: Workspace,
 }
 
-/// Storage location for CRDT documents
+/// Represents a workspace (global or project-local)
+#[derive(Debug, Clone)]
+pub enum Workspace {
+    /// Global workspace at XDG_STATE_HOME/clearhead/
+    Global { state_dir: PathBuf },
+    /// Project-local workspace at <project>/.clearhead/
+    Project { project_root: PathBuf },
+}
+
+impl Workspace {
+    /// Detect the workspace for a given file path
+    ///
+    /// Searches upward from the file's directory for:
+    /// 1. .clearhead/ directory (project workspace)
+    /// 2. next.actions file (lightweight project marker)
+    ///
+    /// Falls back to global workspace if no project found.
+    pub fn detect(file_path: &Path) -> Result<Self, String> {
+        let canonical = file_path
+            .canonicalize()
+            .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
+
+        let start_dir = if canonical.is_file() {
+            canonical.parent().unwrap_or(&canonical)
+        } else {
+            &canonical
+        };
+
+        // Search upward for project markers
+        let mut current = start_dir.to_path_buf();
+        loop {
+            // Check for .clearhead/ directory
+            let clearhead_dir = current.join(".clearhead");
+            if clearhead_dir.is_dir() {
+                return Ok(Workspace::Project { project_root: current });
+            }
+
+            // Check for next.actions file (lightweight project marker)
+            let next_actions = current.join("next.actions");
+            if next_actions.is_file() && file_path != next_actions {
+                // Found project root, but no .clearhead/ - use global workspace
+                // but associate with this project
+                return Ok(Workspace::Project { project_root: current });
+            }
+
+            // Move up one directory
+            match current.parent() {
+                Some(parent) => current = parent.to_path_buf(),
+                None => break, // Reached filesystem root
+            }
+        }
+
+        // No project found, use global workspace
+        Ok(Workspace::global()?)
+    }
+
+    /// Create a global workspace using XDG_STATE_HOME
+    pub fn global() -> Result<Self, String> {
+        let state_dir = get_xdg_state_home()?;
+        Ok(Workspace::Global { state_dir })
+    }
+
+    /// Get the path to the CRDT file for this workspace
+    pub fn crdt_path(&self) -> PathBuf {
+        match self {
+            Workspace::Global { state_dir } => state_dir.join(CRDT_FILENAME),
+            Workspace::Project { project_root } => {
+                project_root.join(".clearhead").join(CRDT_FILENAME)
+            }
+        }
+    }
+
+    /// Get the directory containing the CRDT (for creating if needed)
+    pub fn crdt_dir(&self) -> PathBuf {
+        match self {
+            Workspace::Global { state_dir } => state_dir.clone(),
+            Workspace::Project { project_root } => project_root.join(".clearhead"),
+        }
+    }
+
+    /// Ensure the workspace directory exists
+    pub fn ensure_dir(&self) -> Result<(), String> {
+        let dir = self.crdt_dir();
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create workspace directory '{}': {}", dir.display(), e))
+    }
+}
+
+/// Get XDG_STATE_HOME/clearhead, creating if needed
+fn get_xdg_state_home() -> Result<PathBuf, String> {
+    let state_home = std::env::var("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            PathBuf::from(home).join(".local").join("state")
+        });
+
+    let clearhead_state = state_home.join("clearhead");
+    std::fs::create_dir_all(&clearhead_state)
+        .map_err(|e| format!("Failed to create state directory: {}", e))?;
+
+    Ok(clearhead_state)
+}
+
+/// Storage manager for CRDT documents
+///
+/// Handles loading/saving CRDT files and manages workspace detection.
 #[derive(Debug, Clone)]
 pub struct CrdtStorage {
-    /// Base directory for CRDT storage (e.g., ~/.clearhead/repos/)
-    storage_dir: PathBuf,
+    workspace: Workspace,
 }
 
 impl CrdtStorage {
-    /// Create a new CRDT storage manager
-    ///
-    /// Uses ~/.clearhead/repos/ by default
-    pub fn new() -> Result<Self, String> {
-        let home =
-            std::env::var("HOME").map_err(|_| "Could not determine HOME directory".to_string())?;
+    /// Create storage for a specific workspace
+    pub fn new(workspace: Workspace) -> Result<Self, String> {
+        workspace.ensure_dir()?;
+        Ok(CrdtStorage { workspace })
+    }
 
-        let storage_dir = PathBuf::from(home).join(".clearhead").join("repos");
+    /// Create storage by detecting workspace from a file path
+    pub fn for_file(file_path: &Path) -> Result<Self, String> {
+        let workspace = Workspace::detect(file_path)?;
+        Self::new(workspace)
+    }
 
-        // Create directory if it doesn't exist
-        std::fs::create_dir_all(&storage_dir)
-            .map_err(|e| format!("Failed to create CRDT storage directory: {}", e))?;
-
-        Ok(CrdtStorage { storage_dir })
+    /// Create storage for the global workspace
+    pub fn global() -> Result<Self, String> {
+        let workspace = Workspace::global()?;
+        Self::new(workspace)
     }
 
     /// Create a CRDT storage with a custom directory (for testing)
@@ -57,26 +177,19 @@ impl CrdtStorage {
         std::fs::create_dir_all(&storage_dir)
             .map_err(|e| format!("Failed to create CRDT storage directory: {}", e))?;
 
-        Ok(CrdtStorage { storage_dir })
+        Ok(CrdtStorage {
+            workspace: Workspace::Global { state_dir: storage_dir },
+        })
     }
 
-    /// Get the CRDT file path for a given .actions file
-    ///
-    /// Maps: ~/Products/platform/next.actions -> ~/.clearhead/repos/platform.automerge
-    pub fn crdt_path_for_file(&self, actions_file: &Path) -> PathBuf {
-        // Get the parent directory name (e.g., "platform" from "~/Products/platform")
-        let dir_name = actions_file
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or("default");
-
-        self.storage_dir.join(format!("{}.automerge", dir_name))
+    /// Get the CRDT file path
+    pub fn crdt_path(&self) -> PathBuf {
+        self.workspace.crdt_path()
     }
 
-    /// Load an existing CRDT document for a file
-    pub fn load(&self, actions_file: &Path) -> Result<ActionListDoc, String> {
-        let crdt_path = self.crdt_path_for_file(actions_file);
+    /// Load the CRDT document
+    pub fn load(&self) -> Result<ActionListDoc, String> {
+        let crdt_path = self.crdt_path();
 
         if !crdt_path.exists() {
             return Err(format!("CRDT file does not exist: {}", crdt_path.display()));
@@ -90,13 +203,19 @@ impl CrdtStorage {
 
         Ok(ActionListDoc {
             doc,
-            file_path: actions_file.to_path_buf(),
+            workspace: self.workspace.clone(),
         })
     }
 
     /// Save a CRDT document to disk
     pub fn save(&self, doc: &mut ActionListDoc) -> Result<(), String> {
-        let crdt_path = self.crdt_path_for_file(&doc.file_path);
+        let crdt_path = self.crdt_path();
+
+        // Ensure directory exists
+        if let Some(parent) = crdt_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create CRDT directory: {}", e))?;
+        }
 
         let bytes = doc.doc.save();
 
@@ -106,15 +225,20 @@ impl CrdtStorage {
         Ok(())
     }
 
-    /// Check if a CRDT document exists for a file
-    pub fn exists(&self, actions_file: &Path) -> bool {
-        self.crdt_path_for_file(actions_file).exists()
+    /// Check if a CRDT document exists
+    pub fn exists(&self) -> bool {
+        self.crdt_path().exists()
+    }
+
+    /// Get a reference to the workspace
+    pub fn workspace(&self) -> &Workspace {
+        &self.workspace
     }
 }
 
 impl ActionListDoc {
     /// Create a new CRDT document from an ActionList
-    pub fn new(file_path: PathBuf, actions: &ActionList) -> Result<Self, String> {
+    pub fn new(workspace: Workspace, actions: &ActionList) -> Result<Self, String> {
         let mut doc = AutoCommit::new();
 
         // Wrap ActionList in a struct for autosurgeon
@@ -126,7 +250,7 @@ impl ActionListDoc {
         reconcile(&mut doc, &wrapper)
             .map_err(|e| format!("Failed to reconcile ActionList into Automerge: {}", e))?;
 
-        Ok(ActionListDoc { doc, file_path })
+        Ok(ActionListDoc { doc, workspace })
     }
 
     /// Extract the current ActionList from the CRDT
@@ -170,20 +294,22 @@ impl ActionListDoc {
         Ok(())
     }
 
-    /// Get the file path this document represents
-    pub fn file_path(&self) -> &Path {
-        &self.file_path
+    /// Get a reference to the workspace
+    pub fn workspace(&self) -> &Workspace {
+        &self.workspace
     }
 }
 
 /// Repository pattern for managing the lifecycle of Actions
 ///
-/// This struct encapsulates the "Hub-and-Spoke" architecture:
-/// 1. Hub: The CRDT (Source of Truth)
-/// 2. Spoke: The File (User View)
+/// This struct encapsulates the CRDT-first architecture:
+/// 1. CRDT is the source of truth
+/// 2. Files are projections of CRDT state
 ///
-/// It handles the "Sync In -> Modify -> Sync Out" flow to ensure
-/// the file and CRDT remain consistent.
+/// It handles:
+/// - Loading CRDT state
+/// - Reconciling file edits back into CRDT
+/// - Projecting CRDT to files (with shadow for 3-way merge)
 pub struct ActionRepository {
     storage: CrdtStorage,
     file_path: PathBuf,
@@ -193,32 +319,44 @@ pub struct ActionRepository {
 impl ActionRepository {
     /// Load a repository for a specific actions file
     ///
-    /// This performs the "Sync In" phase:
-    /// 1. Loads the CRDT (if it exists)
-    /// 2. Reads the current file content
-    /// 3. Reconciles the file content into the CRDT (capturing manual edits)
+    /// CRDT-first flow:
+    /// 1. Detect workspace for the file
+    /// 2. Load CRDT if it exists, or create from file
+    /// 3. If file exists, reconcile any edits into CRDT
     pub fn load(file_path: PathBuf) -> Result<Self, String> {
-        let storage = CrdtStorage::new()?;
+        let storage = CrdtStorage::for_file(&file_path)?;
 
-        // 1. Read and parse current file
-        let content = std::fs::read_to_string(&file_path)
-            .map_err(|e| format!("Failed to read file '{}': {}", file_path.display(), e))?;
-
-        // Use the parser from lib.rs
-        use crate::get_action_list_struct;
-        // Pass empty json options
-        let file_actions = get_action_list_struct(&serde_json::json!({}), &content)?;
-
-        // 2. Load or Create CRDT
-        let mut doc = if storage.exists(&file_path) {
-            storage.load(&file_path)?
+        // Check if CRDT exists
+        let mut doc = if storage.exists() {
+            // CRDT exists - load it
+            storage.load()?
         } else {
-            ActionListDoc::new(file_path.clone(), &file_actions)?
+            // No CRDT - check if file exists to bootstrap from
+            if file_path.exists() {
+                let content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("Failed to read file '{}': {}", file_path.display(), e))?;
+
+                use crate::get_action_list_struct;
+                let file_actions = get_action_list_struct(&serde_json::json!({}), &content)?;
+
+                ActionListDoc::new(storage.workspace().clone(), &file_actions)?
+            } else {
+                // No file either - create empty CRDT
+                ActionListDoc::new(storage.workspace().clone(), &vec![])?
+            }
         };
 
-        // 3. Reconcile File -> CRDT (Sync In)
-        // This ensures any manual edits since last run are captured
-        doc.update(&file_actions)?;
+        // If file exists, reconcile any edits since last CRDT save
+        if file_path.exists() {
+            let content = std::fs::read_to_string(&file_path)
+                .map_err(|e| format!("Failed to read file '{}': {}", file_path.display(), e))?;
+
+            use crate::get_action_list_struct;
+            let file_actions = get_action_list_struct(&serde_json::json!({}), &content)?;
+
+            // Reconcile file -> CRDT
+            doc.update(&file_actions)?;
+        }
 
         Ok(Self {
             storage,
@@ -234,10 +372,10 @@ impl ActionRepository {
 
     /// Update the repository with a modified action list
     ///
-    /// This performs the "Sync Out" phase:
-    /// 1. Reconciles the changes into the CRDT
-    /// 2. Persists the CRDT to disk
-    /// 3. Renders the formatted actions back to the file
+    /// This performs:
+    /// 1. Reconcile changes into CRDT
+    /// 2. Persist CRDT to disk
+    /// 3. Project CRDT to file (with shadow for merge)
     pub fn save(&mut self, actions: &ActionList) -> Result<(), String> {
         // 1. Update CRDT (Source of Truth)
         self.doc.update(actions)?;
@@ -245,7 +383,22 @@ impl ActionRepository {
         // 2. Persist CRDT
         self.storage.save(&mut self.doc)?;
 
-        // 3. Render to File (View)
+        // 3. Project to File (with shadow)
+        self.project_to_file(actions)?;
+
+        Ok(())
+    }
+
+    /// Project CRDT state to file
+    ///
+    /// Creates shadow copy in /tmp for 3-way merge before writing
+    fn project_to_file(&self, actions: &ActionList) -> Result<(), String> {
+        // Write shadow copy for 3-way merge (if file exists)
+        if self.file_path.exists() {
+            write_shadow_file(&self.file_path)?;
+        }
+
+        // Format and write file
         use crate::{OutputFormat, format};
         let formatted = format(actions, OutputFormat::Actions, None)?;
 
@@ -259,25 +412,52 @@ impl ActionRepository {
 
         Ok(())
     }
+
+    /// Get the file path this repository manages
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
+    }
+
+    /// Get the workspace this repository belongs to
+    pub fn workspace(&self) -> &Workspace {
+        self.storage.workspace()
+    }
+}
+
+/// Write a shadow copy of a file for 3-way merge
+///
+/// Copies file_path to /tmp/clearhead-shadow/<filename>.base
+fn write_shadow_file(file_path: &Path) -> Result<(), String> {
+    let shadow_dir = PathBuf::from(SHADOW_DIR);
+    std::fs::create_dir_all(&shadow_dir)
+        .map_err(|e| format!("Failed to create shadow directory: {}", e))?;
+
+    let filename = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+
+    let shadow_path = shadow_dir.join(format!("{}.base", filename));
+
+    std::fs::copy(file_path, &shadow_path)
+        .map_err(|e| format!("Failed to write shadow file: {}", e))?;
+
+    Ok(())
 }
 
 /// Initialize CRDT for an actions file
 ///
-/// If CRDT doesn't exist, create it from the file.
-/// If it does exist, load it and check if it needs updating.
+/// If CRDT doesn't exist, create it from the provided actions.
+/// If it does exist, load and return it.
 pub fn init_crdt_for_file(file_path: &Path, actions: &ActionList) -> Result<ActionListDoc, String> {
-    let storage = CrdtStorage::new()?;
+    let storage = CrdtStorage::for_file(file_path)?;
 
-    if storage.exists(file_path) {
+    if storage.exists() {
         // Load existing CRDT
-        let doc = storage.load(file_path)?;
-
-        // TODO: Check if file has changed since last CRDT update
-        // For now, just return the existing CRDT
-        Ok(doc)
+        storage.load()
     } else {
         // Create new CRDT from actions
-        let mut doc = ActionListDoc::new(file_path.to_path_buf(), actions)?;
+        let mut doc = ActionListDoc::new(storage.workspace().clone(), actions)?;
         storage.save(&mut doc)?;
         Ok(doc)
     }
@@ -285,14 +465,14 @@ pub fn init_crdt_for_file(file_path: &Path, actions: &ActionList) -> Result<Acti
 
 /// Sync file changes to CRDT
 ///
-/// Compares the current ActionList with the CRDT state and updates if changed
+/// Parses the file and reconciles changes into the CRDT
 pub fn sync_file_to_crdt(file_path: &Path, actions: &ActionList) -> Result<ActionListDoc, String> {
-    let storage = CrdtStorage::new()?;
+    let storage = CrdtStorage::for_file(file_path)?;
 
-    let mut doc = if storage.exists(file_path) {
-        storage.load(file_path)?
+    let mut doc = if storage.exists() {
+        storage.load()?
     } else {
-        ActionListDoc::new(file_path.to_path_buf(), actions)?
+        ActionListDoc::new(storage.workspace().clone(), actions)?
     };
 
     // Update CRDT with current actions
@@ -330,21 +510,26 @@ mod tests {
         }
     }
 
+    fn create_test_workspace(temp_dir: &TempDir) -> Workspace {
+        Workspace::Global {
+            state_dir: temp_dir.path().to_path_buf(),
+        }
+    }
+
     #[test]
     fn test_create_and_load_crdt() {
         let temp_dir = TempDir::new().unwrap();
-        let storage_dir = temp_dir.path().join("crdt_storage");
-        let storage = CrdtStorage::with_dir(storage_dir).unwrap();
+        let storage = CrdtStorage::with_dir(temp_dir.path().to_path_buf()).unwrap();
+        let workspace = create_test_workspace(&temp_dir);
 
-        let actions_file = temp_dir.path().join("test.actions");
         let actions = vec![create_test_action("Task 1"), create_test_action("Task 2")];
 
         // Create CRDT
-        let mut doc = ActionListDoc::new(actions_file.clone(), &actions).unwrap();
+        let mut doc = ActionListDoc::new(workspace, &actions).unwrap();
         storage.save(&mut doc).unwrap();
 
         // Load CRDT
-        let loaded_doc = storage.load(&actions_file).unwrap();
+        let loaded_doc = storage.load().unwrap();
         let loaded_actions = loaded_doc.to_action_list().unwrap();
 
         assert_eq!(loaded_actions.len(), 2);
@@ -355,11 +540,11 @@ mod tests {
     #[test]
     fn test_update_crdt() {
         let temp_dir = TempDir::new().unwrap();
-        let actions_file = temp_dir.path().join("test.actions");
+        let workspace = create_test_workspace(&temp_dir);
 
         let actions = vec![create_test_action("Task 1")];
 
-        let mut doc = ActionListDoc::new(actions_file.clone(), &actions).unwrap();
+        let mut doc = ActionListDoc::new(workspace, &actions).unwrap();
 
         // Update with more actions
         let updated_actions = vec![
@@ -375,23 +560,40 @@ mod tests {
     }
 
     #[test]
-    fn test_crdt_path_mapping() {
+    fn test_workspace_crdt_path() {
         let temp_dir = TempDir::new().unwrap();
-        let storage = CrdtStorage::with_dir(temp_dir.path().to_path_buf()).unwrap();
+        let workspace = Workspace::Global {
+            state_dir: temp_dir.path().to_path_buf(),
+        };
 
-        let actions_file = PathBuf::from("/home/user/Products/platform/next.actions");
-        let crdt_path = storage.crdt_path_for_file(&actions_file);
+        let crdt_path = workspace.crdt_path();
 
         assert_eq!(
             crdt_path.file_name().unwrap().to_str().unwrap(),
-            "platform.automerge"
+            "workspace.crdt"
+        );
+    }
+
+    #[test]
+    fn test_project_workspace_crdt_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace = Workspace::Project {
+            project_root: temp_dir.path().to_path_buf(),
+        };
+
+        let crdt_path = workspace.crdt_path();
+
+        assert!(crdt_path.to_str().unwrap().contains(".clearhead"));
+        assert_eq!(
+            crdt_path.file_name().unwrap().to_str().unwrap(),
+            "workspace.crdt"
         );
     }
 
     #[test]
     fn test_round_trip_with_metadata() {
         let temp_dir = TempDir::new().unwrap();
-        let actions_file = temp_dir.path().join("test.actions");
+        let workspace = create_test_workspace(&temp_dir);
 
         let mut action = create_test_action("Task with metadata");
         action.priority = Some(1);
@@ -400,7 +602,7 @@ mod tests {
 
         let actions = vec![action.clone()];
 
-        let doc = ActionListDoc::new(actions_file, &actions).unwrap();
+        let doc = ActionListDoc::new(workspace, &actions).unwrap();
         let result = doc.to_action_list().unwrap();
 
         assert_eq!(result.len(), 1);
