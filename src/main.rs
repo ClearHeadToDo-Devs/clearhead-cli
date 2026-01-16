@@ -620,21 +620,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let parsed = clearhead_cli::get_parsed_document(&content)
                 .map_err(|e| format!("Failed to parse document: {}", e))?;
 
-            let diagnostics = clearhead_cli::lint::lint_document(&parsed);
+            let results = clearhead_cli::lint::lint_document(&parsed);
 
-            if diagnostics.is_empty() {
+            if results.errors.is_empty() && results.warnings.is_empty() && results.info.is_empty() {
                 info!("No linting errors found");
                 // No output on success, standard unix philosophy
                 return Ok(());
             }
 
-            let mut has_errors = false;
-            for diag in diagnostics {
+            let has_errors = !results.errors.is_empty();
+            for diag in results {
                 let severity_str = match diag.severity {
-                    clearhead_cli::LintSeverity::Error => {
-                        has_errors = true;
-                        "ERROR"
-                    },
+                    clearhead_cli::LintSeverity::Error => "ERROR",
                     clearhead_cli::LintSeverity::Warning => "WARN",
                     clearhead_cli::LintSeverity::Info => "INFO",
                 };
