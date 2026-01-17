@@ -13,9 +13,9 @@
     >[x] Wire LSP to use CRDT $ On didSave: call sync_file_to_crdt to reconcile changes into CRDT +lsp ^2026-01-14T17:58 #019bbf5f-c462-7251-b570-9001b8ac41fc
     >[ ] Quality pitstop: testing and transparency $ Ensure solid test coverage before moving forward +quality ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dc84050f8dfe
         >>[-] Fix cargo_bin deprecation warning $ Update tests/lint_cli.rs to use cargo_bin_cmd +testing ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dc973565a692
-        >>[ ] LSP unit tests: compute_code_actions $ Test hydrate UUID, completion date, creation date quick fixes +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dca7c136a468
-        >>[ ] LSP unit tests: compute_inlay_hints $ Test due date and completion date hint generation +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dcb24704075f
-        >>[ ] LSP unit tests: compute_semantic_tokens $ Test token generation and delta encoding +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dcc28ce7f084
+        >>[x] LSP unit tests: compute_code_actions $ Test hydrate UUID, completion date, creation date quick fixes +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dca7c136a468
+        >>[x] LSP unit tests: compute_inlay_hints $ Test due date and completion date hint generation +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dcb24704075f
+        >>[x] LSP unit tests: compute_semantic_tokens $ Test token generation and delta encoding +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dcc28ce7f084
         >>[ ] LSP unit tests: goto_definition and references $ Test story/context navigation +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dcd6f9567a8a
         >>[ ] LSP unit tests: completion $ Test date completions for +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dce362437eee
         >>[ ] LSP unit tests: formatting $ Test full document formatting +lsp ^2026-01-14T18:17 #019bbf71-bfb7-75f1-accc-dcf2b771ec0f

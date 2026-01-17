@@ -880,4 +880,237 @@ mod tests {
             assert_eq!(doc.last_saved_parsed.as_ref().unwrap().actions[0].state, clearhead_cli::entities::ActionState::Completed);
         }
     }
+
+    // Unit tests for compute_code_actions
+
+    #[test]
+    fn test_code_actions_hydrate_uuid() {
+        let text = "[ ] Task without ID";
+        let parsed = get_parsed_document(text).unwrap();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+        let range = Range::new(Position::new(0, 0), Position::new(0, 0));
+
+        let actions = compute_code_actions(&parsed, &uri, range);
+
+        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+            _ => None,
+        }).collect();
+
+        assert!(titles.contains(&"Hydrate Action (Add UUID)"), "Expected hydrate action, got: {:?}", titles);
+    }
+
+    #[test]
+    fn test_code_actions_completion_date() {
+        let text = "[x] Completed task #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+        let range = Range::new(Position::new(0, 0), Position::new(0, 0));
+
+        let actions = compute_code_actions(&parsed, &uri, range);
+
+        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+            _ => None,
+        }).collect();
+
+        assert!(titles.contains(&"Set Completion Date (Today)"), "Expected completion date action, got: {:?}", titles);
+    }
+
+    #[test]
+    fn test_code_actions_creation_date() {
+        let text = "[ ] Task with ID #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+        let range = Range::new(Position::new(0, 0), Position::new(0, 0));
+
+        let actions = compute_code_actions(&parsed, &uri, range);
+
+        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+            _ => None,
+        }).collect();
+
+        assert!(titles.contains(&"Set Creation Date (Today)"), "Expected creation date action, got: {:?}", titles);
+        assert!(titles.contains(&"Derive Creation Date from UUID"), "Expected derive from UUID action, got: {:?}", titles);
+    }
+
+    #[test]
+    fn test_code_actions_cursor_outside_action() {
+        let text = "[ ] Task on line 0";
+        let parsed = get_parsed_document(text).unwrap();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+        // Cursor on line 5, way outside the action
+        let range = Range::new(Position::new(5, 0), Position::new(5, 0));
+
+        let actions = compute_code_actions(&parsed, &uri, range);
+
+        assert!(actions.is_empty(), "Expected no actions when cursor is outside, got: {:?}", actions.len());
+    }
+
+    #[test]
+    fn test_code_actions_completed_with_date_no_suggestion() {
+        let text = "[x] Done task %2026-01-15T10:00 #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let uri = Uri::from_file_path("/test.actions").unwrap();
+        let range = Range::new(Position::new(0, 0), Position::new(0, 0));
+
+        let actions = compute_code_actions(&parsed, &uri, range);
+
+        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+            _ => None,
+        }).collect();
+
+        assert!(!titles.contains(&"Set Completion Date (Today)"), "Should not suggest completion date when already present");
+    }
+
+    // Unit tests for compute_inlay_hints
+
+    #[test]
+    fn test_inlay_hints_due_in_future() {
+        let text = "[ ] Future task @2026-01-20T10:00 #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let base_time = DateTime::parse_from_rfc3339("2026-01-15T10:00:00+00:00")
+            .unwrap()
+            .with_timezone(&Local);
+
+        let hints = compute_inlay_hints(&parsed, Some(base_time));
+
+        assert_eq!(hints.len(), 1);
+        match &hints[0].label {
+            InlayHintLabel::String(s) => assert!(s.contains("due in"), "Expected 'due in', got: {}", s),
+            _ => panic!("Expected string label"),
+        }
+    }
+
+    #[test]
+    fn test_inlay_hints_due_in_past() {
+        let text = "[ ] Overdue task @2026-01-10T10:00 #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let base_time = DateTime::parse_from_rfc3339("2026-01-15T10:00:00+00:00")
+            .unwrap()
+            .with_timezone(&Local);
+
+        let hints = compute_inlay_hints(&parsed, Some(base_time));
+
+        assert_eq!(hints.len(), 1);
+        match &hints[0].label {
+            InlayHintLabel::String(s) => assert!(s.contains("ago"), "Expected 'ago', got: {}", s),
+            _ => panic!("Expected string label"),
+        }
+    }
+
+    #[test]
+    fn test_inlay_hints_due_today() {
+        let text = "[ ] Today task @2026-01-15T10:00 #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let base_time = DateTime::parse_from_rfc3339("2026-01-15T12:00:00+00:00")
+            .unwrap()
+            .with_timezone(&Local);
+
+        let hints = compute_inlay_hints(&parsed, Some(base_time));
+
+        assert_eq!(hints.len(), 1);
+        match &hints[0].label {
+            InlayHintLabel::String(s) => assert!(s.contains("due today"), "Expected 'due today', got: {}", s),
+            _ => panic!("Expected string label"),
+        }
+    }
+
+    #[test]
+    fn test_inlay_hints_completed_date() {
+        let text = "[x] Done task %2026-01-10T10:00 #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+        let base_time = DateTime::parse_from_rfc3339("2026-01-15T10:00:00+00:00")
+            .unwrap()
+            .with_timezone(&Local);
+
+        let hints = compute_inlay_hints(&parsed, Some(base_time));
+
+        assert_eq!(hints.len(), 1);
+        match &hints[0].label {
+            InlayHintLabel::String(s) => assert!(s.contains("done") && s.contains("ago"), "Expected 'done X ago', got: {}", s),
+            _ => panic!("Expected string label"),
+        }
+    }
+
+    #[test]
+    fn test_inlay_hints_no_dates_no_hints() {
+        let text = "[ ] Plain task #019baaec-00b6-7991-be34-94b68212619a";
+        let parsed = get_parsed_document(text).unwrap();
+
+        let hints = compute_inlay_hints(&parsed, None);
+
+        assert!(hints.is_empty(), "Expected no hints for task without dates");
+    }
+
+    // Unit tests for compute_semantic_tokens
+
+    fn get_tree(text: &str) -> Tree {
+        let mut parser = Parser::new();
+        parser.set_language(&tree_sitter_actions::LANGUAGE.into()).unwrap();
+        parser.parse(text, None).unwrap()
+    }
+
+    #[test]
+    fn test_semantic_tokens_id() {
+        let text = "[ ] Task #019baaec-00b6-7991-be34-94b68212619a";
+        let tree = get_tree(text);
+
+        let tokens = compute_semantic_tokens(&tree);
+
+        // Should have token for id (type 0)
+        assert!(tokens.iter().any(|t| t.token_type == 0), "Expected id token (type 0)");
+    }
+
+    #[test]
+    fn test_semantic_tokens_priority() {
+        let text = "[ ] Task !2 #019baaec-00b6-7991-be34-94b68212619a";
+        let tree = get_tree(text);
+
+        let tokens = compute_semantic_tokens(&tree);
+
+        // Should have token for priority (type 1)
+        assert!(tokens.iter().any(|t| t.token_type == 1), "Expected priority token (type 1)");
+    }
+
+    #[test]
+    fn test_semantic_tokens_context() {
+        let text = "[ ] Task +home #019baaec-00b6-7991-be34-94b68212619a";
+        let tree = get_tree(text);
+
+        let tokens = compute_semantic_tokens(&tree);
+
+        // Should have token for context (type 4)
+        assert!(tokens.iter().any(|t| t.token_type == 4), "Expected context token (type 4)");
+    }
+
+    #[test]
+    fn test_semantic_tokens_dates() {
+        let text = "[ ] Task @2026-01-20T10:00 #019baaec-00b6-7991-be34-94b68212619a";
+        let tree = get_tree(text);
+
+        let tokens = compute_semantic_tokens(&tree);
+
+        // Should have token for do_date (type 5)
+        assert!(tokens.iter().any(|t| t.token_type == 5), "Expected date token (type 5)");
+    }
+
+    #[test]
+    fn test_semantic_tokens_sorted_by_position() {
+        let text = "[ ] Task 1 #019baaec-00b6-7991-be34-94b68212619a\n[ ] Task 2 #019baaec-00b6-7991-be34-94b68212619b";
+        let tree = get_tree(text);
+
+        let tokens = compute_semantic_tokens(&tree);
+
+        // Verify tokens are sorted: each token's position should be >= previous
+        for window in tokens.windows(2) {
+            let (a, b) = (&window[0], &window[1]);
+            assert!(
+                b.delta_line > a.delta_line || (b.delta_line == a.delta_line && b.delta_start >= a.delta_start),
+                "Tokens not sorted: {:?} should come before {:?}", a, b
+            );
+        }
+    }
 }
