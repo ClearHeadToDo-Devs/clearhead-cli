@@ -4,9 +4,9 @@ expression: diagnostics
 ---
 [
     LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        code: "E003",
+        severity: Error,
+        message: "Context tags cannot be empty (E003).",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -15,9 +15,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "E003",
-        severity: Error,
-        message: "Context tags cannot be empty (E003).",
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
         range: SourceRange {
             start_row: 1,
             start_col: 0,

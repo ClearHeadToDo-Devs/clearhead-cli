@@ -4,17 +4,6 @@ expression: diagnostics
 ---
 [
     LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
-        range: SourceRange {
-            start_row: 1,
-            start_col: 0,
-            end_row: 1,
-            end_col: 36,
-        },
-    },
-    LintDiagnostic {
         code: "W005",
         severity: Warning,
         message: "Creation date cannot be in the future (W005).",
@@ -23,17 +12,6 @@ expression: diagnostics
             start_col: 25,
             end_row: 1,
             end_col: 36,
-        },
-    },
-    LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
-        range: SourceRange {
-            start_row: 2,
-            start_col: 0,
-            end_row: 2,
-            end_col: 39,
         },
     },
     LintDiagnostic {
@@ -48,23 +26,45 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
-        range: SourceRange {
-            start_row: 3,
-            start_col: 0,
-            end_row: 3,
-            end_col: 30,
-        },
-    },
-    LintDiagnostic {
         code: "W005",
         severity: Warning,
         message: "Creation date cannot be in the future (W005).",
         range: SourceRange {
             start_row: 3,
             start_col: 19,
+            end_row: 3,
+            end_col: 30,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 1,
+            start_col: 0,
+            end_row: 1,
+            end_col: 36,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 39,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 3,
+            start_col: 0,
             end_row: 3,
             end_col: 30,
         },

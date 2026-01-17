@@ -78,8 +78,8 @@ fn test_linting_error_detection() {
         let parsed = get_parsed_document(error_content)
             .expect(&format!("Failed to parse {}/error.actions", rule_name));
 
-        // Lint the document
-        let diagnostics = lint_document(&parsed);
+        // Lint the document and collect results
+        let diagnostics: Vec<_> = lint_document(&parsed).into_iter().collect();
 
         // Assert that we got diagnostics
         assert!(
@@ -131,8 +131,8 @@ fn test_linting_fixed_version_passes() {
         let parsed = get_parsed_document(fixed_content)
             .expect(&format!("Failed to parse {}/fixed.actions", rule_name));
 
-        // Lint the document
-        let diagnostics = lint_document(&parsed);
+        // Lint the document and collect results
+        let diagnostics: Vec<_> = lint_document(&parsed).into_iter().collect();
 
         // Assert that we got NO diagnostics for this specific rule
         // (other rules might still fire, which is okay)

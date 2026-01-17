@@ -4,9 +4,9 @@ expression: diagnostics
 ---
 [
     LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        code: "W002",
+        severity: Warning,
+        message: "Parent is completed but some children are still active (W002).",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -19,6 +19,17 @@ expression: diagnostics
         severity: Warning,
         message: "Parent is completed but some children are still active (W002).",
         range: SourceRange {
+            start_row: 5,
+            start_col: 0,
+            end_row: 8,
+            end_col: 25,
+        },
+    },
+    LintDiagnostic {
+        code: "I001",
+        severity: Info,
+        message: "Completed action is missing a completion date (I001).",
+        range: SourceRange {
             start_row: 1,
             start_col: 0,
             end_row: 3,
@@ -26,9 +37,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "I001",
+        code: "missing-id",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -59,31 +70,20 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "missing-id",
-        severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
-        range: SourceRange {
-            start_row: 5,
-            start_col: 0,
-            end_row: 8,
-            end_col: 25,
-        },
-    },
-    LintDiagnostic {
-        code: "W002",
-        severity: Warning,
-        message: "Parent is completed but some children are still active (W002).",
-        range: SourceRange {
-            start_row: 5,
-            start_col: 0,
-            end_row: 8,
-            end_col: 25,
-        },
-    },
-    LintDiagnostic {
         code: "I001",
         severity: Info,
         message: "Completed action is missing a completion date (I001).",
+        range: SourceRange {
+            start_row: 5,
+            start_col: 0,
+            end_row: 8,
+            end_col: 25,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
         range: SourceRange {
             start_row: 5,
             start_col: 0,
@@ -103,9 +103,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "missing-id",
+        code: "I001",
         severity: Info,
-        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        message: "Completed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 7,
             start_col: 0,
@@ -114,9 +114,9 @@ expression: diagnostics
         },
     },
     LintDiagnostic {
-        code: "I001",
+        code: "missing-id",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
         range: SourceRange {
             start_row: 7,
             start_col: 0,

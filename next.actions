@@ -29,11 +29,10 @@
 [x] Refactor linter to functional architecture $ Data over objects, spec-driven composition !2 +linter ^2026-01-16T00:00 #019bc8a0-0000-7000-8000-000000000001
     >[x] Strip methods from LintResults $ Make it plain data, keep only IntoIterator trait +linter #019bc8a0-0000-7000-8000-000000000002
     >[x] Split checks into action-level vs document-level $ Two categories matching how diagnostics actually work +linter #019bc8a0-0000-7000-8000-000000000003
-    >[x] Normalize action check signatures $ All action checks: fn(&Action, &SourceMetadata) -> Option<LintDiagnostic> +linter #019bc8a0-0000-7000-8000-000000000004
+    >[x] Normalize action check signatures $ All action checks: fn(&Action, &SourceMetadata) - ^2026-01-16T17:27 #019bc990-4c7a-7b50-917b-f9a6c24abec4
     >[x] Create check registries as static arrays $ Index position maps to spec code (E001, W001, etc) +linter #019bc8a0-0000-7000-8000-000000000005
     >[x] Refactor lint_document to use functional composition $ filter_map over check arrays +linter #019bc8a0-0000-7000-8000-000000000006
 [ ] Complete the CUD in CRUD ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d21f50e6cf74
     >[ ] Come up with a good update language ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d22bb609cee9
     >[ ] and a good way to delete stuff ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d233e9885107
     >[ ] and an easy creation interface ^2026-01-04T22:38 #019b8ce0-cd9f-7461-8e61-d24d0b02b33f
-
