@@ -537,9 +537,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         }
         Commands::Complete { file, query, write } => {
             use chrono::Local;
-            use clearhead_cli::entities::ActionState;
+            use clearhead_cli::entities::{Action, ActionState};
             use clearhead_cli::events::emit_event;
             use clearhead_cli::crdt::ActionRepository;
+            use uuid::Uuid;
 
             let input_file = file
                 .as_ref()
@@ -556,30 +557,72 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
 
             let mut found = false;
-            let mut action_id = String::new();
+            let mut action_id = Uuid::nil();
             let mut action_name = String::new();
+            let mut is_recurring = false;
+            let mut new_instance: Option<Action> = None;
 
-            for action in &mut actions {
-                // Check if query matches ID or Name
-                let id_match = action.id.to_string().starts_with(query); // Prefix match for ID
+            // Find the action to complete
+            let mut target_index = None;
+            for (i, action) in actions.iter().enumerate() {
+                let id_match = action.id.to_string().starts_with(query);
                 let name_match = action.name.contains(query);
 
-                if id_match || name_match {
-                    if action.state != ActionState::Completed {
-                        action.state = ActionState::Completed;
-                        action.completed_date_time = Some(Local::now());
-                        
-                        found = true;
-                        action_id = action.id.to_string();
-                        action_name = action.name.clone();
-                        break; // Only complete the first match for now
+                if (id_match || name_match) && action.state != ActionState::Completed {
+                    target_index = Some(i);
+                    break;
+                }
+            }
+
+            if let Some(idx) = target_index {
+                let action = &mut actions[idx];
+                action_id = action.id;
+                action_name = action.name.clone();
+                found = true;
+
+                if action.recurrence.is_some() {
+                    is_recurring = true;
+                    // Handle recurring action:
+                    // 1. Create a static completed instance
+                    let mut instance = action.clone();
+                    instance.id = Uuid::now_v7(); // New ID for the log entry
+                    instance.recurrence = None;   // It's a static instance
+                    instance.state = ActionState::Completed;
+                    instance.completed_date_time = Some(Local::now());
+                    new_instance = Some(instance);
+
+                    // 2. Update the template for the next occurrence
+                    // Expand occurrences to find the next one
+                    let occurrences = action.expand_occurrences(2);
+                    if occurrences.len() > 1 {
+                        // occurrences[0] is usually the current one, [1] is the next
+                        let next_dt = occurrences[1].with_timezone(&Local);
+                        action.do_date_time = Some(next_dt);
+                        debug!(next_occurrence = %next_dt.to_rfc3339(), "Updating template to next occurrence");
+                    } else {
+                        // Fallback: If rrule expansion fails or yields only one date, 
+                        // we might just leave the date as is or clear it to avoid "completing" the template.
+                        warn!("Could not determine next occurrence for recurring action");
                     }
+                    
+                    // Template stays NotStarted
+                    action.state = ActionState::NotStarted;
+                    action.completed_date_time = None;
+                } else {
+                    // Standard non-recurring action
+                    action.state = ActionState::Completed;
+                    action.completed_date_time = Some(Local::now());
                 }
             }
 
             if !found {
                 warn!(query = %query, "No matching open action found");
                 return Err(format!("No open action found matching '{}'", query));
+            }
+
+            // If we have a new instance, add it to the list
+            if let Some(instance) = new_instance {
+                actions.push(instance);
             }
 
             let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
@@ -590,16 +633,23 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     .map_err(|e| format!("Failed to save repository: {}", e))?;
 
                 // Emit event
+                let event_type = if is_recurring { "instance_completed" } else { "action_completed" };
                 let metadata = serde_json::json!({
                     "name": action_name,
+                    "is_recurring": is_recurring,
                 });
 
-                if let Err(e) = emit_event("action_completed", &action_id, Some(input_file.to_string_lossy().as_ref()), metadata) {
+                if let Err(e) = emit_event(event_type, &action_id.to_string(), Some(input_file.to_string_lossy().as_ref()), metadata) {
                     warn!(error = %e, "Failed to log data event");
                 }
 
-                info!(name = %action_name, id = %action_id, "Action completed successfully");
-                println!("Completed action: {} #{}", action_name, action_id);
+                if is_recurring {
+                    println!("Completed instance of recurring action: {} #{}", action_name, action_id);
+                    println!("Template updated for next occurrence.");
+                } else {
+                    info!(name = %action_name, id = %action_id, "Action completed successfully");
+                    println!("Completed action: {} #{}", action_name, action_id);
+                }
             } else {
                 println!("{}", formatted);
             }

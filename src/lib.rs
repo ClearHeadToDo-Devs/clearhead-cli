@@ -70,7 +70,7 @@ pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList
         tree,
         source: actions.to_string(),
     };
-    let action_list: ActionList = tree_wrapper.try_into().map_err(|e: &str| e.to_string())?;
+    let action_list: ActionList = tree_wrapper.try_into()?;
     Ok(action_list)
 }
 
@@ -87,7 +87,7 @@ pub fn get_parsed_document(actions: &str) -> Result<ParsedDocument, String> {
         tree,
         source: actions.to_string(),
     };
-    let parsed_doc: ParsedDocument = tree_wrapper.try_into().map_err(|e: &str| e.to_string())?;
+    let parsed_doc: ParsedDocument = tree_wrapper.try_into()?;
     Ok(parsed_doc)
 }
 

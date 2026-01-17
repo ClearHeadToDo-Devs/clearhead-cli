@@ -272,7 +272,7 @@ impl fmt::Display for Action {
 }
 
 impl TryFrom<TreeWrapper> for ActionList {
-    type Error = &'static str;
+    type Error = String;
     fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
         let parsed: ParsedDocument = value.try_into()?;
         Ok(parsed.actions)
@@ -280,8 +280,10 @@ impl TryFrom<TreeWrapper> for ActionList {
 }
 
 impl TryFrom<TreeWrapper> for ParsedDocument {
-    type Error = &'static str;
+    type Error = String;
     fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
+        crate::treesitter::validate_tree(&value.tree)?;
+
         let root = value.tree.root_node();
         let mut action_list = Vec::new();
         let mut source_map = HashMap::new();
@@ -292,7 +294,8 @@ impl TryFrom<TreeWrapper> for ParsedDocument {
         for root_action in root.children(&mut cursor) {
             if root_action.kind() == "root_action" {
                 let wrapper = create_node_wrapper(root_action, value.source.clone());
-                action_list.extend(parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)?);
+                action_list.extend(parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)
+                    .map_err(|e| e.to_string())?);
             }
         }
 

@@ -160,6 +160,26 @@ clearhead_cli complete "Buy groceries" --write
 clearhead_cli complete 019baae --write
 ```
 
+**Recurring Actions:**
+When you complete a recurring action (e.g., "Laundry R:FREQ=WEEKLY"), ClearHead will:
+1. Log a completed instance for today.
+2. Advance the template's due date to the next occurrence.
+3. Keep the template open for the future.
+
+### Agenda
+
+View your upcoming schedule, including projected recurring events.
+
+```bash
+# Show agenda for the next 7 days (default)
+clearhead_cli agenda
+
+# Show agenda for the next 30 days
+clearhead_cli agenda --days 30
+```
+
+The agenda view projects future occurrences of recurring tasks without creating clutter in your file, giving you a clear view of your upcoming workload.
+
 ### Sync Events
 
 Synchronize existing actions with the events database. This is useful for backfilling history from files created before event logging was enabled. It automatically skips actions that already have events logged.
