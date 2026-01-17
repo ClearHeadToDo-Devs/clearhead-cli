@@ -11,7 +11,7 @@ use argparser::{parse_cli, Commands};
 mod lsp;
 
 pub mod environment_reader;
-use environment_reader::{ensure_dir_exists, get_data_dir, load_config_with_project_discovery, resolve_file_path};
+use environment_reader::{ensure_dir_exists, get_data_dir, load_config, resolve_file_path};
 
 fn main() {
     let cli = parse_cli();
@@ -43,9 +43,8 @@ fn main() {
 }
 
 fn run_command(cli: &argparser::Cli) -> Result<(), String> {
-    // Load config with automatic project discovery
-    // This returns both the config and the discovered project context
-    let (config, project_context) = load_config_with_project_discovery(cli.config.clone())
+    // Load config from global config file and environment variables
+    let config = load_config(cli.config.clone())
         .map_err(|e| format!("Failed to load config: {}", e))?;
 
     // Resolve directories (with shell expansion)
@@ -57,9 +56,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     ensure_dir_exists(&config_dir)
         .map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-    if let Some(ref ctx) = project_context {
-        debug!(project_root = %ctx.root.display(), "Project root discovered");
-    }
     debug!(data_dir = %data_dir.display(), "Data directory resolved");
 
     match &cli.command {
@@ -72,12 +68,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             // Determine input source:
             // 1. Explicit CLI argument
-            // 2. Project-local default (next.actions or .clearhead/inbox.actions)
-            // 3. Global default (from config)
+            // 2. Global default (from config)
             let input_file = file
                 .as_ref()
-                .map(|p| p.clone())
-                .or_else(|| project_context.as_ref().and_then(|ctx| ctx.default_file.clone()))
+                .cloned()
                 .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
 
             debug!(format = ?output_format, input_file = %input_file.display(), "Executing Read command");

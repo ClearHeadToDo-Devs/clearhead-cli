@@ -53,7 +53,7 @@ impl TestEnv {
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
         cmd.env("XDG_STATE_HOME", &self.state_dir);
-        cmd.current_dir(&self.work_dir); // Run from temp dir to avoid project detection
+        cmd.current_dir(&self.work_dir); // Run from isolated temp directory
         cmd
     }
 }
