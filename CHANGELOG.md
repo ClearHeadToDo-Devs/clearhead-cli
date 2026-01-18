@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## 2026-01-17
+
+### Changed
+- **Workspace-First Read Command:** The `read` command now reads ALL `.actions` files from the workspace by default, enabling cross-file queries.
+  - `read` (no args) - reads entire workspace
+  - `read file <path>` - reads specific file
+  - `read stdio` - reads from stdin
+  - This is a **breaking change** from the previous behavior where `read` defaulted to `inbox.actions`.
+
+### Added
+- **Workspace Discovery:** New `workspace` module that recursively discovers all `.actions` files in the data directory.
+  - Skips hidden directories (like `.clearhead`)
+  - Infers project names from directory structure (e.g., `work/next.actions` → project "work")
+- **Cross-File SQL Queries:** SQL schema now includes `file_path` and `project` columns for filtering across files.
+  - `--where "project = 'work'"` - filter by inferred project name
+  - `--where "file_path LIKE '%inbox%'"` - filter by source file path
+- **Source Tracking:** Actions loaded from workspace retain their source file metadata for accurate cross-file queries.
+
+### Removed
+- **SQL flags on file/stdio subcommands:** The `--where` and `--sql` flags are now only available for workspace-wide reads. This simplifies the interface:
+  - Workspace reads = query the database (SQL supported)
+  - File/stdio reads = parse input (no SQL, just format conversion)
+
 ## 2026-01-03
 
 ### Changed

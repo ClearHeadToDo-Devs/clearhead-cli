@@ -24,6 +24,8 @@ pub mod sql;
 
 pub mod events;
 
+pub mod workspace;
+
 pub mod diff;
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
@@ -206,4 +208,66 @@ pub fn run_sql_where(
 ) -> Result<ActionList, String> {
     let query = sql::build_where_query(where_clause, select, from);
     run_sql_query(actions, &query)
+}
+
+/// Run a SQL query on workspace actions with source tracking
+///
+/// This enables cross-file queries using the file_path and project columns.
+/// Example: `SELECT id FROM actions WHERE project = 'work'`
+///
+/// # Arguments
+/// * `workspace` - Workspace actions with source metadata
+/// * `sql_query` - The SQL query to execute
+///
+/// # Returns
+/// A filtered ActionList containing only actions that match the query
+pub fn run_workspace_sql_query(
+    workspace: &workspace::WorkspaceActions,
+    sql_query: &str,
+) -> Result<ActionList, String> {
+    use std::collections::HashSet;
+
+    // Create in-memory database
+    let conn = sql::create_database()
+        .map_err(|e| format!("Failed to create database: {}", e))?;
+
+    // Load each file's actions with source metadata
+    for sourced in &workspace.sourced_actions {
+        let file_path_str = sourced.source.file_path.to_string_lossy();
+        sql::load_actions_with_source(
+            &conn,
+            &vec![sourced.action.clone()],
+            Some(&file_path_str),
+            sourced.source.project.as_deref(),
+        )
+        .map_err(|e| format!("Failed to load action into database: {}", e))?;
+    }
+
+    // Execute query and get matching IDs
+    let matching_ids = sql::query_actions(&conn, sql_query)
+        .map_err(|e| format!("SQL query failed: {}", e))?;
+
+    // Convert to HashSet for fast lookup
+    let id_set: HashSet<String> = matching_ids.into_iter().collect();
+
+    // Filter original actions by matching IDs
+    let filtered = workspace
+        .sourced_actions
+        .iter()
+        .filter(|sa| id_set.contains(&sa.action.id.to_string()))
+        .map(|sa| sa.action.clone())
+        .collect();
+
+    Ok(filtered)
+}
+
+/// Run a SQL WHERE clause query on workspace actions
+pub fn run_workspace_sql_where(
+    workspace: &workspace::WorkspaceActions,
+    where_clause: &str,
+    select: Option<&str>,
+    from: Option<&str>,
+) -> Result<ActionList, String> {
+    let query = sql::build_where_query(where_clause, select, from);
+    run_workspace_sql_query(workspace, &query)
 }

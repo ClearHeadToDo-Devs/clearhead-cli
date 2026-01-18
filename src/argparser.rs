@@ -23,11 +23,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Read and display actions from a file or stdin
+    /// Read and display actions (workspace-wide by default)
     Read {
-        /// File to read (.actions format). If not provided, reads from stdin
-        file: Option<PathBuf>,
-
         /// Output format
         #[arg(short, long, value_enum)]
         format: Option<Format>,
@@ -48,9 +45,9 @@ pub enum Commands {
         #[arg(long, requires = "where_clause")]
         from: Option<String>,
 
-        /// Read all actions (reserved for future use)
-        #[arg(short, long)]
-        all: bool,
+        /// Input source (defaults to workspace-wide read)
+        #[command(subcommand)]
+        source: Option<ReadSource>,
     },
 
     /// Format actions file with proper spacing and layout
@@ -198,6 +195,18 @@ pub enum Commands {
         #[arg(long)]
         open_only: bool,
     },
+}
+
+/// Input source for the read command
+#[derive(Subcommand)]
+pub enum ReadSource {
+    /// Read from a specific file
+    File {
+        /// Path to the .actions file
+        path: PathBuf,
+    },
+    /// Read from standard input
+    Stdio,
 }
 
 /// CLI-specific format enum that maps to library's OutputFormat

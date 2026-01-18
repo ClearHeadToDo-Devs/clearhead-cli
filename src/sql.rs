@@ -57,7 +57,9 @@ fn create_schema(conn: &Connection) -> SqlResult<()> {
             do_datetime TEXT,
             do_duration INTEGER,
             completed_datetime TEXT,
-            depth INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0 AND depth <= 5)
+            depth INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0 AND depth <= 5),
+            file_path TEXT,
+            project TEXT
         )",
         [],
     )?;
@@ -69,6 +71,8 @@ fn create_schema(conn: &Connection) -> SqlResult<()> {
     conn.execute("CREATE INDEX idx_actions_do_datetime ON actions(do_datetime)", [])?;
     conn.execute("CREATE INDEX idx_actions_parent ON actions(parent_id)", [])?;
     conn.execute("CREATE INDEX idx_actions_depth ON actions(depth)", [])?;
+    conn.execute("CREATE INDEX idx_actions_file_path ON actions(file_path)", [])?;
+    conn.execute("CREATE INDEX idx_actions_project ON actions(project)", [])?;
 
     // Normalized contexts table
     conn.execute(
@@ -132,6 +136,24 @@ fn create_schema(conn: &Connection) -> SqlResult<()> {
 /// # Returns
 /// Ok(()) on success, or a SQLite error
 pub fn load_actions(conn: &Connection, actions: &ActionList) -> SqlResult<()> {
+    load_actions_with_source(conn, actions, None, None)
+}
+
+/// Load an ActionList into the database with source metadata
+///
+/// Like `load_actions` but also stores file_path and project for cross-file queries.
+///
+/// # Arguments
+/// * `conn` - The SQLite connection
+/// * `actions` - The flat list of actions to load
+/// * `file_path` - Optional source file path
+/// * `project` - Optional project name (inferred from file structure)
+pub fn load_actions_with_source(
+    conn: &Connection,
+    actions: &ActionList,
+    file_path: Option<&str>,
+    project: Option<&str>,
+) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
 
     for action in actions {
@@ -139,8 +161,8 @@ pub fn load_actions(conn: &Connection, actions: &ActionList) -> SqlResult<()> {
         tx.execute(
             "INSERT INTO actions (
                 id, parent_id, state, name, description, priority, story,
-                do_datetime, do_duration, completed_datetime, depth
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                do_datetime, do_duration, completed_datetime, depth, file_path, project
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 action.id.to_string(),
                 action.parent_id.map(|id| id.to_string()),
@@ -153,6 +175,8 @@ pub fn load_actions(conn: &Connection, actions: &ActionList) -> SqlResult<()> {
                 action.do_duration,
                 action.completed_date_time.map(|dt| dt.to_rfc3339()),
                 action.depth(actions),
+                file_path,
+                project,
             ],
         )?;
 

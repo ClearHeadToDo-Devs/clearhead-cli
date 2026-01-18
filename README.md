@@ -25,14 +25,17 @@ Create a file called `inbox.actions` (this is created for you in the default loc
 View it in different formats:
 
 ```bash
+# Read entire workspace (all .actions files)
+clearhead_cli read
+
 # Table view (great for browsing)
-clearhead_cli read inbox.actions --format table
+clearhead_cli read --format table
 
 # JSON (great for scripting)
-clearhead_cli read inbox.actions --format json
+clearhead_cli read --format json
 
-# Original format (round-trip safe)
-clearhead_cli read inbox.actions
+# Read a specific file
+clearhead_cli read file inbox.actions
 ```
 
 ## Features
@@ -70,7 +73,7 @@ clearhead_cli read --format table
 
 ## Action Syntax
 
-For the full specification see [The Specification](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions/blob/master/docs/action_specification.md)
+For more details see [The Specification](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions/blob/master/docs/action_specification.md)
 ```
 [x] Completed Action $with description !1 +context,tags
 > [ ] Child Action
@@ -100,26 +103,42 @@ For the full specification see [The Specification](https://github.com/ClearHeadT
 
 ### Read
 
+The `read` command operates in three modes:
+
 ```bash
-# Read default file (~/.local/share/clearhead/inbox.actions)
+# Workspace-wide read (default) - reads ALL .actions files from data directory
 clearhead_cli read
 
 # Read specific file
-clearhead_cli read ~/work.actions
+clearhead_cli read file ~/work.actions
 
-# Output as JSON
-clearhead_cli read --format json
-
-# Output as table
-clearhead_cli read --format table
+# Read from stdin
+cat tasks.actions | clearhead_cli read stdio
 ```
 
-**Filtering with SQL queries:**
+**Output formats:**
+
+```bash
+clearhead_cli read --format json    # JSON (great for scripting)
+clearhead_cli read --format table   # Table view (great for browsing)
+clearhead_cli read --format xml     # XML format
+clearhead_cli read --format actions # Original format (default)
+```
+
+**Filtering with SQL queries (workspace mode only):**
+
+SQL filtering is available for workspace-wide reads, enabling cross-file queries:
 
 ```bash
 # Simple WHERE clause
 clearhead_cli read --where "priority = 1"
 clearhead_cli read --where "state = 'completed'"
+
+# Filter by project (inferred from directory structure)
+clearhead_cli read --where "project = 'work'"
+
+# Filter by source file
+clearhead_cli read --where "file_path LIKE '%inbox%'"
 
 # Query by context (requires JOIN)
 clearhead_cli read --sql "SELECT a.id FROM actions a \
@@ -133,6 +152,8 @@ clearhead_cli read --sql "WITH RECURSIVE descendants AS (
     SELECT a.* FROM actions a JOIN descendants d ON a.parent_id = d.id
   ) SELECT id FROM descendants"
 ```
+
+The SQL schema includes `file_path` and `project` columns for cross-file filtering. Project names are inferred from directory structure (e.g., `work/next.actions` → project "work").
 
 See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL queries.
 
@@ -347,9 +368,9 @@ See [CONTRIBUTORS.md](docs/CONTRIBUTORS.md) for:
 
 ## Status
 
-**Current:** Read command with multi-format output
-**Next:** Create, Update, Delete commands
-**Future:** TUI interface, collaborative editing (CRDTs)
+**Current:** Workspace-first architecture with cross-file SQL queries
+**Next:** CRDT sync between devices
+**Future:** TUI interface, collaborative editing
 
 ## License
 

@@ -134,10 +134,11 @@ fn test_read_specific_file() {
     // Create a specific file
     env.write_actions("work.actions", "[-] In progress task");
 
-    // Read it by specifying the path
+    // Read it by specifying the path with `file` subcommand
     let work_path = env.data_dir.join("work.actions");
     env.command()
         .arg("read")
+        .arg("file")
         .arg(work_path)
         .assert()
         .success()
@@ -151,12 +152,13 @@ fn test_all_output_formats() {
     env.write_actions("test.actions", "[x] Test $with description !1 +context");
     let test_path = env.data_dir.join("test.actions");
 
-    // Actions format
+    // Actions format (--format before subcommand)
     env.command()
         .arg("read")
-        .arg(&test_path)
         .arg("--format")
         .arg("actions")
+        .arg("file")
+        .arg(&test_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("[x] Test"));
@@ -164,9 +166,10 @@ fn test_all_output_formats() {
     // JSON format
     env.command()
         .arg("read")
-        .arg(&test_path)
         .arg("--format")
         .arg("json")
+        .arg("file")
+        .arg(&test_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("\"actions\":"))
@@ -175,9 +178,10 @@ fn test_all_output_formats() {
     // XML format
     env.command()
         .arg("read")
-        .arg(&test_path)
         .arg("--format")
         .arg("xml")
+        .arg("file")
+        .arg(&test_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("<name>Test</name>"));
@@ -185,9 +189,10 @@ fn test_all_output_formats() {
     // Table format
     env.command()
         .arg("read")
-        .arg(&test_path)
         .arg("--format")
         .arg("table")
+        .arg("file")
+        .arg(&test_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("State"))
@@ -198,10 +203,11 @@ fn test_all_output_formats() {
 fn test_error_on_missing_file() {
     let env = TestEnv::new();
 
-    // Don't create any files
-
+    // Reading a non-existent specific file should fail
     env.command()
         .arg("read")
+        .arg("file")
+        .arg("/nonexistent/path.actions")
         .assert()
         .failure()
         .stderr(predicate::str::contains("Failed to read file"));
@@ -232,9 +238,10 @@ fn test_actions_with_hierarchy() {
     // Actions format should preserve hierarchy with proper spacing
     env.command()
         .arg("read")
-        .arg(test_path)
         .arg("--format")
         .arg("actions")
+        .arg("file")
+        .arg(test_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("[x] Parent"))
@@ -304,13 +311,14 @@ fn test_json_output_validates_against_schema() {
     );
     let test_path = env.data_dir.join("test.actions");
 
-    // Get JSON output
+    // Get JSON output (--format before subcommand)
     let output = env
         .command()
         .arg("read")
-        .arg(&test_path)
         .arg("--format")
         .arg("json")
+        .arg("file")
+        .arg(&test_path)
         .assert()
         .success()
         .get_output()
@@ -341,16 +349,15 @@ fn test_json_output_validates_against_schema() {
 // Error handling tests - verify user-facing error messages
 
 #[test]
-fn test_helpful_error_on_missing_default_file() {
+fn test_workspace_read_succeeds_when_empty() {
     let env = TestEnv::new();
-    // Don't create inbox.actions
+    // Don't create any files - empty workspace
 
+    // Workspace read succeeds even when empty (just returns no results)
     env.command()
         .arg("read")
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("Failed to read file"))
-        .stderr(predicate::str::contains("inbox.actions"));
+        .success();
 }
 
 #[test]
@@ -359,6 +366,7 @@ fn test_helpful_error_on_missing_specific_file() {
 
     env.command()
         .arg("read")
+        .arg("file")
         .arg("nonexistent.actions")
         .assert()
         .failure()
@@ -405,7 +413,12 @@ fn test_empty_actions_file() {
     let empty_path = env.data_dir.join("empty.actions");
 
     // Should succeed with empty output (or error gracefully)
-    env.command().arg("read").arg(empty_path).assert().success();
+    env.command()
+        .arg("read")
+        .arg("file")
+        .arg(empty_path)
+        .assert()
+        .success();
     // Empty file outputs just a newline, which is acceptable
 }
 
@@ -416,7 +429,12 @@ fn test_actions_file_with_only_whitespace() {
     env.write_actions("whitespace.actions", "   \n\n  \t  \n");
     let ws_path = env.data_dir.join("whitespace.actions");
 
-    env.command().arg("read").arg(ws_path).assert().success();
+    env.command()
+        .arg("read")
+        .arg("file")
+        .arg(ws_path)
+        .assert()
+        .success();
 }
 
 #[test]
@@ -653,4 +671,188 @@ fn test_sync_events_command() {
         .success()
         .stdout(predicate::str::contains("1 events backfilled"))
         .stdout(predicate::str::contains("2 already present"));
+}
+
+// ============================================================================
+// Workspace-First Read Tests
+// ============================================================================
+
+#[test]
+fn test_read_workspace_aggregates_all_files() {
+    let env = TestEnv::new();
+
+    // Create multiple action files
+    env.write_actions("inbox.actions", "[ ] Inbox task");
+    env.write_actions("work.actions", "[ ] Work task");
+
+    // Create a project subdirectory
+    let project_dir = env.data_dir.join("project1");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join("next.actions"), "[ ] Project task").unwrap();
+
+    // Read workspace (no args) should find all tasks
+    env.command()
+        .arg("read")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Inbox task"))
+        .stdout(predicate::str::contains("Work task"))
+        .stdout(predicate::str::contains("Project task"));
+}
+
+#[test]
+fn test_read_file_subcommand() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Inbox task");
+    env.write_actions("work.actions", "[ ] Work task");
+
+    let work_path = env.data_dir.join("work.actions");
+
+    // Read specific file should only show that file's tasks
+    env.command()
+        .arg("read")
+        .arg("file")
+        .arg(&work_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Work task"))
+        .stdout(predicate::str::contains("Inbox task").not());
+}
+
+#[test]
+fn test_read_stdio_subcommand() {
+    let env = TestEnv::new();
+
+    // Read from stdin
+    env.command()
+        .arg("read")
+        .arg("stdio")
+        .write_stdin("[ ] Stdin task !1\n[ ] Another stdin task")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Stdin task"))
+        .stdout(predicate::str::contains("Another stdin task"));
+}
+
+#[test]
+fn test_read_workspace_with_sql_filter() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Low priority !3");
+    env.write_actions("work.actions", "[ ] High priority !1");
+
+    // Filter by priority across workspace
+    env.command()
+        .arg("read")
+        .arg("--where")
+        .arg("priority = 1")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("High priority"))
+        .stdout(predicate::str::contains("Low priority").not());
+}
+
+#[test]
+fn test_read_workspace_filter_by_project() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Inbox task");
+
+    let project_dir = env.data_dir.join("myproject");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join("next.actions"), "[ ] Project task").unwrap();
+
+    // Filter by inferred project name
+    env.command()
+        .arg("read")
+        .arg("--where")
+        .arg("project = 'myproject'")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Project task"))
+        .stdout(predicate::str::contains("Inbox task").not());
+}
+
+#[test]
+fn test_read_workspace_filter_by_file_path() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Inbox task");
+    env.write_actions("work.actions", "[ ] Work task");
+
+    // Filter by file path pattern
+    env.command()
+        .arg("read")
+        .arg("--where")
+        .arg("file_path LIKE '%work%'")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Work task"))
+        .stdout(predicate::str::contains("Inbox task").not());
+}
+
+#[test]
+fn test_sql_flags_rejected_for_file_subcommand() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Task");
+    let inbox_path = env.data_dir.join("inbox.actions");
+
+    // SQL flags before file subcommand should error
+    env.command()
+        .arg("read")
+        .arg("--where")
+        .arg("priority = 1")
+        .arg("file")
+        .arg(&inbox_path)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("SQL filtering"));
+}
+
+#[test]
+fn test_sql_flags_rejected_for_stdio_subcommand() {
+    let env = TestEnv::new();
+
+    // SQL flags before stdio subcommand should error
+    env.command()
+        .arg("read")
+        .arg("--sql")
+        .arg("SELECT id FROM actions")
+        .arg("stdio")
+        .write_stdin("[ ] Task")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("SQL filtering"));
+}
+
+#[test]
+fn test_read_empty_workspace() {
+    let env = TestEnv::new();
+
+    // Empty workspace should succeed (may output just a newline)
+    env.command()
+        .arg("read")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_read_skips_hidden_directories() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Visible task");
+
+    // Create hidden directory with actions (should be skipped)
+    let hidden_dir = env.data_dir.join(".clearhead");
+    fs::create_dir_all(&hidden_dir).unwrap();
+    fs::write(hidden_dir.join("state.actions"), "[ ] Hidden task").unwrap();
+
+    env.command()
+        .arg("read")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Visible task"))
+        .stdout(predicate::str::contains("Hidden task").not());
 }

@@ -59,51 +59,62 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     debug!(data_dir = %data_dir.display(), "Data directory resolved");
 
     match &cli.command {
-        Commands::Read { file, format, where_clause, sql, select, from, all: _ } => {
+        Commands::Read { format, where_clause, sql, select, from, source } => {
+            use argparser::ReadSource;
+
             // Resolve format: CLI > Env > Config > Default
             let output_format = format
                 .map(|f| f.into())
                 .or_else(|| parse_format(&config.cli_format).ok())
                 .unwrap_or(clearhead_cli::OutputFormat::Actions);
 
-            // Determine input source:
-            // 1. Explicit CLI argument
-            // 2. Global default (from config)
-            let input_file = file
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+            let has_sql_filter = sql.is_some() || where_clause.is_some();
 
-            debug!(format = ?output_format, input_file = %input_file.display(), "Executing Read command");
+            // SQL flags only apply to workspace reads
+            if source.is_some() && has_sql_filter {
+                return Err("SQL filtering (--where, --sql) is only supported for workspace reads. \
+                           Use 'read' without a subcommand to query the workspace.".to_string());
+            }
 
-            // Read input from file
-            let content = read_input(Some(&input_file))?;
+            let actions = match source {
+                // Workspace-wide read with optional SQL filtering
+                None => {
+                    debug!(data_dir = %data_dir.display(), "Reading workspace");
 
-            // Parse, then optionally filter with SQL
-            let actions = if let Some(sql_query) = sql {
-                debug!(sql = %sql_query, "Filtering with custom SQL query");
-                let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-                clearhead_cli::run_sql_query(&all_actions, sql_query)?
-            } else if let Some(where_clause) = where_clause {
-                debug!(where_clause = %where_clause, "Filtering with SQL WHERE clause");
-                let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-                clearhead_cli::run_sql_where(
-                    &all_actions,
-                    where_clause,
-                    select.as_deref(),
-                    from.as_deref(),
-                )?
-            } else {
-                // No filter - parse all actions
-                clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
+                    if let Some(sql_query) = sql {
+                        let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
+                        debug!(sql = %sql_query, "Filtering with SQL query");
+                        clearhead_cli::run_workspace_sql_query(&workspace, sql_query)?
+                    } else if let Some(where_clause) = where_clause {
+                        let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
+                        debug!(where_clause = %where_clause, "Filtering with WHERE clause");
+                        clearhead_cli::run_workspace_sql_where(
+                            &workspace,
+                            where_clause,
+                            select.as_deref(),
+                            from.as_deref(),
+                        )?
+                    } else {
+                        clearhead_cli::workspace::load_workspace_actions(&data_dir)?
+                    }
+                }
+                // Parse specific file
+                Some(ReadSource::File { path }) => {
+                    let resolved = resolve_file_path(&path.to_string_lossy(), &data_dir);
+                    debug!(file = %resolved.display(), "Reading file");
+                    let content = read_input(Some(&resolved))?;
+                    clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
+                }
+                // Parse stdin
+                Some(ReadSource::Stdio) => {
+                    debug!("Reading stdin");
+                    let content = read_input(None)?;
+                    clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
+                }
             };
 
-            info!(action_count = actions.len(), "Parsed actions successfully");
-
-            // Format and output
-            let formatted = clearhead_cli::format(&actions, output_format, None)?;
-
-            println!("{}", formatted);
+            info!(action_count = actions.len(), "Loaded actions");
+            println!("{}", clearhead_cli::format(&actions, output_format, None)?);
             Ok(())
         }
         Commands::Format { file, write, style, indent_style, indent_width } => {
