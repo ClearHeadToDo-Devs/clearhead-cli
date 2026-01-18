@@ -1,6 +1,9 @@
 use crate::entities::{Action, ActionList};
 use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 use serde::{Deserialize, Serialize};
+use std::io::Cursor;
+use topiary_core::{Operation, formatter, Language, TopiaryQuery};
+use topiary_tree_sitter_facade::Language as TreeSitterLanguage;
 
 /// Output format options for ActionList serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +25,7 @@ pub enum FormatStyle {
     /// Compact: metadata on same line
     Compact,
     /// List: metadata on separate indented lines
+    /// Note: List style is deprecated in spec v2.0.0
     List,
 }
 
@@ -83,23 +87,23 @@ pub fn format(
     }
 }
 
-/// Format ActionList as .actions file format with depth markers
-///
-/// Serializes actions with spec-compliant horizontal and vertical spacing.
-/// Note: Topiary is not used because it cannot preserve horizontal spacing
-/// due to grammar limitations (whitespace is captured as `extras`).
+/// Format ActionList as .actions file format using Topiary
 fn format_as_actions(list: &ActionList, config: Option<FormatConfig>) -> Result<String, String> {
     let config = config.unwrap_or_default();
-    format_as_actions_basic(list, &config)
+    
+    // 1. Generate basic content (Canonical style: Compact + Indentation)
+    // We strictly use Compact style now as List style is removed in spec v2.0.0
+    let raw_content = serialize_actions_canonical(list, &config);
+
+    // 2. Pass through Topiary for structural enforcement (vertical spacing)
+    format_with_topiary(&raw_content)
 }
 
-/// Basic serialization of ActionList to .actions format with proper spacing
-///
-/// This produces valid .actions syntax with spec-compliant horizontal spacing.
-/// Topiary then handles vertical spacing (newlines, indentation in list mode).
-fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<String, String> {
+/// Serialize actions to the canonical string format (compact, no indentation)
+fn serialize_actions_canonical(list: &ActionList, config: &FormatConfig) -> String {
     use std::collections::HashMap;
     use std::fmt::Write as _;
+    use std::fmt;
 
     let mut output = String::new();
 
@@ -107,104 +111,71 @@ fn format_as_actions_basic(list: &ActionList, config: &FormatConfig) -> Result<S
     let parent_map: HashMap<uuid::Uuid, Option<uuid::Uuid>> =
         list.iter().map(|a| (a.id, a.parent_id)).collect();
 
+    // Helper for Compact content formatting
+    struct ActionContent<'a>(&'a Action, bool);
+    impl<'a> fmt::Display for ActionContent<'a> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.0.fmt_content(f, self.1)
+        }
+    }
+
     for action in list {
-        // Calculate depth using the map instead of linear search
+        // Calculate depth
         let mut depth = 0;
         let mut current_parent = action.parent_id;
         while let Some(parent_id) = current_parent {
             depth += 1;
             current_parent = parent_map.get(&parent_id).copied().flatten();
-
-            // Safety break for cycles (though tree-sitter shouldn't produce them)
-            if depth > 100 {
-                break;
-            }
+            if depth > 100 { break; } // Safety break
         }
 
-        // Add leading indentation based on depth
-        let indent_char = match config.indent_style {
-            IndentStyle::Spaces => " ",
-            IndentStyle::Tabs => "\t",
-        };
-        let indent_units = depth * config.indent_width;
-        output.push_str(&indent_char.repeat(indent_units));
-
-        // Add depth markers (> for each level of nesting)
+        // Add depth markers
         if depth > 0 {
             output.push_str(&">".repeat(depth));
         }
 
-        // Serialize action WITH proper spacing (per formatting specification)
-        // Space after state brackets: `[x] Task` not `[x]Task`
-
-        if config.style == FormatStyle::List {
-            // In List mode, we handle the metadata lines manually to control indentation
-            write!(output, "[{}] {}", action.state, action.name).unwrap();
-
-            let indent_char = match config.indent_style {
-                IndentStyle::Spaces => " ",
-                IndentStyle::Tabs => "\t",
-            };
-            let metadata_indent = format!(
-                "\n{}",
-                indent_char.repeat((depth + 1) * config.indent_width)
-            );
-
-            if let Some(description) = &action.description {
-                output.push_str(&metadata_indent);
-                write!(output, "$ {}", description).unwrap();
-            }
-            if let Some(priority) = &action.priority {
-                output.push_str(&metadata_indent);
-                write!(output, "!{}", priority).unwrap();
-            }
-            if let Some(story) = &action.story {
-                output.push_str(&metadata_indent);
-                write!(output, "*{}", story).unwrap();
-            }
-            if let Some(context_list) = &action.context_list {
-                output.push_str(&metadata_indent);
-                write!(output, "+{}", context_list.join(",")).unwrap();
-            }
-            if let Some(do_date_time) = &action.do_date_time {
-                output.push_str(&metadata_indent);
-                write!(output, "@{}", do_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
-                if let Some(duration) = action.do_duration {
-                    output.push_str(&metadata_indent);
-                    write!(output, "D{}", duration).unwrap();
-                }
-                if let Some(recurrence) = &action.recurrence {
-                    output.push_str(&metadata_indent);
-                    write!(output, "{}", recurrence).unwrap();
-                }
-            }
-            if let Some(completed_date_time) = &action.completed_date_time {
-                output.push_str(&metadata_indent);
-                write!(output, "%{}", completed_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
-            }
-            if let Some(created_date_time) = &action.created_date_time {
-                output.push_str(&metadata_indent);
-                write!(output, "^{}", created_date_time.format("%Y-%m-%dT%H:%M")).unwrap();
-            }
-            if config.include_id {
-                output.push_str(&metadata_indent);
-                write!(output, "#{}", action.id).unwrap();
-            }
-        } else {
-            // In Compact mode, we can use the centralized fmt_content method
-            use std::fmt;
-            struct ActionContent<'a>(&'a Action, bool);
-            impl<'a> fmt::Display for ActionContent<'a> {
-                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    self.0.fmt_content(f, self.1)
-                }
-            }
-            write!(output, "{}", ActionContent(action, config.include_id)).unwrap();
-        }
+        // Serialize content (Compact style)
+        // Note: fmt_content handles the "[x] Name ..." part
+        write!(output, "{}", ActionContent(action, config.include_id)).unwrap();
         output.push('\n');
     }
 
-    Ok(output)
+    output
+}
+
+/// Format a string using Topiary with the .actions grammar
+fn format_with_topiary(input_text: &str) -> Result<String, String> {
+    let mut input = Cursor::new(input_text.as_bytes());
+    let mut output = Vec::new();
+
+    // Load query from tree-sitter-actions crate
+    let query_content = tree_sitter_actions::FORMATTING_QUERY;
+
+    // Initialize Grammar and Query
+    let grammar: TreeSitterLanguage = tree_sitter_actions::LANGUAGE.into();
+    let query = TopiaryQuery::new(&grammar, query_content)
+        .map_err(|e| format!("Failed to compile Topiary query: {}", e))?;
+
+    // Initialize Language
+    let language = Language {
+        name: "actions".to_string(),
+        grammar, // consumes grammar
+        indent: None, // No auto-indentation config
+        query,
+    };
+
+    // Configure Operation
+    let operation = Operation::Format {
+        skip_idempotence: true,
+        tolerate_parsing_errors: true,
+    };
+
+    // Run Formatter
+    formatter(&mut input, &mut output, &language, operation)
+        .map_err(|e| format!("Topiary formatting failed: {}", e))?;
+
+    String::from_utf8(output)
+        .map_err(|e| format!("Topiary output was not valid UTF-8: {}", e))
 }
 
 fn format_as_json(list: &ActionList) -> Result<String, String> {
@@ -370,14 +341,16 @@ mod tests {
 
         assert!(
             formatted.contains("[x] Root"),
-            "Output doesn't contain '[x] Root' (with space): {}",
+            "Output doesn't contain '[x] Root': {}",
             formatted
         );
         assert!(
             formatted.contains(">[ ] Child"),
-            "Output doesn't contain '>[ ] Child' (with space): {}",
+            "Output doesn't contain '>[ ] Child': {}",
             formatted
         );
+        // Verify newlines (Topiary effect)
+        assert!(formatted.contains("\n"));
     }
 
     #[test]
@@ -418,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn test_indentation() {
+    fn test_indentation_removed() {
         let mut actions = vec![create_test_action("Root", ActionState::NotStarted, None)];
         let root_id = actions[0].id;
         actions.push(create_test_action(
@@ -427,7 +400,7 @@ mod tests {
             Some(root_id),
         ));
 
-        // Test Spaces
+        // Test Spaces - Should be ignored and flat
         let config = FormatConfig {
             style: FormatStyle::Compact,
             indent_style: IndentStyle::Spaces,
@@ -435,9 +408,11 @@ mod tests {
             ..Default::default()
         };
         let formatted = format(&actions, OutputFormat::Actions, Some(config)).unwrap();
-        assert!(formatted.contains("  >[ ] Child"));
+        // Expect NO indentation
+        assert!(formatted.contains(">[ ] Child"));
+        assert!(!formatted.contains("  >[ ] Child"));
 
-        // Test Tabs
+        // Test Tabs - Should be ignored and flat
         let config_tabs = FormatConfig {
             style: FormatStyle::Compact,
             indent_style: IndentStyle::Tabs,
@@ -445,20 +420,8 @@ mod tests {
             ..Default::default()
         };
         let formatted_tabs = format(&actions, OutputFormat::Actions, Some(config_tabs)).unwrap();
-        assert!(formatted_tabs.contains("\t>[ ] Child"));
-
-        // Test List Style Indent
-        let mut actions_meta = vec![create_test_action("Root", ActionState::NotStarted, None)];
-        actions_meta[0].description = Some("Desc".to_string());
-
-        let config_list = FormatConfig {
-            style: FormatStyle::List,
-            indent_style: IndentStyle::Spaces,
-            indent_width: 4,
-            ..Default::default()
-        };
-        let formatted_list =
-            format(&actions_meta, OutputFormat::Actions, Some(config_list)).unwrap();
-        assert!(formatted_list.contains("\n    $ Desc"));
+        assert!(formatted_tabs.contains(">[ ] Child"));
+        assert!(!formatted_tabs.contains("\t>[ ] Child"));
     }
 }
+

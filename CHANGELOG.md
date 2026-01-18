@@ -49,25 +49,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Known Issues & Decisions Needed
 
-#### 1. Topiary Dependency Should Probably Be Removed
-**Current State:**
-- Topiary cannot handle horizontal spacing due to grammar limitations (whitespace is `extras`)
-- List mode never worked (compact and list produce identical output)
-- We're now doing all formatting in `format_as_actions_basic()` without Topiary
-- Topiary adds ~50 crates to dependency tree for zero benefit
+#### 1. Formatting Strategy: Topiary Adoption
+- **Decision:** Topiary is now the sole engine for `.actions` file formatting.
+- **Change:** Replaced the custom `format_as_actions_basic()` implementation with `format_with_topiary()`.
+- **Impact:**
+    - Vertical spacing is strictly enforced by the Topiary query (`actions.scm`).
+    - Horizontal spacing and indentation are currently flat (whitespace stripped) due to Topiary grammar limitations (`extras`).
+    - `List` style support is effectively removed; output is always "Compact" style (metadata on same line).
+    - `IndentStyle` and `IndentWidth` settings are currently ignored by the formatter.
 
-**Decision Needed:**
-- [ ] **Option A:** Remove Topiary entirely (recommended)
-  - Remove `topiary-core` and `topiary-tree-sitter-facade` from `Cargo.toml`
-  - Remove `format_with_topiary()` function
-  - Update LSP to use our IR-based formatter instead
-  - Remove `queries/actions/topiary.scm` from tree-sitter-actions repo
-  - Benefits: Smaller binary, faster compile, cleaner architecture
-
-- [ ] **Option B:** Keep Topiary but document it's broken
-  - Keep dependency for potential future use
-  - Document grammar would need major refactor for Topiary to work
-  - Continue not using it in main formatting pipeline
 
 #### 2. LSP Formatting is Broken
 **Current State:**

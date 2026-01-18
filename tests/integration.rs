@@ -250,10 +250,10 @@ fn test_actions_with_hierarchy() {
 }
 
 #[test]
-fn test_format_indentation() {
+fn test_format_indentation_ignored() {
     let env = TestEnv::new();
 
-    // 1. Test Compact Style indentation
+    // 1. Test Spaces ignored
     env.write_actions("compact.actions", "[ ] Root\n>[ ] Child");
     let compact_path = env.data_dir.join("compact.actions");
 
@@ -266,9 +266,11 @@ fn test_format_indentation() {
         .arg("2")
         .assert()
         .success()
-        .stdout(predicate::str::contains("  >[ ] Child")); // 2 spaces indent
+        .stdout(predicate::str::contains(">[ ] Child"))
+        .stdout(predicate::str::contains("  >[ ] Child").not());
 
-    // 2. Test List Style indentation
+    // 2. Test List Style ignored (falls back to compact)
+    // Note: List style is deprecated/removed in spec v2.0.0
     env.write_actions("list.actions", "[ ] Root $ Desc");
     let list_path = env.data_dir.join("list.actions");
 
@@ -276,14 +278,17 @@ fn test_format_indentation() {
         .arg("format")
         .arg(&list_path)
         .arg("--style")
-        .arg("list")
+        .arg("list") // Should be ignored/treated as compact
         .arg("--indent-width")
         .arg("4")
         .assert()
         .success()
-        .stdout(predicate::str::contains("\n    $ Desc")); // 4 spaces indent for metadata
+        // Metadata should be inline in compact mode: "$ Desc"
+        .stdout(predicate::str::contains("$ Desc"))
+        // And certainly not indented on a new line
+        .stdout(predicate::str::contains("\n    $ Desc").not());
 
-    // 3. Test Tab indentation
+    // 3. Test Tab indentation ignored
     env.command()
         .arg("format")
         .arg(&compact_path)
@@ -293,7 +298,8 @@ fn test_format_indentation() {
         .arg("1")
         .assert()
         .success()
-        .stdout(predicate::str::contains("\t>[ ] Child"));
+        .stdout(predicate::str::contains(">[ ] Child"))
+        .stdout(predicate::str::contains("\t>[ ] Child").not());
 }
 
 // Schema validation tests - verify JSON output matches canonical schema
