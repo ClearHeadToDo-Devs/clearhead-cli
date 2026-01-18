@@ -55,12 +55,12 @@ fn test_linting_error_detection() {
     // These are tested via unit tests with constructed Action objects.
     // E003, E006: Errors (parser correctness)
     // W002-W006: Warnings (temporal/semantic issues)
-    // I001-I004: Info (style preferences)
     let implemented_rules = vec![
-        "E003", "E006",  // Errors (E001, E002 tested via unit tests only)
+        "E003", "E006", "E010", "E011", // Errors (E001, E002 tested via unit tests only)
         "W002", "W003", "W004", "W005", "W006",  // Warnings
-        "I001", "I002", "I003", "I004",  // Info
+        "I001", "I002", "I003", "I004", "I008", "I010", // Info
     ];
+
 
     let examples = get_linting_examples();
 
@@ -111,9 +111,9 @@ fn test_linting_error_detection() {
 fn test_linting_fixed_version_passes() {
     // List of currently implemented rules (same as above)
     let implemented_rules = vec![
-        "E003", "E006",  // Errors (E001, E002 tested via unit tests only)
+        "E003", "E006", "E010", "E011", // Errors (E001, E002 tested via unit tests only)
         "W002", "W003", "W004", "W005", "W006",  // Warnings
-        "I001", "I002", "I003", "I004",  // Info
+        "I001", "I002", "I003", "I004", "I008", "I010", // Info
     ];
 
     let examples = get_linting_examples();

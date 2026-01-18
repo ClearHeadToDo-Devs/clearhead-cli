@@ -1,45 +1,9 @@
-use crate::entities::{Action, ActionState, ParsedDocument, SourceMetadata, SourceRange};
+use crate::entities::{
+    Action, ActionState, LintDiagnostic, LintResults, LintSeverity, ParsedDocument, SourceMetadata,
+};
 use chrono::Local;
 use std::collections::HashSet;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LintDiagnostic {
-    pub code: String,
-    pub severity: LintSeverity,
-    pub message: String,
-    pub range: SourceRange,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LintSeverity {
-    Error,
-    Warning,
-    Info,
-}
-
-impl LintDiagnostic {
-    fn new(code: &str, severity: LintSeverity, message: String, range: SourceRange) -> Self {
-        Self {
-            code: code.to_string(),
-            severity,
-            message,
-            range,
-        }
-    }
-
-    fn error(code: &str, message: String, range: SourceRange) -> Self {
-        Self::new(code, LintSeverity::Error, message, range)
-    }
-
-    fn warning(code: &str, message: String, range: SourceRange) -> Self {
-        Self::new(code, LintSeverity::Warning, message, range)
-    }
-
-    fn info(code: &str, message: String, range: SourceRange) -> Self {
-        Self::new(code, LintSeverity::Info, message, range)
-    }
-}
 
 // ============================================================================
 // Check Types
@@ -64,6 +28,8 @@ pub const ACTION_ERROR_CHECKS: &[ActionCheck] = &[
     // E004, E005 - parser/grammar level
     check_invalid_uuid, // E006
                         // E007 - parser level
+    check_orphaned_child, // E010
+    check_skipped_level,  // E011
 ];
 
 /// Action-level warning checks (W004-W006)
@@ -83,12 +49,15 @@ pub const ACTION_INFO_CHECKS: &[ActionCheck] = &[
     check_completion_date_without_state, // I002
     check_priority_range,                // I003
     check_missing_id,                    // missing-id (style check)
+    check_blocked_without_description,   // I008
+    check_excessive_duration,            // I010
 ];
 
 /// Document-level checks (operate on whole document)
 pub const DOCUMENT_CHECKS: &[DocumentCheck] = &[
     check_tree_consistency, // W002, W003
     check_duplicate_ids,    // I004
+    check_hierarchy_levels, // E010, E011, W001
 ];
 
 // ============================================================================
@@ -109,6 +78,91 @@ fn check_duration_without_do_date(
     } else {
         None
     }
+}
+
+/// Placeholder for orphaned child check (E010) - implemented at document level
+fn check_orphaned_child(_action: &Action, _metadata: &SourceMetadata) -> Option<LintDiagnostic> {
+    None
+}
+
+/// Placeholder for skipped level check (E011) - implemented at document level
+fn check_skipped_level(_action: &Action, _metadata: &SourceMetadata) -> Option<LintDiagnostic> {
+    None
+}
+
+/// Check if action is blocked but missing description (I008)
+fn check_blocked_without_description(
+    action: &Action,
+    metadata: &SourceMetadata,
+) -> Option<LintDiagnostic> {
+    if action.state == ActionState::BlockedorAwaiting && action.description.is_none() {
+        Some(LintDiagnostic::info(
+            "I008",
+            "Blocked actions should have a description explaining why (I008).".to_string(),
+            metadata.root,
+        ))
+    } else {
+        None
+    }
+}
+
+/// Check if duration is excessive (I010)
+fn check_excessive_duration(action: &Action, metadata: &SourceMetadata) -> Option<LintDiagnostic> {
+    const MAX_DURATION: u32 = 480; // 8 hours
+    if let Some(duration) = action.do_duration {
+        if duration > MAX_DURATION {
+            Some(LintDiagnostic::info(
+                "I010",
+                format!(
+                    "Suspiciously long duration ({} minutes). Is this correct? (I010)",
+                    duration
+                ),
+                metadata.do_date.unwrap_or(metadata.root),
+            ))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+/// Check hierarchy levels (E010, E011, W001)
+fn check_hierarchy_levels(doc: &ParsedDocument) -> Vec<LintDiagnostic> {
+    let mut diagnostics = Vec::new();
+
+    for action in &doc.actions {
+        if let Some(metadata) = doc.source_map.get(&action.id) {
+            let depth = action.depth(&doc.actions);
+
+            // W001: Hierarchy Depth Exceeded (max 5)
+            if depth > 5 {
+                diagnostics.push(LintDiagnostic::warning(
+                    "W001",
+                    format!("Action depth {} exceeds recommended maximum of 5 (W001).", depth),
+                    metadata.root,
+                ));
+            }
+
+            // E011: Skipped Hierarchy Level
+            if let Some(parent_id) = action.parent_id {
+                if let Some(parent) = doc.actions.iter().find(|a| a.id == parent_id) {
+                    let parent_depth = parent.depth(&doc.actions);
+                    if depth > parent_depth + 1 {
+                        diagnostics.push(LintDiagnostic::error(
+                            "E011",
+                            format!(
+                                "Skipped hierarchy level: parent is depth {}, child is depth {} (E011).",
+                                parent_depth, depth
+                            ),
+                            metadata.root,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    diagnostics
 }
 
 /// Check if recurrence is present without a do-date (E002)
@@ -309,30 +363,9 @@ fn check_missing_creation_date(
 }
 
 // ============================================================================
-// Structured Results - Plain Data
+// Action-Level Checks (continued)
 // ============================================================================
 
-/// Structured lint results grouped by severity (plain data, no methods)
-#[derive(Debug, Clone, Default)]
-pub struct LintResults {
-    pub errors: Vec<LintDiagnostic>,
-    pub warnings: Vec<LintDiagnostic>,
-    pub info: Vec<LintDiagnostic>,
-}
-
-/// IntoIterator for ergonomic `for diag in results` usage
-impl IntoIterator for LintResults {
-    type Item = LintDiagnostic;
-    type IntoIter = std::vec::IntoIter<LintDiagnostic>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let mut all = Vec::with_capacity(self.errors.len() + self.warnings.len() + self.info.len());
-        all.extend(self.errors);
-        all.extend(self.warnings);
-        all.extend(self.info);
-        all.into_iter()
-    }
-}
 
 /// Check if creation date is in the future (W005)
 fn check_future_creation_date(
@@ -370,6 +403,9 @@ fn check_completion_before_creation(
 /// Lint a parsed document and return structured results grouped by severity
 pub fn lint_document(doc: &ParsedDocument) -> LintResults {
     let mut results = LintResults::default();
+
+    // Include syntax errors from parsing phase
+    results.errors.extend(doc.syntax_errors.clone());
 
     // Action-level checks: iterate over actions, filter_map through check registries
     for action in &doc.actions {

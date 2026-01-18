@@ -8,10 +8,54 @@ expression: diagnostics
         severity: Error,
         message: "Context tags cannot be empty (E003).",
         range: SourceRange {
+            start_row: 0,
+            start_col: 0,
+            end_row: 0,
+            end_col: 29,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Context tags cannot be empty (E003).",
+        range: SourceRange {
             start_row: 1,
             start_col: 0,
-            end_row: 2,
+            end_row: 1,
             end_col: 41,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Context tags cannot be empty (E003).",
+        range: SourceRange {
+            start_row: 3,
+            start_col: 0,
+            end_row: 3,
+            end_col: 37,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Context tags cannot be empty (E003).",
+        range: SourceRange {
+            start_row: 4,
+            start_col: 0,
+            end_row: 4,
+            end_col: 35,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 0,
+            start_col: 0,
+            end_row: 0,
+            end_col: 29,
         },
     },
     LintDiagnostic {
@@ -21,8 +65,19 @@ expression: diagnostics
         range: SourceRange {
             start_row: 1,
             start_col: 0,
-            end_row: 2,
+            end_row: 1,
             end_col: 41,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 37,
         },
     },
     LintDiagnostic {
@@ -34,6 +89,17 @@ expression: diagnostics
             start_col: 0,
             end_row: 3,
             end_col: 37,
+        },
+    },
+    LintDiagnostic {
+        code: "missing-id",
+        severity: Info,
+        message: "Action is missing a UUID. Use 'Hydrate Action' to add one.",
+        range: SourceRange {
+            start_row: 4,
+            start_col: 0,
+            end_row: 4,
+            end_col: 35,
         },
     },
 ]

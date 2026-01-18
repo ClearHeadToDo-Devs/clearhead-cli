@@ -11,6 +11,66 @@ use uuid::Uuid;
 
 pub type ActionList = Vec<Action>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LintSeverity {
+    Error,
+    Warning,
+    Info,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LintDiagnostic {
+    pub code: String,
+    pub severity: LintSeverity,
+    pub message: String,
+    pub range: SourceRange,
+}
+
+impl LintDiagnostic {
+    pub fn new(code: &str, severity: LintSeverity, message: String, range: SourceRange) -> Self {
+        Self {
+            code: code.to_string(),
+            severity,
+            message,
+            range,
+        }
+    }
+
+    pub fn error(code: &str, message: String, range: SourceRange) -> Self {
+        Self::new(code, LintSeverity::Error, message, range)
+    }
+
+    pub fn warning(code: &str, message: String, range: SourceRange) -> Self {
+        Self::new(code, LintSeverity::Warning, message, range)
+    }
+
+    pub fn info(code: &str, message: String, range: SourceRange) -> Self {
+        Self::new(code, LintSeverity::Info, message, range)
+    }
+}
+
+/// Structured lint results grouped by severity
+#[derive(Debug, Clone, Default)]
+pub struct LintResults {
+    pub errors: Vec<LintDiagnostic>,
+    pub warnings: Vec<LintDiagnostic>,
+    pub info: Vec<LintDiagnostic>,
+}
+
+/// IntoIterator for ergonomic `for diag in results` usage
+impl IntoIterator for LintResults {
+    type Item = LintDiagnostic;
+    type IntoIter = std::vec::IntoIter<LintDiagnostic>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut all = Vec::with_capacity(self.errors.len() + self.warnings.len() + self.info.len());
+        all.extend(self.errors);
+        all.extend(self.warnings);
+        all.extend(self.info);
+        all.into_iter()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SourceRange {
     pub start_row: usize,
@@ -35,6 +95,7 @@ pub struct ParsedDocument {
     pub actions: ActionList,
     pub source_map: HashMap<Uuid, SourceMetadata>,
     pub tag_index: HashMap<String, Vec<SourceRange>>,
+    pub syntax_errors: Vec<LintDiagnostic>,
 }
 
 /// Reference to a predecessor action, which can be either a UUID or a name reference
@@ -282,20 +343,53 @@ impl TryFrom<TreeWrapper> for ActionList {
 impl TryFrom<TreeWrapper> for ParsedDocument {
     type Error = String;
     fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
-        crate::treesitter::validate_tree(&value.tree)?;
-
         let root = value.tree.root_node();
         let mut action_list = Vec::new();
         let mut source_map = HashMap::new();
         let mut tag_index = HashMap::new();
+        let mut syntax_errors = Vec::new();
         let mut cursor = root.walk();
+
+        // Collect syntax errors (ERROR and MISSING nodes)
+        if root.has_error() {
+            let mut stack = vec![root];
+            while let Some(node) = stack.pop() {
+                if node.is_error() || node.is_missing() {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    let message = if node.is_missing() {
+                        format!("missing '{}'", node.kind())
+                    } else {
+                        "unexpected token".to_string()
+                    };
+                    syntax_errors.push(LintDiagnostic::error(
+                        "syntax-error",
+                        message,
+                        SourceRange {
+                            start_row: start.row,
+                            start_col: start.column,
+                            end_row: end.row,
+                            end_col: end.column,
+                        },
+                    ));
+                }
+                // Don't recurse into errors themselves, just find the top-most ones
+                if !node.is_error() {
+                    for child in node.children(&mut cursor) {
+                        stack.push(child);
+                    }
+                }
+            }
+        }
 
         // Iterate through all root actions
         for root_action in root.children(&mut cursor) {
             if root_action.kind() == "root_action" {
                 let wrapper = create_node_wrapper(root_action, value.source.clone());
-                action_list.extend(parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)
-                    .map_err(|e| e.to_string())?);
+                action_list.extend(
+                    parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)
+                        .map_err(|e| e.to_string())?,
+                );
             }
         }
 
@@ -303,6 +397,7 @@ impl TryFrom<TreeWrapper> for ParsedDocument {
             actions: action_list,
             source_map,
             tag_index,
+            syntax_errors,
         })
     }
 }
@@ -453,9 +548,9 @@ pub fn parse_action_recursive(
                         .split(',')
                         .map(|s| s.trim().to_string())
                         .collect();
-                    if !tags.is_empty() {
-                        context_list = Some(tags);
-                    }
+                    
+                    // Always set context_list if we found a context node
+                    context_list = Some(tags);
 
                     // Index tag (full text including +)
                     let range = SourceRange {
@@ -969,16 +1064,16 @@ mod tests {
 
     #[test]
     fn test_parse_empty_context_behavior() {
-        // This test confirms that the current grammar/parser treats a standalone "+" 
-        // as NOT being a context node. If it were a context node, it would be Some([""]).
-        // If this test passes, it confirms why the linter misses it.
+        // This test confirms that the new permissive grammar/parser treats a standalone "+" 
+        // as a valid context node with an empty tag string.
         let source = "[ ] Task +";
         let actions = parse_actions(source);
         assert_eq!(actions.len(), 1);
         
-        // If the grammar rejects "+", then context_list will be None
-        // If the grammar accepts "+", then context_list will be Some(vec![""])
-        // We assert what we observe to confirm the hypothesis
-        assert!(actions[0].context_list.is_none(), "Expected '+' to be ignored by parser, resulting in None context");
+        // The permissive grammar accepts "+", resulting in Some([""])
+        assert!(actions[0].context_list.is_some());
+        let contexts = actions[0].context_list.as_ref().unwrap();
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0], "");
     }
 }

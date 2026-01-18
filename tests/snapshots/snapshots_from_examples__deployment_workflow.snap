@@ -7,7 +7,30 @@ expression: actions
     id: "[uuid]",
     state: not_started,
     name: "Deploy to production",
-    description: Some("Monitor logs after deployment\n[ ] Tests passing"),
+    description: Some("Monitor logs after deployment"),
+    priority: Some(1),
+    contexts: Some([
+      "Work",
+      "DevOps",
+      "Critical",
+    ]),
+    doDateTime: Some("2025-02-15T14:00:00-08:00"),
+    doDuration: Some(30),
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Release Management"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Tests passing",
     priority: Some(1),
     contexts: Some([
       "Work",
@@ -17,12 +40,6 @@ expression: actions
     doDuration: Some(90),
     createdDate: "[timestamp]",
     predecessors: Some([
-      PredecessorRef(
-        raw_ref: "[predecessor_ref]",
-      ),
-      PredecessorRef(
-        raw_ref: "[predecessor_ref]",
-      ),
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
       ),

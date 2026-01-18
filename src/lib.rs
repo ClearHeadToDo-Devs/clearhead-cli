@@ -5,9 +5,9 @@ pub mod treesitter;
 pub mod sync_utils;
 
 pub mod entities;
+pub use entities::{Action, ActionList, ActionState, LintDiagnostic, LintResults, LintSeverity, ParsedDocument};
 
 pub mod crdt;
-use entities::{ActionList, ParsedDocument};
 
 pub mod format;
 pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
@@ -16,7 +16,7 @@ pub mod export;
 pub use export::format_as_icalendar;
 
 pub mod lint;
-pub use lint::{lint_document, LintDiagnostic, LintSeverity};
+pub use lint::lint_document;
 
 pub mod archive;
 
@@ -67,13 +67,20 @@ pub fn merge_hashmaps(
 /// # Returns
 /// A `Vec<Action>` representing the flat list of parsed actions
 pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList, String> {
-    let tree = get_action_list_tree(actions)?;
-    let tree_wrapper = treesitter::TreeWrapper {
-        tree,
-        source: actions.to_string(),
-    };
-    let action_list: ActionList = tree_wrapper.try_into()?;
-    Ok(action_list)
+    let parsed_doc = get_parsed_document(actions)?;
+    
+    // Check for syntax errors - for this strict function we still want to fail
+    if !parsed_doc.syntax_errors.is_empty() {
+        let err = &parsed_doc.syntax_errors[0];
+        return Err(format!(
+            "Syntax error at line {}, column {}: {}",
+            err.range.start_row + 1,
+            err.range.start_col + 1,
+            err.message
+        ));
+    }
+    
+    Ok(parsed_doc.actions)
 }
 
 /// Parse a .actions file into a ParsedDocument (Actions + Source Metadata)

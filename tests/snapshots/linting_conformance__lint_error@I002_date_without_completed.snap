@@ -102,4 +102,15 @@ expression: diagnostics
             end_col: 34,
         },
     },
+    LintDiagnostic {
+        code: "I008",
+        severity: Info,
+        message: "Blocked actions should have a description explaining why (I008).",
+        range: SourceRange {
+            start_row: 3,
+            start_col: 0,
+            end_row: 3,
+            end_col: 34,
+        },
+    },
 ]
