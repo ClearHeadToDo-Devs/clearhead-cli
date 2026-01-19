@@ -32,6 +32,7 @@
 
 use rusqlite::{Connection, Result as SqlResult, params};
 use crate::entities::{Action, ActionList, ActionState, Recurrence};
+use crate::environment_reader::Config;
 use chrono::{DateTime, Local};
 use uuid::Uuid;
 
@@ -109,6 +110,19 @@ fn create_schema(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
 
+    // Tag hierarchies table for transitive inheritance
+    // When an action has tag "neovim", queries for "terminal" or "computer" should match
+    conn.execute(
+        "CREATE TABLE tag_hierarchies (
+            parent_tag TEXT NOT NULL,
+            child_tag TEXT NOT NULL,
+            PRIMARY KEY (parent_tag, child_tag)
+        )",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX idx_tag_hierarchies_child ON tag_hierarchies(child_tag)", [])?;
+
     // Helper view for actions with contexts
     conn.execute(
         "CREATE VIEW actions_with_contexts AS
@@ -120,6 +134,100 @@ fn create_schema(conn: &Connection) -> SqlResult<()> {
         GROUP BY a.id",
         [],
     )?;
+
+    // Helper view for actions with expanded contexts (including ancestor tags)
+    // This view joins action_contexts with tag_hierarchies to include implicit contexts
+    conn.execute(
+        "CREATE VIEW actions_with_expanded_contexts AS
+        SELECT
+            a.*,
+            GROUP_CONCAT(DISTINCT ec.context, ',') as contexts
+        FROM actions a
+        LEFT JOIN (
+            -- Direct contexts
+            SELECT action_id, context FROM action_contexts
+            UNION
+            -- Ancestor contexts via hierarchy
+            SELECT ac.action_id, th.parent_tag as context
+            FROM action_contexts ac
+            JOIN tag_hierarchies th ON LOWER(ac.context) = LOWER(th.child_tag)
+        ) ec ON a.id = ec.action_id
+        GROUP BY a.id",
+        [],
+    )?;
+
+    // Helper view with "effective_project" - story if explicit, else file-inferred project
+    // Per naming_conventions.md: actions inherit project from file structure unless explicitly set
+    conn.execute(
+        "CREATE VIEW actions_with_effective_project AS
+        SELECT
+            a.*,
+            COALESCE(a.story, a.project) as effective_project
+        FROM actions a",
+        [],
+    )?;
+
+    Ok(())
+}
+
+/// Load tag hierarchies from Config into the database
+///
+/// Inserts all parent-child tag relationships into the tag_hierarchies table.
+/// Computes full transitive closure so that if A->B->C, stores (A,B), (A,C), and (B,C).
+/// This enables queries like "find all actions with context=terminal" to match
+/// actions tagged with "neovim" (since neovim is a child of terminal).
+///
+/// # Arguments
+/// * `conn` - The SQLite connection (must have schema created via `create_database`)
+/// * `config` - The configuration containing tag_hierarchies
+///
+/// # Returns
+/// Ok(()) on success, or a SQLite error
+pub fn load_tag_hierarchies(conn: &Connection, config: &Config) -> SqlResult<()> {
+    use std::collections::{HashMap, HashSet};
+
+    // Build direct parent->children mapping (lowercase)
+    let mut direct_children: HashMap<String, Vec<String>> = HashMap::new();
+    for (parent, children) in &config.tag_hierarchies {
+        let parent_lower = parent.to_lowercase();
+        let children_lower: Vec<String> = children.iter().map(|c| c.to_lowercase()).collect();
+        direct_children.insert(parent_lower, children_lower);
+    }
+
+    // Compute all descendants for each parent (transitive closure)
+    fn get_all_descendants(
+        tag: &str,
+        direct_children: &HashMap<String, Vec<String>>,
+        visited: &mut HashSet<String>,
+    ) -> Vec<String> {
+        let mut descendants = Vec::new();
+        if let Some(children) = direct_children.get(tag) {
+            for child in children {
+                if visited.insert(child.clone()) {
+                    descendants.push(child.clone());
+                    descendants.extend(get_all_descendants(child, direct_children, visited));
+                }
+            }
+        }
+        descendants
+    }
+
+    // Insert all relationships (direct and transitive)
+    let mut all_relationships: HashSet<(String, String)> = HashSet::new();
+    for parent in direct_children.keys() {
+        let mut visited = HashSet::new();
+        let descendants = get_all_descendants(parent, &direct_children, &mut visited);
+        for descendant in descendants {
+            all_relationships.insert((parent.clone(), descendant));
+        }
+    }
+
+    for (parent, child) in all_relationships {
+        conn.execute(
+            "INSERT OR IGNORE INTO tag_hierarchies (parent_tag, child_tag) VALUES (?1, ?2)",
+            params![parent, child],
+        )?;
+    }
 
     Ok(())
 }
@@ -483,6 +591,80 @@ pub fn build_where_query(
     format!("SELECT {} FROM {} WHERE {}", select_clause, from_clause, where_clause)
 }
 
+/// Query actions by context with hierarchy expansion
+///
+/// Finds actions that have the given context tag OR any descendant tag.
+/// For example, if "neovim" is a child of "terminal" which is a child of "computer",
+/// querying for "computer" will match actions tagged with "neovim".
+///
+/// # Arguments
+/// * `conn` - The SQLite connection (with tag hierarchies loaded)
+/// * `context` - The context tag to search for
+///
+/// # Returns
+/// A vector of action ID strings that match
+///
+/// # Example
+/// ```ignore
+/// // Config has: computer -> [terminal], terminal -> [neovim]
+/// // Action tagged with +neovim
+/// let ids = query_actions_by_context(&conn, "computer")?; // matches!
+/// ```
+pub fn query_actions_by_context(conn: &Connection, context: &str) -> SqlResult<Vec<String>> {
+    let context_lower = context.to_lowercase();
+
+    // Query for actions that have this context directly OR have a descendant context
+    let sql = "
+        SELECT DISTINCT a.id FROM actions a
+        JOIN action_contexts ac ON a.id = ac.action_id
+        WHERE LOWER(ac.context) = ?1
+           OR LOWER(ac.context) IN (
+               SELECT child_tag FROM tag_hierarchies WHERE parent_tag = ?1
+           )
+    ";
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params![context_lower], |row| row.get::<_, String>(0))?;
+
+    let mut ids = Vec::new();
+    for id_result in rows {
+        ids.push(id_result?);
+    }
+
+    Ok(ids)
+}
+
+/// Query actions by effective project
+///
+/// Finds actions where the "effective project" matches the given value.
+/// Effective project = explicit story if set, else file-inferred project.
+///
+/// Per naming_conventions.md: actions inherit project from file structure
+/// unless explicitly specified via *story.
+///
+/// # Arguments
+/// * `conn` - The SQLite connection
+/// * `project` - The project name to search for
+///
+/// # Returns
+/// A vector of action ID strings that match
+pub fn query_actions_by_project(conn: &Connection, project: &str) -> SqlResult<Vec<String>> {
+    let sql = "
+        SELECT id FROM actions_with_effective_project
+        WHERE effective_project = ?1
+    ";
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params![project], |row| row.get::<_, String>(0))?;
+
+    let mut ids = Vec::new();
+    for id_result in rows {
+        ids.push(id_result?);
+    }
+
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -492,16 +674,27 @@ mod tests {
     fn test_create_database() {
         let conn = create_database().expect("Failed to create database");
 
-        // Verify tables exist
+        // Verify tables exist (actions, action_contexts, action_recurrence, tag_hierarchies)
         let table_count: i32 = conn
             .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('actions', 'action_contexts', 'action_recurrence')",
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('actions', 'action_contexts', 'action_recurrence', 'tag_hierarchies')",
                 [],
                 |row| row.get(0),
             )
             .expect("Failed to count tables");
 
-        assert_eq!(table_count, 3, "Expected 3 tables to be created");
+        assert_eq!(table_count, 4, "Expected 4 tables to be created");
+
+        // Verify views exist
+        let view_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name IN ('actions_with_contexts', 'actions_with_expanded_contexts', 'actions_with_effective_project')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to count views");
+
+        assert_eq!(view_count, 3, "Expected 3 views to be created");
     }
 
     #[test]
@@ -757,5 +950,167 @@ mod tests {
         assert_eq!(ret_recurrence.frequency, "weekly");
         assert_eq!(ret_recurrence.interval, Some(2));
         assert_eq!(ret_recurrence.by_day, Some(vec!["MO".to_string(), "FR".to_string()]));
+    }
+
+    #[test]
+    fn test_tag_hierarchy_expansion() {
+        use crate::entities::ActionState;
+        use std::collections::HashMap;
+        use uuid::Uuid;
+
+        let conn = create_database().expect("Failed to create database");
+
+        // Create tag hierarchies: computer -> terminal -> neovim
+        let mut tag_hierarchies = HashMap::new();
+        tag_hierarchies.insert("computer".to_string(), vec!["terminal".to_string(), "browser".to_string()]);
+        tag_hierarchies.insert("terminal".to_string(), vec!["neovim".to_string(), "tmux".to_string()]);
+
+        let config = Config {
+            data_dir: String::new(),
+            config_dir: String::new(),
+            default_file: String::new(),
+            tag_hierarchies,
+            cli_format: String::new(),
+            cli_indent_style: String::new(),
+            cli_indent_width: 4,
+        };
+
+        load_tag_hierarchies(&conn, &config).expect("Failed to load hierarchies");
+
+        // Verify transitive closure was computed
+        // computer should have: terminal, browser, neovim, tmux (all descendants)
+        let descendant_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tag_hierarchies WHERE parent_tag = 'computer'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to count");
+        assert_eq!(descendant_count, 4, "computer should have 4 descendants");
+
+        // Create an action tagged with neovim
+        let mut actions = ActionList::new();
+        actions.push(Action {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Edit config".to_string(),
+            description: None,
+            priority: None,
+            context_list: Some(vec!["neovim".to_string()]),
+            do_date_time: None,
+            do_duration: None,
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+            alias: None,
+            is_sequential: None,
+        });
+
+        load_actions(&conn, &actions).expect("Failed to load actions");
+
+        // Query by "computer" should find the action tagged with "neovim"
+        let ids = query_actions_by_context(&conn, "computer").expect("Failed to query");
+        assert_eq!(ids.len(), 1, "Should find action tagged with neovim when querying for computer");
+
+        // Query by "terminal" should also find it
+        let ids = query_actions_by_context(&conn, "terminal").expect("Failed to query");
+        assert_eq!(ids.len(), 1, "Should find action tagged with neovim when querying for terminal");
+
+        // Query by "neovim" directly should find it
+        let ids = query_actions_by_context(&conn, "neovim").expect("Failed to query");
+        assert_eq!(ids.len(), 1, "Should find action tagged with neovim when querying directly");
+
+        // Query by "browser" should NOT find it (different branch)
+        let ids = query_actions_by_context(&conn, "browser").expect("Failed to query");
+        assert_eq!(ids.len(), 0, "Should NOT find action when querying unrelated tag");
+    }
+
+    #[test]
+    fn test_effective_project() {
+        use crate::entities::ActionState;
+        use uuid::Uuid;
+
+        let conn = create_database().expect("Failed to create database");
+
+        // Create actions with different project/story combinations
+        let mut actions = ActionList::new();
+
+        // Action with explicit story (should take precedence)
+        let action1_id = Uuid::new_v4();
+        actions.push(Action {
+            id: action1_id,
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "Explicit story task".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,
+            do_duration: None,
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: Some("my-explicit-story".to_string()),
+            alias: None,
+            is_sequential: None,
+        });
+
+        // Action without explicit story (should use file-inferred project)
+        let action2_id = Uuid::new_v4();
+        actions.push(Action {
+            id: action2_id,
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: "No story task".to_string(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,
+            do_duration: None,
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: None,
+            predecessors: None,
+            story: None,
+            alias: None,
+            is_sequential: None,
+        });
+
+        // Load with file-inferred project "work"
+        load_actions_with_source(&conn, &actions, Some("work.actions"), Some("work"))
+            .expect("Failed to load actions");
+
+        // Query by explicit story
+        let ids = query_actions_by_project(&conn, "my-explicit-story").expect("Failed to query");
+        assert_eq!(ids.len(), 1, "Should find action with explicit story");
+        assert_eq!(ids[0], action1_id.to_string());
+
+        // Query by file-inferred project
+        let ids = query_actions_by_project(&conn, "work").expect("Failed to query");
+        assert_eq!(ids.len(), 1, "Should find action with file-inferred project");
+        assert_eq!(ids[0], action2_id.to_string());
+
+        // Verify view shows correct effective_project
+        let effective_projects: Vec<(String, Option<String>)> = conn
+            .prepare("SELECT id, effective_project FROM actions_with_effective_project ORDER BY name")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(effective_projects.len(), 2);
+
+        // "Explicit story task" should have effective_project = "my-explicit-story"
+        let explicit = effective_projects.iter().find(|(id, _)| *id == action1_id.to_string()).unwrap();
+        assert_eq!(explicit.1, Some("my-explicit-story".to_string()));
+
+        // "No story task" should have effective_project = "work" (from file)
+        let inferred = effective_projects.iter().find(|(id, _)| *id == action2_id.to_string()).unwrap();
+        assert_eq!(inferred.1, Some("work".to_string()));
     }
 }

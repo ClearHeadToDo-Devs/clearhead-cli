@@ -1,6 +1,7 @@
 use config::{Config as ConfigBuilder, ConfigError, Environment, File, FileFormat};
 use dirs::{config_dir, data_dir};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Configuration loaded from file and environment variables
@@ -17,6 +18,11 @@ pub struct Config {
     #[serde(default = "default_file")]
     pub default_file: String,
 
+    // Tag hierarchies for implicit inheritance
+    // Maps parent tag -> list of child tags
+    #[serde(default)]
+    pub tag_hierarchies: HashMap<String, Vec<String>>,
+
     // CLI-specific settings (cli_ prefix)
     #[serde(default = "default_format")]
     pub cli_format: String,
@@ -26,6 +32,55 @@ pub struct Config {
 
     #[serde(default = "default_indent_width")]
     pub cli_indent_width: usize,
+}
+
+impl Config {
+    /// Get all ancestor tags for a given tag (transitive hierarchy traversal)
+    /// Returns tags in order from immediate parent to root
+    pub fn get_tag_ancestors(&self, tag: &str) -> Vec<String> {
+        let tag_lower = tag.to_lowercase();
+        let mut ancestors = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+
+        // Build reverse mapping: child -> parent
+        let mut child_to_parent: HashMap<String, String> = HashMap::new();
+        for (parent, children) in &self.tag_hierarchies {
+            let parent_lower = parent.to_lowercase();
+            for child in children {
+                child_to_parent.insert(child.to_lowercase(), parent_lower.clone());
+            }
+        }
+
+        // Walk up the hierarchy
+        let mut current = tag_lower;
+        while let Some(parent) = child_to_parent.get(&current) {
+            if !visited.insert(parent.clone()) {
+                break; // Cycle detected
+            }
+            ancestors.push(parent.clone());
+            current = parent.clone();
+        }
+
+        ancestors
+    }
+
+    /// Expand a tag to include itself and all ancestor tags
+    pub fn expand_tag(&self, tag: &str) -> Vec<String> {
+        let mut expanded = vec![tag.to_lowercase()];
+        expanded.extend(self.get_tag_ancestors(tag));
+        expanded
+    }
+
+    /// Expand all tags in a list to include ancestor tags
+    pub fn expand_tags(&self, tags: &[String]) -> Vec<String> {
+        let mut all_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for tag in tags {
+            for expanded in self.expand_tag(tag) {
+                all_tags.insert(expanded);
+            }
+        }
+        all_tags.into_iter().collect()
+    }
 }
 
 // Default functions
@@ -133,5 +188,114 @@ pub fn resolve_file_path(file: &str, fallback: &Path) -> PathBuf {
         expanded
     } else {
         fallback.join(expanded)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_config_with_hierarchies() -> Config {
+        let mut tag_hierarchies = HashMap::new();
+        // computer -> terminal -> neovim
+        //          -> browser
+        tag_hierarchies.insert("computer".to_string(), vec!["terminal".to_string(), "browser".to_string()]);
+        tag_hierarchies.insert("terminal".to_string(), vec!["neovim".to_string(), "tmux".to_string()]);
+        // driving -> grocery_store
+        tag_hierarchies.insert("driving".to_string(), vec!["grocery_store".to_string()]);
+
+        Config {
+            data_dir: String::new(),
+            config_dir: String::new(),
+            default_file: String::new(),
+            tag_hierarchies,
+            cli_format: String::new(),
+            cli_indent_style: String::new(),
+            cli_indent_width: 4,
+        }
+    }
+
+    #[test]
+    fn test_get_tag_ancestors_single_level() {
+        let config = make_config_with_hierarchies();
+
+        // terminal's parent is computer
+        let ancestors = config.get_tag_ancestors("terminal");
+        assert_eq!(ancestors, vec!["computer"]);
+
+        // browser's parent is computer
+        let ancestors = config.get_tag_ancestors("browser");
+        assert_eq!(ancestors, vec!["computer"]);
+    }
+
+    #[test]
+    fn test_get_tag_ancestors_multi_level() {
+        let config = make_config_with_hierarchies();
+
+        // neovim -> terminal -> computer
+        let ancestors = config.get_tag_ancestors("neovim");
+        assert_eq!(ancestors, vec!["terminal", "computer"]);
+
+        // tmux -> terminal -> computer
+        let ancestors = config.get_tag_ancestors("tmux");
+        assert_eq!(ancestors, vec!["terminal", "computer"]);
+    }
+
+    #[test]
+    fn test_get_tag_ancestors_root_tag() {
+        let config = make_config_with_hierarchies();
+
+        // computer has no parent
+        let ancestors = config.get_tag_ancestors("computer");
+        assert!(ancestors.is_empty());
+    }
+
+    #[test]
+    fn test_get_tag_ancestors_unknown_tag() {
+        let config = make_config_with_hierarchies();
+
+        // unknown tag has no ancestors
+        let ancestors = config.get_tag_ancestors("unknown");
+        assert!(ancestors.is_empty());
+    }
+
+    #[test]
+    fn test_get_tag_ancestors_case_insensitive() {
+        let config = make_config_with_hierarchies();
+
+        // Should work regardless of case
+        let ancestors = config.get_tag_ancestors("NEOVIM");
+        assert_eq!(ancestors, vec!["terminal", "computer"]);
+
+        let ancestors = config.get_tag_ancestors("Terminal");
+        assert_eq!(ancestors, vec!["computer"]);
+    }
+
+    #[test]
+    fn test_expand_tag() {
+        let config = make_config_with_hierarchies();
+
+        // neovim expands to [neovim, terminal, computer]
+        let mut expanded = config.expand_tag("neovim");
+        expanded.sort(); // Sort for consistent comparison
+        assert_eq!(expanded, vec!["computer", "neovim", "terminal"]);
+
+        // computer expands to just [computer] (no ancestors)
+        let expanded = config.expand_tag("computer");
+        assert_eq!(expanded, vec!["computer"]);
+    }
+
+    #[test]
+    fn test_expand_tags_multiple() {
+        let config = make_config_with_hierarchies();
+
+        // Expanding [neovim, grocery_store] should give all ancestors of both
+        let mut expanded = config.expand_tags(&["neovim".to_string(), "grocery_store".to_string()]);
+        expanded.sort();
+
+        // neovim -> terminal, computer
+        // grocery_store -> driving
+        // Combined: computer, driving, grocery_store, neovim, terminal
+        assert_eq!(expanded, vec!["computer", "driving", "grocery_store", "neovim", "terminal"]);
     }
 }

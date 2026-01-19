@@ -28,6 +28,9 @@ pub mod workspace;
 
 pub mod diff;
 
+pub mod environment_reader;
+pub use environment_reader::{Config, load_config, get_data_dir, get_config_dir};
+
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
 ///
 /// This is a simple shallow merge utility for combining configuration
