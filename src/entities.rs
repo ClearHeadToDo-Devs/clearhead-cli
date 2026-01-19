@@ -170,6 +170,12 @@ pub struct Action {
     pub predecessors: Option<Vec<PredecessorRef>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub story: Option<String>,
+    /// Alias for stable references that persist even when action name changes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    /// When true, all direct children are sequential (each depends on previous sibling)
+    #[serde(rename = "isSequential", skip_serializing_if = "Option::is_none")]
+    pub is_sequential: Option<bool>,
 }
 
 impl fmt::Display for Recurrence {
@@ -220,11 +226,51 @@ impl fmt::Display for Recurrence {
     }
 }
 
+impl Default for Action {
+    fn default() -> Self {
+        Self {
+            id: Uuid::now_v7(),
+            parent_id: None,
+            state: ActionState::NotStarted,
+            name: String::new(),
+            description: None,
+            priority: None,
+            context_list: None,
+            do_date_time: None,
+            do_duration: None,
+            recurrence: None,
+            completed_date_time: None,
+            created_date_time: Some(Local::now()),
+            predecessors: None,
+            story: None,
+            alias: None,
+            is_sequential: None,
+        }
+    }
+}
+
 impl Action {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ..Default::default()
+        }
+    }
+
     /// Serialize the action content (state, name, metadata) to a formatter
     pub fn fmt_content(&self, f: &mut fmt::Formatter<'_>, include_id: bool) -> fmt::Result {
         // State and name (required)
         write!(f, "[{}] {}", self.state, self.name)?;
+
+        // Alias (=alias_name)
+        if let Some(alias) = &self.alias {
+            write!(f, " ={}", alias)?;
+        }
+
+        // Sequential marker (~) - marks children as sequential
+        if self.is_sequential == Some(true) {
+            write!(f, " ~")?;
+        }
 
         // Add metadata with spec-compliant spacing:
         // - Space after $ (description icon only)
@@ -490,6 +536,8 @@ pub fn parse_action_recursive(
     let mut completed_date_time = None;
     let mut created_date_time = None;
     let mut predecessors = Vec::new();
+    let mut alias = None;
+    let mut is_sequential = None;
 
     let mut do_date_range = None;
     let mut completed_date_range = None;
@@ -652,6 +700,20 @@ pub fn parse_action_recursive(
                     });
                 }
             }
+            "alias" => {
+                // Get the alias name (skip the = prefix)
+                let alias_text = get_node_text(&metadata_node, &node.source);
+                if alias_text.starts_with('=') {
+                    let alias_val = alias_text[1..].trim();
+                    if !alias_val.is_empty() {
+                        alias = Some(alias_val.to_string());
+                    }
+                }
+            }
+            "sequential" => {
+                // Sequential marker found (~) - indicates children are sequential
+                is_sequential = Some(true);
+            }
             _ => {}
         }
     }
@@ -699,6 +761,8 @@ pub fn parse_action_recursive(
         created_date_time,
         predecessors: if predecessors.is_empty() { None } else { Some(predecessors) },
         story,
+        alias,
+        is_sequential,
     });
 
     // Recursively parse children using field access
@@ -926,8 +990,10 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         };
-        
+
         let formatted = format!("{}", action);
         assert!(formatted.contains("D60"));
         assert!(formatted.contains("R:FREQ=WEEKLY"));
@@ -974,6 +1040,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         };
 
         let occurrences = action.expand_occurrences(10);
@@ -1055,6 +1123,8 @@ mod tests {
             created_date_time: None,
             predecessors: Some(vec![pred_ref]),
             story: None,
+            alias: None,
+            is_sequential: None,
         };
 
         let formatted = format!("{}", action);

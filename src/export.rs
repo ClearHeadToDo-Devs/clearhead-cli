@@ -184,20 +184,9 @@ mod tests {
         do_datetime: Option<DateTime<Local>>,
     ) -> Action {
         Action {
-            id: Uuid::new_v4(),
-            parent_id: None,
             state,
-            name: name.to_string(),
-            description: None,
-            priority: None,
-            context_list: None,
             do_date_time: do_datetime,
-            do_duration: None,
-            recurrence: None,
-            completed_date_time: None,
-            created_date_time: None,
-            predecessors: None,
-            story: None,
+            ..Action::new(name)
         }
     }
 

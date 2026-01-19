@@ -515,6 +515,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 created_date_time: Some(Local::now()),
                 predecessors: None,
                 story: None,
+                alias: None,
+                is_sequential: None,
             };
 
             actions.push(new_action.clone());

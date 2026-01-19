@@ -1,0 +1,131 @@
+---
+source: tests/snapshots_from_examples.rs
+assertion_line: 19
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Set up CLI project structure",
+    description: Some("Initialize the Rust project with proper layout"),
+    priority: Some(2),
+    contexts: Some([
+      "DevOps",
+      "Coding",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/clearhead/cli"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Implement tree-sitter bindings",
+    description: Some("Wrap the parser for Rust use"),
+    priority: Some(2),
+    contexts: Some([
+      "Coding",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/clearhead/parser"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Write parser tests",
+    description: Some("Comprehensive test coverage"),
+    priority: Some(3),
+    contexts: Some([
+      "Testing",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/clearhead/parser"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Design neovim plugin architecture",
+    description: Some("Plan the Lua module structure"),
+    priority: Some(2),
+    contexts: Some([
+      "Design",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/clearhead/neovim"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Set up LSP server",
+    description: Some("Configure language server protocol"),
+    priority: Some(1),
+    contexts: Some([
+      "DevOps",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/clearhead/cli"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Update personal website",
+    description: Some("New portfolio section"),
+    priority: Some(3),
+    contexts: Some([
+      "Coding",
+      "Creative",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("personal/website"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Plan vacation",
+    description: Some("Research destinations"),
+    priority: Some(4),
+    contexts: Some([
+      "Planning",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("personal/travel"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Fix shopping cart bug",
+    description: Some("Critical production issue"),
+    priority: Some(1),
+    contexts: Some([
+      "Bugfix",
+      "Critical",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/other-project"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Refactor authentication",
+    description: Some("Improve security patterns"),
+    priority: Some(2),
+    contexts: Some([
+      "Coding",
+      "Security",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("work/other-project"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Read programming book",
+    description: Some("Finish chapter 5"),
+    priority: Some(4),
+    contexts: Some([
+      "Reading",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("personal/learning"),
+  ),
+]

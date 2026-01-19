@@ -442,6 +442,8 @@ pub fn get_actions_from_sql(conn: &Connection, sql: &str) -> Result<ActionList, 
             created_date_time: None, // TODO: Update SQL schema to support created_date
             predecessors: None,
             story,
+            alias: None, // TODO: Update SQL schema to support alias
+            is_sequential: None, // TODO: Update SQL schema to support is_sequential
         });
     }
 
@@ -526,6 +528,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: Some("Test Story".to_string()),
+            alias: None,
+            is_sequential: None,
         });
 
         // Load actions
@@ -576,6 +580,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: Some("Epic Story".to_string()),
+            alias: None,
+            is_sequential: None,
         });
 
         // Child action
@@ -594,6 +600,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         });
 
         // Load into SQL
@@ -660,6 +668,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         });
 
         actions.push(Action {
@@ -677,6 +687,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         });
 
         load_actions(&conn, &actions).expect("Failed to load actions");
@@ -729,6 +741,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         });
 
         load_actions(&conn, &actions).expect("Failed to load actions");

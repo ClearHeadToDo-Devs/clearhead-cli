@@ -1,0 +1,33 @@
+[ ] Build release package ~
+$ All children must be completed in order
+!1
+*Release
++DevOps
+> [ ] Run linter $ Check code style and formatting !2 +Tooling
+> [ ] Run unit tests $ Verify all unit tests pass !2 +Testing
+> [ ] Run integration tests $ Verify integration tests pass !2 +Testing
+> [ ] Build binary $ Compile release build !2 +Build
+> [ ] Create archive $ Package for distribution !3 +Build
+
+[ ] Morning routine ~
+$ Daily sequential checklist
+*Personal
++Home
+> [ ] Wake up
+> [ ] Shower
+> [ ] Get dressed
+> [ ] Breakfast
+> [ ] Check calendar
+
+[ ] Deploy to production ~
+$ Deployment steps must happen in order
+!1
+*Infrastructure
++Work,DevOps
+> [ ] Take backup $ Backup current state before changes !1
+> [ ] Stop services !2
+> [ ] Run migrations $ Apply database changes !1
+> [ ] Deploy new code !1
+> [ ] Start services !2
+> [ ] Verify health checks !1
+> [ ] Notify stakeholders !3

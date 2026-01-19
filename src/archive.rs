@@ -146,6 +146,8 @@ mod tests {
             created_date_time: None,
             predecessors: None,
             story: None,
+            alias: None,
+            is_sequential: None,
         }
     }
 

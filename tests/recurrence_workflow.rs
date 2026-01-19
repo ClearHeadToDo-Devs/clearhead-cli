@@ -28,19 +28,9 @@ fn test_completing_recurrence_workflow() {
     let template_id = Uuid::new_v4();
     let template = Action {
         id: template_id,
-        parent_id: None,
-        state: ActionState::NotStarted,
-        name: "Daily Standup".to_string(),
-        description: None,
-        priority: None,
-        context_list: None,
         do_date_time: Some(dt_start),
-        do_duration: None,
         recurrence: Some(recurrence),
-        completed_date_time: None,
-        created_date_time: None,
-        predecessors: None,
-        story: None,
+        ..Action::new("Daily Standup")
     };
 
     let mut actions = vec![template];

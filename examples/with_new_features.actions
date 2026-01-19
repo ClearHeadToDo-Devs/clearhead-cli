@@ -1,0 +1,36 @@
+[ ] Clearhead Platform Release v2.0 =release-v2 ~
+$ Comprehensive release combining all new features
+!1
+*work/clearhead
++DevOps,Release
+@2026-02-01T09:00
+#01951000-0000-7000-8000-000000000001
+> [ ] Update parser with new syntax =parser-update !1 *work/clearhead/parser +Coding #01951000-0001-7000-8000-000000000002
+> [ ] Update CLI entities =cli-update !1 *work/clearhead/cli +Coding #01951000-0002-7000-8000-000000000003
+> [ ] Update linting rules =lint-update !2 *work/clearhead/cli +Coding #01951000-0003-7000-8000-000000000004
+> [ ] Write documentation =docs-update !2 *work/clearhead/docs +Writing #01951000-0004-7000-8000-000000000005
+
+[ ] Integration testing =integration-tests
+$ Test all new features work together
+!1
+*work/clearhead/testing
++Testing,QA
+< 01951000
+#01951000-0005-7000-8000-000000000006
+
+[ ] Review by stakeholders
+$ Get approval before release
+!2
+*work/clearhead
++Review
+< integration-tests
+< docs-update
+#01951000-0006-7000-8000-000000000007
+
+[ ] Deploy to production =deploy-prod
+$ Final deployment
+!1
+*work/clearhead/infrastructure
++DevOps,Critical
+< Review by stakeholders
+#01951000-0007-7000-8000-000000000008

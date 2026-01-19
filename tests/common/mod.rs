@@ -52,22 +52,7 @@ pub struct ActionBuilder {
 impl ActionBuilder {
     pub fn new(name: &str) -> Self {
         Self {
-            action: Action {
-                id: Uuid::new_v4(),
-                parent_id: None,
-                state: ActionState::NotStarted,
-                name: name.to_string(),
-                description: None,
-                priority: None,
-                context_list: None,
-                do_date_time: None,
-                do_duration: None,
-                recurrence: None,
-                completed_date_time: None,
-                created_date_time: None,
-                predecessors: None,
-                story: None,
-            },
+            action: Action::new(name),
         }
     }
 

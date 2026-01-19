@@ -1,0 +1,125 @@
+---
+source: tests/snapshots_from_examples.rs
+assertion_line: 19
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Clearhead Platform Release v2.0",
+    description: Some("Comprehensive release combining all new features"),
+    priority: Some(1),
+    contexts: Some([
+      "DevOps",
+      "Release",
+    ]),
+    doDateTime: Some("2026-02-01T09:00:00-08:00"),
+    story: Some("work/clearhead"),
+    alias: Some("release-v2"),
+    isSequential: Some(true),
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Update parser with new syntax",
+    priority: Some(1),
+    contexts: Some([
+      "Coding",
+    ]),
+    story: Some("work/clearhead/parser"),
+    alias: Some("parser-update"),
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Update CLI entities",
+    priority: Some(1),
+    contexts: Some([
+      "Coding",
+    ]),
+    story: Some("work/clearhead/cli"),
+    alias: Some("cli-update"),
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Update linting rules",
+    priority: Some(2),
+    contexts: Some([
+      "Coding",
+    ]),
+    story: Some("work/clearhead/cli"),
+    alias: Some("lint-update"),
+  ),
+  Action(
+    id: "[uuid]",
+    parent_id: "[uuid]",
+    state: not_started,
+    name: "Write documentation",
+    priority: Some(2),
+    contexts: Some([
+      "Writing",
+    ]),
+    story: Some("work/clearhead/docs"),
+    alias: Some("docs-update"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Integration testing",
+    description: Some("Test all new features work together"),
+    priority: Some(1),
+    contexts: Some([
+      "Testing",
+      "QA",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("work/clearhead/testing"),
+    alias: Some("integration-tests"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Review by stakeholders",
+    description: Some("Get approval before release"),
+    priority: Some(2),
+    contexts: Some([
+      "Review",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("work/clearhead"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Deploy to production",
+    description: Some("Final deployment"),
+    priority: Some(1),
+    contexts: Some([
+      "DevOps",
+      "Critical",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("work/clearhead/infrastructure"),
+    alias: Some("deploy-prod"),
+  ),
+]

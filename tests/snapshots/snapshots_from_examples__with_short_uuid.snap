@@ -1,0 +1,86 @@
+---
+source: tests/snapshots_from_examples.rs
+assertion_line: 19
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "First task in workflow",
+    description: Some("This task has a full UUID that can be referenced by short form"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+    ]),
+    story: Some("Workflow"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Second task depends on first via short UUID",
+    description: Some("Using 8-character short UUID reference"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Workflow"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Third task with full UUID reference",
+    description: Some("Demonstrating full UUID still works"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+        resolved_uuid: "[uuid]",
+      ),
+    ]),
+    story: Some("Workflow"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Task referencing by name",
+    description: Some("Name-based references still work"),
+    priority: Some(3),
+    contexts: Some([
+      "Work",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Workflow"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Task with multiple reference styles",
+    description: Some("Combining short UUID and name references"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+    ]),
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Workflow"),
+  ),
+]
