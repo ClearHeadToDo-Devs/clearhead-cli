@@ -175,7 +175,6 @@ pub fn format_as_icalendar(list: &ActionList, open_only: bool) -> Result<String,
 mod tests {
     use super::*;
     use chrono::TimeZone;
-    use uuid::Uuid;
 
     // Helper to create a test action
     fn create_test_action(

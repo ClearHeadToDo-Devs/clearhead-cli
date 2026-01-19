@@ -487,9 +487,8 @@ pub fn sync_file_to_crdt(file_path: &Path, actions: &ActionList) -> Result<Actio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{Action, ActionState};
+    use crate::entities::Action;
     use tempfile::TempDir;
-    use uuid::Uuid;
 
     fn create_test_action(name: &str) -> Action {
         Action::new(name)

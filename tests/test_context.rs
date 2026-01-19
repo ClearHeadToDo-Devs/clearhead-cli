@@ -1,8 +1,7 @@
 #[test]
 fn test_json_output_includes_context() {
     use clearhead_cli::format::{format, OutputFormat};
-    use clearhead_cli::entities::{Action, ActionState};
-    use uuid::Uuid;
+    use clearhead_cli::entities::Action;
 
     let actions = vec![
         Action {
