@@ -2,15 +2,28 @@
 
 Welcome! This document contains technical details for developers working on `clearhead_cli`.
 
-## Table of Contents
+## Conceptual Model
 
-- [Architecture Overview](#architecture-overview)
-- [Code Organization](#code-organization)
-- [Data Model](#data-model)
-- [Config System](#config-system)
-- [Testing Strategy](#testing-strategy)
-- [Adding New Features](#adding-new-features)
-- [Philosophy & Values](#philosophy--values)
+The **Rust struct (IR) is the canonical representation**. Everything else is a view or persistence mechanism. The IR aligns with the [Actions Ontology](../ontology/README.md), specifically the ActionPlan/ActionProcess distinction from BFO/CCO.
+
+```
+                         IR (Rust Structs)
+                    (canonical in-memory type)
+                    ActionPlan + ActionProcess
+                              │
+           ┌──────────────────┼──────────────────┐
+           │                  │                  │
+           ▼                  ▼                  ▼
+         CRDT               DSL              Oxigraph
+     (durable with      (text view        (query cache
+      sync/merge)       for editors)       for SPARQL)
+```
+
+- **CRDT** is durable storage with merge semantics (via autosurgeon). Stores both ActionPlans and ActionProcesses.
+- **DSL** is text serialization for editor workflows (plans: `*.actions`, processes: `*.log.actions`)
+- **Oxigraph** is an ephemeral query cache materialized from the IR. Enables SPARQL queries and SHACL validation. 
+
+The IR isn't an intermediary "hub" - it's the primary thing. CRDT ↔ IR is nearly zero-cost via autosurgeon's `Hydrate`/`Reconcile`. Oxigraph is rebuilt from IR as needed.
 
 ## Architecture Overview
 
@@ -18,13 +31,13 @@ Welcome! This document contains technical details for developers working on `cle
 
 **Critical principle**: The library (`lib.rs`, `entities.rs`, `format.rs`) is completely separate from CLI concerns.
 
-**Library** (`src/lib.rs`, `src/entities.rs`, `src/format.rs`, `src/treesitter.rs`):
+**Library** (`src/lib.rs`, `src/entities.rs`, `src/format.rs`, `src/treesitter.rs`, etc...):
 - Takes simple types: `&str`, `&ActionList`, `OutputFormat`
 - No dependencies on `clap`, `config`, or CLI-specific crates
 - Pure functions that parse and format data
 - Usable from any context: Rust, FFI, web services, Lua plugins
 
-**CLI** (`src/main.rs`, `src/argparser.rs`, `src/environment_reader.rs`):
+**CLI** (`src/main.rs`, `src/argparser.rs`, `src/environment_reader.rs`, `src/workspace.rs`):
 - Handles user interaction, file I/O, config loading
 - Uses typed structs (not JSON Maps) for type safety
 - Translates CLI types → library types
@@ -32,15 +45,15 @@ Welcome! This document contains technical details for developers working on `cle
 
 ### Hub-and-Spoke Format System
 
-ActionList is the hub, formatters are spokes:
-
-```rust
-ActionList (hub)
-    ├─> Actions format  (round-trip safe .actions files)
-    ├─> JSON format     (via serde)
-    ├─> XML format      (via serde + quick-xml)
-    └─> Table format    (via comfy-table)
-```
+We use a hub-and-spoke architecture where the structs act as the strongly-typed glue that hold together several systems that are working together. They are mediated through this core structure:
+- Action Domain Specific Language (DSL) - the text representation of actions as defined in [the file format](https://github.com/ClearHeadToDo-Devs/specifications/blob/master/action_file_format.md)
+  - This is the primary interface for users with desktop editors so we pull in the [tree-sitter-actions](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions/blob/master/README.md) grammar to parse and format this data
+- Automerge (Conflict-free replicated data types) - the durable, syncable representation of actions
+  - This keeps the door open for peer-to-peer syncing and offline-first editing while avoiding the sync issues we would deal with if we are lacking a true central server
+  - our [sync specification](https://github.com/ClearHeadToDo-Devs/specifications/blob/master/sync_architecture.md) goes into more detail on this from a language-agnostic way
+- Oxigraph (RDF triple store) - the semantic representation of actions that allows us to run SPARQL queries and SHACL validation on the data as 
+  - This opens the door for advanced querying and integration with semantic web technologies
+  - more of this is covered in [the ontology documentation](https://github.com/ClearHeadToDo-Devs/specifications/blob/master/ontology.md)
 
 ### Domain Model vs. Source Metadata
 
@@ -48,6 +61,7 @@ A core architectural principle is the separation of **Domain Data** from **Sourc
 
 1.  **The Domain Model (`Action`)**: Lives in `entities.rs`. It represents the abstract task (name, priority, state). It is kept "pure" and knows nothing about file line numbers or columns. This allows it to be easily used in databases, sync protocols, and serial formats without noise.
 2.  **The Source Metadata (`SourceMetadata`)**: Lives in `entities.rs`. It tracks where an action (and its specific fields) are located in a concrete text file. 
+  1. now, we USE that source data to inform the data model but keeping this separate allows us to avoid polluting the domain model with file-specific concerns.
 3.  **The Parsed Document (`ParsedDocument`)**: A container returned by the parser that holds both the clean `ActionList` and a `HashMap<Uuid, SourceMetadata>`.
 
 **Why this matters:**
@@ -60,66 +74,7 @@ Adding a new format is easy:
 2. Implement `format_as_*` function
 3. Add to dispatcher in `format()`
 
-## Code Organization
-
-```
-src/
-├── lib.rs              # Public API, parsing functions
-├── entities.rs         # Action/ActionList data structures
-├── format.rs           # Output formatters (Actions/JSON/XML/Table)
-├── treesitter.rs       # Tree-sitter wrappers
-├── main.rs             # CLI entry point
-├── argparser.rs        # CLI argument parsing (clap)
-└── environment_reader.rs  # Config loading (XDG + precedence)
-
-tests/
-├── lib.rs              # Integration tests using grammar test data
-└── integration.rs      # E2E tests with isolated environments
-
-examples/
-└── format_demo.rs      # Demo showing all output formats
-```
-
 ## Data Model
-
-### Flat List Structure
-
-Actions are stored in a **flat Vec**, not a tree. This is intentional for performance and flexibility:
-
-```rust
-pub struct Action {
-    pub id: Uuid,
-    pub parent_id: Option<Uuid>,  // Links to parent
-    pub state: ActionState,
-    pub name: String,
-    pub description: Option<String>,
-    pub priority: Option<usize>,
-    pub context_list: Option<Vec<String>>,
-    pub do_date_time: Option<DateTime<Local>>,
-    pub completed_date_time: Option<DateTime<Local>>,
-    pub story: Option<String>,
-}
-
-pub type ActionList = Vec<Action>;
-```
-
-**Why flat instead of nested?**
-- ✅ Simple: Just a Vec, easy to understand
-- ✅ Fast queries: Filter/map directly on the Vec
-- ✅ Easy mutations: Moving an action = changing parent_id
-- ✅ Serde friendly: Serializes naturally to JSON/XML
-- ✅ Grammar enforces depth: No need for compile-time nesting
-
-**Depth calculation** is available via `action.depth(&action_list)` - it walks up the parent chain.
-
-### Type Alias vs Newtype
-
-`ActionList` is a **type alias** (`Vec<Action>`), not a newtype wrapper. This keeps it ergonomic:
-- Direct Vec operations: `.len()`, `.iter()`, indexing
-- No wrapping/unwrapping needed
-- Works seamlessly with serde
-
-Trade-off: Can't implement traits like `Display` on the alias. Instead, we use free functions like `format_action_list()`.
 
 ## Config System
 

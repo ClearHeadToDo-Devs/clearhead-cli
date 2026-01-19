@@ -4,7 +4,6 @@
 
 A fast, flexible task manager that uses plain text `.actions` files - edit them with any text editor, manage them with `clearhead_cli`.
 
-## Quick Start
 
 ### Installation
 
@@ -40,7 +39,7 @@ clearhead_cli read file inbox.actions
 
 ## Features
 
-- **Event logging**: Persistent append-only history of all action changes (completions, additions, deletions) for analytics.
+- **CRDT-Based Sync**: CRDTs allow for us to merge changes from multiple devices/editors without conflicts
 - **Calendar export**: Export actions with due dates to iCalendar (`.ics`) format with full recurrence support
 - **SQL queries**: Filter actions with WHERE clauses or full SQL (JOINs, CTEs, aggregations)
 - **Multiple output formats**: actions, json, xml, table
@@ -201,18 +200,6 @@ clearhead_cli agenda --days 30
 
 The agenda view projects future occurrences of recurring tasks without creating clutter in your file, giving you a clear view of your upcoming workload.
 
-### Sync Events
-
-Synchronize existing actions with the events database. This is useful for backfilling history from files created before event logging was enabled. It automatically skips actions that already have events logged.
-
-```bash
-# Backfill events for default file
-clearhead_cli sync-events
-
-# Preview what would be backfilled
-clearhead_cli sync-events --dry-run
-```
-
 ### Export to Calendar
 
 Export actions with due dates to iCalendar (`.ics`) format for import into Google Calendar, Apple Calendar, Outlook, or any calendar app.
@@ -265,6 +252,7 @@ END:VEVENT
 
 **Formatting**
 Format `.actions` files with proper spacing (preserves existing UUIDs).
+
 ```bash
 # Format a file with default compact style
 clearhead_cli format ~/work.actions --write
@@ -286,19 +274,6 @@ clearhead_cli normalize ~/work.actions --write
 clearhead_cli normalize ~/work.actions --no-format --write
 ```
 
-**Archiving**
-Move completed action trees to monthly log files (e.g., `logs/2026-01.actions`). 
-Note: Only entire trees (parent and all descendants) are moved, and only if every action in the tree is completed.
-```bash
-# Archive completed actions from default file
-clearhead_cli archive
-
-# Archive from specific file
-clearhead_cli archive ~/work.actions
-
-# Preview what would be archived
-clearhead_cli archive --dry-run
-```
 
 **Linting**
 Check your files for syntax errors, missing IDs, or convention violations.
@@ -310,28 +285,11 @@ clearhead_cli lint ~/work.actions
 cat ~/work.actions | clearhead_cli lint
 ```
 
-### Patching (Smart Sync)
-Update a Primary file based on a modified Secondary view (even if lines were reordered).
-```bash
-# Apply changes from a temp file back to the source of truth
-clearhead_cli patch --primary ~/work.actions --secondary ~/tmp/filtered_view.actions --write
-```
-This is the engine that powers editor plugins, allowing you to filter/sort a view, edit it, and save the changes back to the original file safely.
-
-### Event Logging (Analytics)
-
-ClearHead maintains a persistent history of all changes in a SQLite database. This enables time-series analytics like completion rates, streaks, and audit trails.
-
-Events are emitted automatically by:
-- The `add` and `complete` CLI commands.
-- The LSP server whenever a `.actions` file is saved (detects hand-edits via structural diff).
-
-The database is stored at `~/.local/state/clearhead/events.db` by default.
 
 ### System Logging (Operational)
 
 ClearHead uses tiered logging for full transparency:
-1. **Data Level**: `events.db` stores semantic user actions (Audit trail).
+1. **Data Level**: `actions.oxigraph` stores semantic user actions (Audit trail).
 2. **Application Level**: Standard structured logs (via `tracing`) are emitted to `stderr` for system loggers like `journald`.
 
 Use the `-v`, `-vv`, or `-vvv` flags to increase CLI verbosity.
@@ -371,6 +329,7 @@ See [CONTRIBUTORS.md](docs/CONTRIBUTORS.md) for:
 **Current:** Workspace-first architecture with cross-file SQL queries
 **Next:** CRDT sync between devices
 **Future:** TUI interface, collaborative editing
+
 
 ## License
 
