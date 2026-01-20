@@ -59,7 +59,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     debug!(data_dir = %data_dir.display(), "Data directory resolved");
 
     match &cli.command {
-        Commands::Read { format, where_clause, sql, select, from, source } => {
+        Commands::Read { format, where_clause, sparql, source } => {
             use argparser::ReadSource;
 
             // Resolve format: CLI > Env > Config > Default
@@ -68,31 +68,31 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 .or_else(|| parse_format(&config.cli_format).ok())
                 .unwrap_or(clearhead_cli::OutputFormat::Actions);
 
-            let has_sql_filter = sql.is_some() || where_clause.is_some();
+            let has_filter = sparql.is_some() || where_clause.is_some();
 
             // SQL flags only apply to workspace reads
-            if source.is_some() && has_sql_filter {
-                return Err("SQL filtering (--where, --sql) is only supported for workspace reads. \
+            if source.is_some() && has_filter {
+                return Err("SPARQL filtering (--where, --sparql) is only supported for workspace reads. \
                            Use 'read' without a subcommand to query the workspace.".to_string());
             }
 
             let actions = match source {
-                // Workspace-wide read with optional SQL filtering
+                // Workspace-wide read with optional filtering
                 None => {
                     debug!(data_dir = %data_dir.display(), "Reading workspace");
 
-                    if let Some(sql_query) = sql {
+                    if let Some(query) = sparql {
                         let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
-                        debug!(sql = %sql_query, "Filtering with SQL query");
-                        clearhead_cli::run_workspace_sql_query(&workspace, sql_query)?
+                        debug!(sparql = %query, "Filtering with SPARQL query");
+                        clearhead_cli::run_workspace_sql_query(&workspace, query)?
                     } else if let Some(where_clause) = where_clause {
                         let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
                         debug!(where_clause = %where_clause, "Filtering with WHERE clause");
                         clearhead_cli::run_workspace_sql_where(
                             &workspace,
                             where_clause,
-                            select.as_deref(),
-                            from.as_deref(),
+                            None,
+                            None,
                         )?
                     } else {
                         clearhead_cli::workspace::load_workspace_actions(&data_dir)?
@@ -115,6 +115,21 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             info!(action_count = actions.len(), "Loaded actions");
             println!("{}", clearhead_cli::format(&actions, output_format, None)?);
+            Ok(())
+        }
+        Commands::Query { query, file } => {
+            let sparql = if let Some(q) = query {
+                q.clone()
+            } else if let Some(path) = file {
+                fs::read_to_string(path).map_err(|e| format!("Failed to read query file: {}", e))?
+            } else {
+                return Err("Must provide either query string or file".to_string());
+            };
+
+            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
+            let actions = clearhead_cli::run_workspace_sql_query(&workspace, &sparql)?;
+
+            println!("{}", clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?);
             Ok(())
         }
         Commands::Format { file, write, style, indent_style, indent_width } => {
@@ -665,6 +680,62 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 }
             } else {
                 println!("{}", formatted);
+            }
+            Ok(())
+        }
+        Commands::Delete { file, query, write } => {
+            use clearhead_cli::events::emit_event;
+            use clearhead_cli::crdt::ActionRepository;
+
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            debug!(query = %query, input_file = %input_file.display(), "Executing Delete command");
+
+            // Phase 1: Load Repo
+            let mut repo = ActionRepository::load(input_file.clone())
+                .map_err(|e| format!("Failed to load repository: {}", e))?;
+            
+            let mut actions = repo.get_actions()
+                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
+
+            let mut target_index = None;
+            for (i, action) in actions.iter().enumerate() {
+                let id_match = action.id.to_string().starts_with(query);
+                let name_match = action.name.contains(query);
+
+                if id_match || name_match {
+                    target_index = Some(i);
+                    break;
+                }
+            }
+
+            if let Some(idx) = target_index {
+                let action = actions.remove(idx);
+                
+                if *write {
+                    // Phase 2: Save Repo
+                    repo.save(&actions)
+                        .map_err(|e| format!("Failed to save repository: {}", e))?;
+
+                    // Emit event
+                    let metadata = serde_json::json!({
+                        "name": action.name,
+                    });
+                    if let Err(e) = emit_event("action_deleted", &action.id.to_string(), Some(input_file.to_string_lossy().as_ref()), metadata) {
+                        warn!(error = %e, "Failed to log data event");
+                    }
+                    
+                    info!(name = %action.name, id = %action.id, "Action deleted successfully");
+                    println!("Deleted action: {} #{}", action.name, action.id);
+                } else {
+                     let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
+                     println!("{}", formatted);
+                }
+            } else {
+                return Err(format!("No action found matching '{}'", query));
             }
             Ok(())
         }

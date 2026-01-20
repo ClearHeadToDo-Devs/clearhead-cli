@@ -112,6 +112,14 @@ fn insert_action(
     // rdf:type actions:Action
     add(rdf_type(), Term::NamedNode(action_class()))?;
 
+    // Add specific type based on hierarchy (heuristic until depth is explicitly stored)
+    let specific_type = if action.parent_id.is_none() {
+        action_pred("RootActionPlan")
+    } else {
+        action_pred("ChildActionPlan")
+    };
+    add(rdf_type(), Term::NamedNode(specific_type))?;
+
     // actions:id (as string)
     add(action_pred("id"), Term::Literal(Literal::new_simple_literal(action.id.to_string())))?;
 

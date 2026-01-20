@@ -29,25 +29,27 @@ pub enum Commands {
         #[arg(short, long, value_enum)]
         format: Option<Format>,
 
-        /// SQL WHERE clause to filter actions (e.g., "priority = 1")
+        /// SPARQL WHERE clause to filter actions (e.g., "?s actions:hasPriority 1")
         #[arg(short = 'w', long = "where")]
         where_clause: Option<String>,
 
-        /// Full SQL query (overrides --where, --select, --from)
+        /// Full SPARQL query (overrides --where)
         #[arg(long, conflicts_with = "where_clause")]
-        sql: Option<String>,
-
-        /// SQL SELECT clause (default: "id")
-        #[arg(long, requires = "where_clause")]
-        select: Option<String>,
-
-        /// SQL FROM clause (default: "actions")
-        #[arg(long, requires = "where_clause")]
-        from: Option<String>,
+        sparql: Option<String>,
 
         /// Input source (defaults to workspace-wide read)
         #[command(subcommand)]
         source: Option<ReadSource>,
+    },
+
+    /// Execute a SPARQL query against the actions database
+    Query {
+        /// The SPARQL query string
+        query: Option<String>,
+
+        /// Read query from file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
     },
 
     /// Format actions file with proper spacing and layout
@@ -162,6 +164,19 @@ pub enum Commands {
         file: Option<PathBuf>,
 
         /// Overwrite the input file with the completed action
+        #[arg(short, long)]
+        write: bool,
+    },
+
+    /// Delete an action
+    Delete {
+        /// UUID or name of the action to delete
+        query: String,
+
+        /// File containing the action. If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// Overwrite the input file with the deletion
         #[arg(short, long)]
         write: bool,
     },
