@@ -21,13 +21,12 @@
 //! ```
 
 use oxigraph::store::Store;
-use oxigraph::model::{NamedNode, Literal, Quad, Subject, Term, GraphName, NamedNodeRef, BlankNode};
+use oxigraph::model::{NamedNode, Literal, Quad, Subject, Term, GraphName, BlankNode};
 use oxigraph::sparql::QueryResults;
 use crate::entities::{Action, ActionList, ActionState, Recurrence};
 use crate::environment_reader::Config;
 use chrono::DateTime;
 use uuid::Uuid;
-use std::str::FromStr;
 
 // Namespace constants
 const ACTIONS_NS: &str = "https://clearhead.us/vocab/actions/v3#";
@@ -106,7 +105,7 @@ fn insert_action(
 
     // Helper to add triple
     let mut add = |pred: NamedNode, term: Term| {
-        store.insert(Quad::new(subject.clone(), pred, term, graph.clone()))
+        store.insert(&Quad::new(subject.clone(), pred, term, graph.clone()))
             .map_err(|e| e.to_string())
     };
 
@@ -194,7 +193,7 @@ fn insert_action(
          
          let r_subj = Subject::BlankNode(bnode);
          let mut add_r = |pred: NamedNode, term: Term| {
-            store.insert(Quad::new(r_subj.clone(), pred, term, graph.clone()))
+            store.insert(&Quad::new(r_subj.clone(), pred, term, graph.clone()))
                 .map_err(|e| e.to_string())
         };
         
@@ -353,7 +352,7 @@ fn get_action_by_id(store: &Store, id: Uuid) -> Result<Action, String> {
     });
     
     // Recurrence (Basic implementation)
-    let recurrence = find_one(action_pred("hasRecurrence")).map(|t| {
+    let recurrence = find_one(action_pred("hasRecurrence")).map(|_t| {
         // In a real implementation we would traverse the blank node.
         // For now, returning None or basic if needed.
         // We'll skip deep recurrence hydration for this iteration 
@@ -400,10 +399,19 @@ pub fn build_where_query(
     // We assume the user wants ?id back.
     // We bind ?s (subject) to ?id (string id)
     format!(
-        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{}}
+        "PREFIX actions: <{actions_ns}>\n\
+         PREFIX schema: <{schema_ns}>\n\
+         PREFIX rdf: <{rdf_ns}>\n\
+         PREFIX xsd: <{xsd_ns}>\n\
+         PREFIX skos: <{skos_ns}>\n\
+         SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{ {where_clause} }}
 }}",
         actions_ns = ACTIONS_NS,
-        where_clause
+        schema_ns = SCHEMA_NS,
+        rdf_ns = RDF_NS,
+        xsd_ns = XSD_NS,
+        skos_ns = SKOS_NS,
+        where_clause = where_clause
     )
 }
 
@@ -420,7 +428,7 @@ pub fn load_tag_hierarchies(store: &Store, config: &Config) -> Result<(), String
             let parent_uri = NamedNode::new(format!("urn:tag:{}", parent.to_lowercase())).unwrap();
             let child_uri = NamedNode::new(format!("urn:tag:{}", child.to_lowercase())).unwrap();
             
-            store.insert(Quad::new(
+            store.insert(&Quad::new(
                 Subject::NamedNode(child_uri),
                 NamedNode::new(format!("{}broader", SKOS_NS)).unwrap(),
                 Term::NamedNode(parent_uri),
@@ -462,7 +470,7 @@ pub fn query_actions_by_project(store: &Store, project: &str) -> Result<Vec<Stri
     // Search for explicit project OR inferred project
     let sparql = format!(
         "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{ ?s <{actions_ns}hasProject> \"{project}\" }}    UNION    {{ ?s <{actions_ns}inferredProject> \"{project}\" . 
-               FILTER NOT EXISTS {{ ?s <{actions_ns}hasProject> ?any }} 
+               FILTER NOT EXISTS {{ ?s <{actions_ns}hasProject> ?any }}
             }}
         }}",
         actions_ns = ACTIONS_NS,
