@@ -165,27 +165,27 @@ pub fn patch_action_list(primary: &mut ActionList, secondary: &ActionList) {
     }
 }
 
-/// Filter actions using a SQL query
+/// Filter actions using a SPARQL query
 ///
 /// # Arguments
 /// * `actions` - The full ActionList to query
-/// * `sql_query` - The SQL query to execute
+/// * `sparql_query` - The SPARQL query to execute
 ///
 /// # Returns
 /// A filtered ActionList containing only actions that match the query
-pub fn run_sql_query(actions: &ActionList, sql_query: &str) -> Result<ActionList, String> {
+pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionList, String> {
     use std::collections::HashSet;
 
-    // Create in-memory database and load actions
-    let conn = sql::create_database()
-        .map_err(|e| format!("Failed to create database: {}", e))?;
+    // Create in-memory store and load actions
+    let store = sql::create_database()
+        .map_err(|e| format!("Failed to create store: {}", e))?;
 
-    sql::load_actions(&conn, actions)
-        .map_err(|e| format!("Failed to load actions into database: {}", e))?;
+    sql::load_actions(&store, actions)
+        .map_err(|e| format!("Failed to load actions into store: {}", e))?;
 
     // Execute query and get matching IDs
-    let matching_ids = sql::query_actions(&conn, sql_query)
-        .map_err(|e| format!("SQL query failed: {}", e))?;
+    let matching_ids = sql::query_actions(&store, sparql_query)
+        .map_err(|e| format!("SPARQL query failed: {}", e))?;
 
     // Convert to HashSet for fast lookup
     let id_set: HashSet<String> = matching_ids.into_iter().collect();
@@ -200,13 +200,13 @@ pub fn run_sql_query(actions: &ActionList, sql_query: &str) -> Result<ActionList
     Ok(filtered)
 }
 
-/// Build and execute a SQL WHERE clause query
+/// Build and execute a SPARQL query from a WHERE clause (Graph Pattern)
 ///
 /// # Arguments
 /// * `actions` - The full ActionList to query
-/// * `where_clause` - The WHERE clause (without the WHERE keyword)
-/// * `select` - Optional SELECT clause (defaults to "id")
-/// * `from` - Optional FROM clause (defaults to "actions")
+/// * `where_clause` - The WHERE clause (Graph Pattern)
+/// * `select` - Unused (SPARQL always selects ?id in this helper)
+/// * `from` - Unused
 ///
 /// # Returns
 /// A filtered ActionList containing only actions that match the WHERE clause
@@ -220,42 +220,42 @@ pub fn run_sql_where(
     run_sql_query(actions, &query)
 }
 
-/// Run a SQL query on workspace actions with source tracking
+/// Run a SPARQL query on workspace actions with source tracking
 ///
-/// This enables cross-file queries using the file_path and project columns.
-/// Example: `SELECT id FROM actions WHERE project = 'work'`
+/// This enables cross-file queries using the file_path and project properties.
+/// Example: `SELECT ?id WHERE { ?s <...hasProject> "work" . ?s <...id> ?id }`
 ///
 /// # Arguments
 /// * `workspace` - Workspace actions with source metadata
-/// * `sql_query` - The SQL query to execute
+/// * `sparql_query` - The SPARQL query to execute
 ///
 /// # Returns
 /// A filtered ActionList containing only actions that match the query
 pub fn run_workspace_sql_query(
     workspace: &workspace::WorkspaceActions,
-    sql_query: &str,
+    sparql_query: &str,
 ) -> Result<ActionList, String> {
     use std::collections::HashSet;
 
-    // Create in-memory database
-    let conn = sql::create_database()
-        .map_err(|e| format!("Failed to create database: {}", e))?;
+    // Create in-memory store
+    let store = sql::create_database()
+        .map_err(|e| format!("Failed to create store: {}", e))?;
 
     // Load each file's actions with source metadata
     for sourced in &workspace.sourced_actions {
         let file_path_str = sourced.source.file_path.to_string_lossy();
         sql::load_actions_with_source(
-            &conn,
+            &store,
             &vec![sourced.action.clone()],
             Some(&file_path_str),
             sourced.source.project.as_deref(),
         )
-        .map_err(|e| format!("Failed to load action into database: {}", e))?;
+        .map_err(|e| format!("Failed to load action into store: {}", e))?;
     }
 
     // Execute query and get matching IDs
-    let matching_ids = sql::query_actions(&conn, sql_query)
-        .map_err(|e| format!("SQL query failed: {}", e))?;
+    let matching_ids = sql::query_actions(&store, sparql_query)
+        .map_err(|e| format!("SPARQL query failed: {}", e))?;
 
     // Convert to HashSet for fast lookup
     let id_set: HashSet<String> = matching_ids.into_iter().collect();
@@ -271,7 +271,7 @@ pub fn run_workspace_sql_query(
     Ok(filtered)
 }
 
-/// Run a SQL WHERE clause query on workspace actions
+/// Run a SPARQL WHERE clause query on workspace actions
 pub fn run_workspace_sql_where(
     workspace: &workspace::WorkspaceActions,
     where_clause: &str,
