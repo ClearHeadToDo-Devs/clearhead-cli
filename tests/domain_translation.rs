@@ -1,16 +1,17 @@
 use clearhead_cli::{
     domain::{DomainModel, Plan, PlannedAct, ActPhase},
-    entities::{Action, ActionList, ActionState},
+    entities::{Action, ActionState},
 };
 use uuid::Uuid;
 use chrono::Local;
+use std::collections::HashMap;
 
 #[test]
 fn test_domain_round_trip_simple() {
     // 1. Create a Domain Model manually (simulate CRDT state)
     let plan_id = Uuid::now_v7();
     let act_id = Uuid::now_v7();
-    
+
     let plan = Plan {
         id: plan_id,
         name: "Test Task".to_string(),
@@ -35,10 +36,12 @@ fn test_domain_round_trip_simple() {
         created_at: Some(Local::now()),
     };
 
-    let domain = DomainModel {
-        plans: vec![plan.clone()],
-        acts: vec![act.clone()],
-    };
+    let mut plans = HashMap::new();
+    plans.insert(plan_id.to_string(), plan.clone());
+    let mut acts = HashMap::new();
+    acts.insert(act_id.to_string(), act.clone());
+
+    let domain = DomainModel { plans, acts };
 
     // 2. Convert to ActionList (The missing function we need to implement)
     // For now, this won't compile until we add the method. 
@@ -68,12 +71,12 @@ fn test_from_actions_preserves_data() {
     };
 
     let domain = DomainModel::from_actions(&vec![action.clone()]);
-    
+
     assert_eq!(domain.plans.len(), 1);
     assert_eq!(domain.acts.len(), 1);
-    
-    let p = &domain.plans[0];
-    let a = &domain.acts[0];
+
+    let p = domain.plans.values().next().unwrap();
+    let a = domain.acts.values().next().unwrap();
 
     assert_eq!(p.name, "Source Action");
     assert_eq!(p.priority, Some(2));

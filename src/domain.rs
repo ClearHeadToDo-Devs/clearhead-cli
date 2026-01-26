@@ -112,10 +112,13 @@ pub struct PlanWithActs {
 }
 
 /// Domain model containing all Plans and PlannedActs.
+///
+/// Uses String keys (UUID strings) for CRDT compatibility.
+/// autosurgeon requires HashMap keys to implement AsRef<str> + From<String>.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct DomainModel {
-    pub plans: Vec<Plan>,
-    pub acts: Vec<PlannedAct>,
+    pub plans: std::collections::HashMap<String, Plan>,
+    pub acts: std::collections::HashMap<String, PlannedAct>,
 }
 
 impl DomainModel {
@@ -132,8 +135,8 @@ impl DomainModel {
 
         for action in actions {
             let (plan, act) = split_action(action);
-            model.plans.push(plan);
-            model.acts.push(act);
+            model.plans.insert(plan.id.to_string(), plan);
+            model.acts.insert(act.id.to_string(), act);
         }
 
         model
@@ -142,56 +145,43 @@ impl DomainModel {
     /// Convert the domain model back to an ActionList.
     ///
     /// This reconstructs Actions from Plans and their PlannedActs.
-    /// - For standard 1:1 mapping (Plan + Act), it recreates the original Action.
-    /// - For recurring tasks (1 Plan + N Acts), it creates separate Actions for instances.
     pub fn to_action_list(&self) -> ActionList {
+        // Default to arbitrary order if no specific order is requested
+        let plan_ids: Vec<String> = self.plans.keys().cloned().collect();
+        self.to_action_list_ordered(&plan_ids)
+    }
+
+    /// Convert the domain model back to an ActionList in a specific order.
+    pub fn to_action_list_ordered(&self, plan_order: &[String]) -> ActionList {
         let mut actions = Vec::new();
 
-        // Group acts by plan_id
-        let mut acts_by_plan: std::collections::HashMap<Uuid, Vec<&PlannedAct>> =
+        // Group acts by plan_id (as string)
+        let mut acts_by_plan: std::collections::HashMap<String, Vec<&PlannedAct>> =
             std::collections::HashMap::new();
-        for act in &self.acts {
-            acts_by_plan.entry(act.plan_id).or_default().push(act);
+        for act in self.acts.values() {
+            acts_by_plan.entry(act.plan_id.to_string()).or_default().push(act);
         }
 
-        // Iterate over plans
-        for plan in &self.plans {
-            if let Some(acts) = acts_by_plan.get(&plan.id) {
-                // Case: 1 Plan, 1 Act (Standard)
-                if acts.len() == 1 {
-                    let act = acts[0];
-                    actions.push(merge_to_action(plan, act, plan.id));
-                } else {
-                    // Case: 1 Plan, Multiple Acts (Recurrence/History)
-                    // We need to avoid ID collisions.
-                    // Heuristic: Use Plan.id for the "primary" act (e.g. the open one, or the latest)
-                    // and derive IDs for the others?
-                    //
-                    // For now, to satisfy the simple round-trip requirement, we'll map 1:1 if possible.
-                    // If multiple exist, we might emit duplicates if we aren't careful.
-                    // Let's assume for this CLI context that we want to see all acts.
+        // Iterate over requested plans
+        for plan_id_str in plan_order {
+            if let Some(plan) = self.plans.get(plan_id_str) {
+                if let Some(acts) = acts_by_plan.get(&plan.id.to_string()) {
                     for act in acts {
-                        // If we have multiple, we ideally want distinct IDs.
-                        // But if we change the ID, we break the link to the Plan in the DSL (legacy view).
-                        // This is a known limitation of the current DSL vs Domain mismatch.
-                        // We will use Plan.id which effectively duplicates the ID in the list.
-                        // The linter/parser might complain, but this is the correct data representation.
                         actions.push(merge_to_action(plan, act, plan.id));
                     }
+                } else {
+                    // Placeholder act
+                    let dummy_act = PlannedAct {
+                        id: Uuid::now_v7(),
+                        plan_id: plan.id,
+                        phase: ActPhase::NotStarted,
+                        scheduled_at: None,
+                        duration: None,
+                        completed_at: None,
+                        created_at: None,
+                    };
+                    actions.push(merge_to_action(plan, &dummy_act, plan.id));
                 }
-            } else {
-                // Case: Plan with no Acts (Template only?)
-                // Create a placeholder NotStarted act
-                let dummy_act = PlannedAct {
-                    id: Uuid::now_v7(),
-                    plan_id: plan.id,
-                    phase: ActPhase::NotStarted,
-                    scheduled_at: None,
-                    duration: None,
-                    completed_at: None,
-                    created_at: None,
-                };
-                actions.push(merge_to_action(plan, &dummy_act, plan.id));
             }
         }
 
@@ -200,18 +190,18 @@ impl DomainModel {
 
     /// Find a Plan by ID
     pub fn plan(&self, id: Uuid) -> Option<&Plan> {
-        self.plans.iter().find(|p| p.id == id)
+        self.plans.get(&id.to_string())
     }
 
     /// Find all PlannedActs for a given Plan
     pub fn acts_for_plan(&self, plan_id: Uuid) -> Vec<&PlannedAct> {
-        self.acts.iter().filter(|a| a.plan_id == plan_id).collect()
+        self.acts.values().filter(|a| a.plan_id == plan_id).collect()
     }
 
     /// Get all incomplete acts
     pub fn incomplete_acts(&self) -> Vec<&PlannedAct> {
         self.acts
-            .iter()
+            .values()
             .filter(|a| !matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled))
             .collect()
     }
