@@ -11,7 +11,6 @@ use tree_sitter::{Parser, Tree};
 use uuid::Uuid;
 
 use clearhead_cli::archive::archive_actions;
-use clearhead_cli::crdt::sync_file_to_crdt;
 use clearhead_cli::diff::{FieldChange, diff_actions};
 use clearhead_cli::events::emit_event;
 use clearhead_cli::format::{FormatConfig, OutputFormat, format};
@@ -556,7 +555,8 @@ impl LanguageServer for Backend {
             // Sync to CRDT (source of truth)
             if let (Some(parsed), Some(path_str)) = (&doc.parsed, &file_path) {
                 let path = std::path::Path::new(path_str);
-                match sync_file_to_crdt(path, &parsed.actions) {
+                use clearhead_cli::crdt::ActionRepository;
+                match ActionRepository::load(path.to_path_buf()).and_then(|mut repo| repo.save(&parsed.actions)) {
                     Ok(_) => {
                         debug!(uri = ?uri, "Synced changes to CRDT");
                     }
