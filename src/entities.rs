@@ -6,7 +6,7 @@ use crate::sync_utils::{hydrate_date, reconcile_date};
 use std::fmt;
 use std::collections::HashMap;
 
-use crate::treesitter::{create_node_wrapper, get_node_text, NodeWrapper, TreeWrapper};
+use crate::treesitter::{create_node_wrapper, get_node_text, get_prefixed_text, NodeWrapper, TreeWrapper};
 use uuid::Uuid;
 
 pub type ActionList = Vec<Action>;
@@ -77,6 +77,19 @@ pub struct SourceRange {
     pub start_col: usize,
     pub end_row: usize,
     pub end_col: usize,
+}
+
+impl SourceRange {
+    pub fn from_node(node: &tree_sitter::Node) -> Self {
+        let start = node.start_position();
+        let end = node.end_position();
+        Self {
+            start_row: start.row,
+            start_col: start.column,
+            end_row: end.row,
+            end_col: end.column,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -488,40 +501,18 @@ pub fn parse_action_recursive(
     tag_index: &mut HashMap<String, Vec<SourceRange>>,
 ) -> Result<Vec<Action>, &'static str> {
     let mut actions = Vec::new();
+    let action_range = SourceRange::from_node(&node.node);
 
-    let start_pos = node.node.start_position();
-    let end_pos = node.node.end_position();
-    let action_range = SourceRange {
-        start_row: start_pos.row,
-        start_col: start_pos.column,
-        end_row: end_pos.row,
-        end_col: end_pos.column,
-    };
-
-    // Parse state using field access
-    let state_node = node
-        .node
-        .child_by_field_name("state")
-        .ok_or("Missing state field")?;
+    // Parse state
+    let state_node = node.require_field("state")?;
     let state_value_node = state_node
         .child_by_field_name("value")
-        .ok_or("Missing state value field")?;
-    let state = match state_value_node.kind() {
-        "state_not_started" => ActionState::NotStarted,
-        "state_completed" => ActionState::Completed,
-        "state_in_progress" => ActionState::InProgress,
-        "state_blocked" => ActionState::BlockedorAwaiting,
-        "state_cancelled" => ActionState::Cancelled,
-        _ => return Err("Unknown state type"),
-    };
+        .ok_or("Missing state value")?;
+    let state = parse_state_kind(state_value_node.kind())?;
 
-    // Parse name using field access
-    let name_node = node
-        .node
-        .child_by_field_name("name")
-        .ok_or("Missing name field")?;
+    // Parse name
+    let name_node = node.require_field("name")?;
     let name = get_node_text(&name_node, &node.source).trim().to_string();
-
     let mut line_end_pos = name_node.end_position();
 
     // Parse metadata fields
@@ -545,173 +536,65 @@ pub fn parse_action_recursive(
     let mut raw_id = None;
 
     let mut metadata_cursor = node.node.walk();
-    for metadata_node in node
-        .node
-        .children_by_field_name("metadata", &mut metadata_cursor)
-    {
-        if metadata_node.end_position().row > line_end_pos.row 
-           || (metadata_node.end_position().row == line_end_pos.row && metadata_node.end_position().column > line_end_pos.column) 
+    for meta in node.node.children_by_field_name("metadata", &mut metadata_cursor) {
+        // Track line end position for source mapping
+        if meta.end_position().row > line_end_pos.row
+           || (meta.end_position().row == line_end_pos.row && meta.end_position().column > line_end_pos.column)
         {
-            line_end_pos = metadata_node.end_position();
+            line_end_pos = meta.end_position();
         }
 
-        match metadata_node.kind() {
+        match meta.kind() {
             "description" => {
-                // Get the text of the description node (skip the $ prefix)
-                let desc_text = get_node_text(&metadata_node, &node.source);
-                if desc_text.starts_with('$') {
-                    description = Some(desc_text[1..].trim().to_string());
-                }
+                description = get_prefixed_text(&meta, &node.source, '$');
             }
             "priority" => {
-                // Get the text of the priority node (skip the ! prefix)
-                let prio_text = get_node_text(&metadata_node, &node.source);
-                if prio_text.starts_with('!') {
-                    if let Ok(prio) = prio_text[1..].trim().parse::<u32>() {
-                        priority = Some(prio);
-                    }
-                }
+                priority = get_prefixed_text(&meta, &node.source, '!')
+                    .and_then(|s| s.parse().ok());
             }
             "story" => {
-                // Get the text of the story node (skip the * prefix)
-                let story_text = get_node_text(&metadata_node, &node.source);
-                if story_text.starts_with('*') {
-                    story = Some(story_text[1..].trim().to_string());
-                    
-                    // Index tag
-                    let range = SourceRange {
-                        start_row: metadata_node.start_position().row,
-                        start_col: metadata_node.start_position().column,
-                        end_row: metadata_node.end_position().row,
-                        end_col: metadata_node.end_position().column,
-                    };
-                    tag_index.entry(story_text).or_default().push(range);
-                }
+                let text = get_node_text(&meta, &node.source);
+                story = get_prefixed_text(&meta, &node.source, '*');
+                index_tag(tag_index, text, &meta);
             }
             "context" => {
-                // Get the text of the context node (skip the + prefix)
-                let context_text = get_node_text(&metadata_node, &node.source);
-                if context_text.starts_with('+') {
-                    let tags: Vec<String> = context_text[1..]
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    
-                    // Always set context_list if we found a context node
-                    context_list = Some(tags);
-
-                    // Index tag (full text including +)
-                    let range = SourceRange {
-                        start_row: metadata_node.start_position().row,
-                        start_col: metadata_node.start_position().column,
-                        end_row: metadata_node.end_position().row,
-                        end_col: metadata_node.end_position().column,
-                    };
-                    tag_index.entry(context_text).or_default().push(range);
+                let text = get_node_text(&meta, &node.source);
+                if let Some(inner) = text.strip_prefix('+') {
+                    context_list = Some(inner.split(',').map(|s| s.trim().to_string()).collect());
+                    index_tag(tag_index, text, &meta);
                 }
             }
             "do_date" => {
-                if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
-                    let datetime_str = get_node_text(&datetime_node, &node.source);
-                    do_date_time = parse_iso8601_datetime(&datetime_str);
-                    
-                    let start = metadata_node.start_position();
-                    let end = metadata_node.end_position();
-                    do_date_range = Some(SourceRange {
-                        start_row: start.row,
-                        start_col: start.column,
-                        end_row: end.row,
-                        end_col: end.column,
-                    });
-                }
-
-                // Parse duration
-                if let Some(duration_node) = metadata_node.child_by_field_name("duration") {
-                    if let Some(minutes_node) = duration_node.child_by_field_name("minutes") {
-                        let minutes_str = get_node_text(&minutes_node, &node.source);
-                        if let Ok(minutes) = minutes_str.parse::<u32>() {
-                            do_duration = Some(minutes);
-                        }
-                    }
-                }
-
-                // Parse recurrence
-                if let Some(recurrence_node) = metadata_node.child_by_field_name("recurrence") {
-                    if let Some(rrule_node) = recurrence_node.child_by_field_name("rrule") {
-                        let rrule_str = get_node_text(&rrule_node, &node.source);
-                        recurrence = parse_rrule(&rrule_str);
-                    }
-                }
+                (do_date_time, do_date_range) = parse_date_field(&meta, &node.source);
+                do_duration = parse_duration_field(&meta, &node.source);
+                recurrence = parse_recurrence_field(&meta, &node.source);
             }
             "completed_date" => {
-                if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
-                    let datetime_str = get_node_text(&datetime_node, &node.source);
-                    completed_date_time = parse_iso8601_datetime(&datetime_str);
-
-                    let start = metadata_node.start_position();
-                    let end = metadata_node.end_position();
-                    completed_date_range = Some(SourceRange {
-                        start_row: start.row,
-                        start_col: start.column,
-                        end_row: end.row,
-                        end_col: end.column,
-                    });
-                }
+                (completed_date_time, completed_date_range) = parse_date_field(&meta, &node.source);
             }
             "created_date" => {
-                if let Some(datetime_node) = metadata_node.child_by_field_name("datetime") {
-                    let datetime_str = get_node_text(&datetime_node, &node.source);
-                    created_date_time = parse_iso8601_datetime(&datetime_str);
-
-                    let start = metadata_node.start_position();
-                    let end = metadata_node.end_position();
-                    created_date_range = Some(SourceRange {
-                        start_row: start.row,
-                        start_col: start.column,
-                        end_row: end.row,
-                        end_col: end.column,
-                    });
-                }
+                (created_date_time, created_date_range) = parse_date_field(&meta, &node.source);
             }
             "id" => {
-                // Get the text of the id node (skip the # prefix)
-                let id_text = get_node_text(&metadata_node, &node.source);
-                if id_text.starts_with('#') {
-                    let id_val = id_text[1..].trim();
-                    if let Ok(uuid) = Uuid::parse_str(id_val) {
-                        id = Some(uuid);
-                    } else {
-                        raw_id = Some(id_val.to_string());
+                if let Some(id_val) = get_prefixed_text(&meta, &node.source, '#') {
+                    match Uuid::parse_str(&id_val) {
+                        Ok(uuid) => id = Some(uuid),
+                        Err(_) => raw_id = Some(id_val),
                     }
                 }
             }
             "predecessor" => {
-                // Get the text of the predecessor node (skip the < prefix)
-                let pred_text = get_node_text(&metadata_node, &node.source);
-                if pred_text.starts_with('<') {
-                    let pred_val = pred_text[1..].trim().to_string();
-                    // Try to parse as UUID first
-                    let resolved_uuid = Uuid::parse_str(&pred_val).ok();
-
-                    // Always store both the raw reference and the resolved UUID (if available)
+                if let Some(pred_val) = get_prefixed_text(&meta, &node.source, '<') {
                     predecessors.push(PredecessorRef {
+                        resolved_uuid: Uuid::parse_str(&pred_val).ok(),
                         raw_ref: pred_val,
-                        resolved_uuid,
                     });
                 }
             }
             "alias" => {
-                // Get the alias name (skip the = prefix)
-                let alias_text = get_node_text(&metadata_node, &node.source);
-                if alias_text.starts_with('=') {
-                    let alias_val = alias_text[1..].trim();
-                    if !alias_val.is_empty() {
-                        alias = Some(alias_val.to_string());
-                    }
-                }
+                alias = get_prefixed_text(&meta, &node.source, '=').filter(|s| !s.is_empty());
             }
             "sequential" => {
-                // Sequential marker found (~) - indicates children are sequential
                 is_sequential = Some(true);
             }
             _ => {}
@@ -798,6 +681,51 @@ impl fmt::Display for ActionState {
         };
         write!(f, "{}", state_char)
     }
+}
+
+fn parse_state_kind(kind: &str) -> Result<ActionState, &'static str> {
+    match kind {
+        "state_not_started" => Ok(ActionState::NotStarted),
+        "state_completed" => Ok(ActionState::Completed),
+        "state_in_progress" => Ok(ActionState::InProgress),
+        "state_blocked" => Ok(ActionState::BlockedorAwaiting),
+        "state_cancelled" => Ok(ActionState::Cancelled),
+        _ => Err("Unknown state type"),
+    }
+}
+
+/// Add a tag reference to the index
+fn index_tag(tag_index: &mut HashMap<String, Vec<SourceRange>>, text: String, node: &tree_sitter::Node) {
+    tag_index.entry(text).or_default().push(SourceRange::from_node(node));
+}
+
+/// Parse a date field (do_date, completed_date, created_date) returning both the datetime and source range
+fn parse_date_field(
+    node: &tree_sitter::Node,
+    source: &str,
+) -> (Option<DateTime<Local>>, Option<SourceRange>) {
+    if let Some(datetime_node) = node.child_by_field_name("datetime") {
+        let datetime_str = get_node_text(&datetime_node, source);
+        let datetime = parse_iso8601_datetime(&datetime_str);
+        let range = Some(SourceRange::from_node(node));
+        (datetime, range)
+    } else {
+        (None, None)
+    }
+}
+
+/// Parse duration from a do_date node
+fn parse_duration_field(node: &tree_sitter::Node, source: &str) -> Option<u32> {
+    node.child_by_field_name("duration")
+        .and_then(|d| d.child_by_field_name("minutes"))
+        .and_then(|m| get_node_text(&m, source).parse().ok())
+}
+
+/// Parse recurrence from a do_date node
+fn parse_recurrence_field(node: &tree_sitter::Node, source: &str) -> Option<Recurrence> {
+    node.child_by_field_name("recurrence")
+        .and_then(|r| r.child_by_field_name("rrule"))
+        .and_then(|rrule| parse_rrule(&get_node_text(&rrule, source)))
 }
 
 fn parse_rrule(rrule_str: &str) -> Option<Recurrence> {
