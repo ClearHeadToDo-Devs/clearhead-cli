@@ -1,115 +1,18 @@
+use crate::sync_utils::{hydrate_date, reconcile_date};
+use crate::{ParsedDocument, SourceMetadata, SourceRange};
+use autosurgeon::{Hydrate, Reconcile};
 use chrono::{DateTime, Local};
 use rrule::Tz;
 use serde::{Deserialize, Serialize};
-use autosurgeon::{Hydrate, Reconcile};
-use crate::sync_utils::{hydrate_date, reconcile_date};
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
-use crate::treesitter::{create_node_wrapper, get_node_text, get_prefixed_text, NodeWrapper, TreeWrapper};
+use crate::treesitter::{
+    NodeWrapper, TreeWrapper, create_node_wrapper, get_node_text, get_prefixed_text,
+};
 use uuid::Uuid;
 
 pub type ActionList = Vec<Action>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum LintSeverity {
-    Error,
-    Warning,
-    Info,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LintDiagnostic {
-    pub code: String,
-    pub severity: LintSeverity,
-    pub message: String,
-    pub range: SourceRange,
-}
-
-impl LintDiagnostic {
-    pub fn new(code: &str, severity: LintSeverity, message: String, range: SourceRange) -> Self {
-        Self {
-            code: code.to_string(),
-            severity,
-            message,
-            range,
-        }
-    }
-
-    pub fn error(code: &str, message: String, range: SourceRange) -> Self {
-        Self::new(code, LintSeverity::Error, message, range)
-    }
-
-    pub fn warning(code: &str, message: String, range: SourceRange) -> Self {
-        Self::new(code, LintSeverity::Warning, message, range)
-    }
-
-    pub fn info(code: &str, message: String, range: SourceRange) -> Self {
-        Self::new(code, LintSeverity::Info, message, range)
-    }
-}
-
-/// Structured lint results grouped by severity
-#[derive(Debug, Clone, Default)]
-pub struct LintResults {
-    pub errors: Vec<LintDiagnostic>,
-    pub warnings: Vec<LintDiagnostic>,
-    pub info: Vec<LintDiagnostic>,
-}
-
-/// IntoIterator for ergonomic `for diag in results` usage
-impl IntoIterator for LintResults {
-    type Item = LintDiagnostic;
-    type IntoIter = std::vec::IntoIter<LintDiagnostic>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let mut all = Vec::with_capacity(self.errors.len() + self.warnings.len() + self.info.len());
-        all.extend(self.errors);
-        all.extend(self.warnings);
-        all.extend(self.info);
-        all.into_iter()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct SourceRange {
-    pub start_row: usize,
-    pub start_col: usize,
-    pub end_row: usize,
-    pub end_col: usize,
-}
-
-impl SourceRange {
-    pub fn from_node(node: &tree_sitter::Node) -> Self {
-        let start = node.start_position();
-        let end = node.end_position();
-        Self {
-            start_row: start.row,
-            start_col: start.column,
-            end_row: end.row,
-            end_col: end.column,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct SourceMetadata {
-    pub root: SourceRange,
-    pub line_range: SourceRange,
-    pub do_date: Option<SourceRange>,
-    pub completed_date: Option<SourceRange>,
-    pub created_date: Option<SourceRange>,
-    pub is_id_generated: bool,
-    pub raw_id: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParsedDocument {
-    pub actions: ActionList,
-    pub source_map: HashMap<Uuid, SourceMetadata>,
-    pub tag_index: HashMap<String, Vec<SourceRange>>,
-    pub syntax_errors: Vec<LintDiagnostic>,
-}
 
 /// Reference to a predecessor action, which can be either a UUID or a name reference
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
@@ -124,33 +27,33 @@ pub struct PredecessorRef {
 /// Recurrence rule per RFC 5545 RRULE specification
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct Recurrence {
-    pub frequency: String,           // FREQ: secondly, minutely, hourly, daily, weekly, monthly, yearly
+    pub frequency: String, // FREQ: secondly, minutely, hourly, daily, weekly, monthly, yearly
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub interval: Option<u32>,       // INTERVAL: default 1
+    pub interval: Option<u32>, // INTERVAL: default 1
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub count: Option<u32>,          // COUNT: max occurrences
+    pub count: Option<u32>, // COUNT: max occurrences
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub until: Option<String>,       // UNTIL: end date/time in ISO 8601
+    pub until: Option<String>, // UNTIL: end date/time in ISO 8601
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by_second: Option<Vec<u32>>, // BYSECOND: 0-59
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by_minute: Option<Vec<u32>>, // BYMINUTE: 0-59
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub by_hour: Option<Vec<u32>>,   // BYHOUR: 0-23
+    pub by_hour: Option<Vec<u32>>, // BYHOUR: 0-23
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by_day: Option<Vec<String>>, // BYDAY: MO,TU,WE,TH,FR,SA,SU (with optional modifiers like 1MO, -1FR)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by_month_day: Option<Vec<i32>>, // BYMONTHDAY: 1-31 or -1 to -31
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub by_year_day: Option<Vec<i32>>,  // BYYEARDAY: 1-366 or -1 to -366
+    pub by_year_day: Option<Vec<i32>>, // BYYEARDAY: 1-366 or -1 to -366
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub by_week_no: Option<Vec<i32>>,   // BYWEEKNO: 1-53 or -1 to -53
+    pub by_week_no: Option<Vec<i32>>, // BYWEEKNO: 1-53 or -1 to -53
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub by_month: Option<Vec<u32>>,     // BYMONTH: 1-12
+    pub by_month: Option<Vec<u32>>, // BYMONTH: 1-12
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub by_set_pos: Option<Vec<i32>>,   // BYSETPOS: limits to nth occurrence
+    pub by_set_pos: Option<Vec<i32>>, // BYSETPOS: limits to nth occurrence
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub week_start: Option<String>,     // WKST: MO,TU,WE,TH,FR,SA,SU (default MO)
+    pub week_start: Option<String>, // WKST: MO,TU,WE,TH,FR,SA,SU (default MO)
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Reconcile, Hydrate)]
@@ -205,31 +108,95 @@ impl fmt::Display for Recurrence {
             write!(f, ";UNTIL={}", until)?;
         }
         if let Some(by_second) = &self.by_second {
-            write!(f, ";BYSECOND={}", by_second.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYSECOND={}",
+                by_second
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_minute) = &self.by_minute {
-            write!(f, ";BYMINUTE={}", by_minute.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYMINUTE={}",
+                by_minute
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_hour) = &self.by_hour {
-            write!(f, ";BYHOUR={}", by_hour.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYHOUR={}",
+                by_hour
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_day) = &self.by_day {
             write!(f, ";BYDAY={}", by_day.join(","))?;
         }
         if let Some(by_month_day) = &self.by_month_day {
-            write!(f, ";BYMONTHDAY={}", by_month_day.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYMONTHDAY={}",
+                by_month_day
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_year_day) = &self.by_year_day {
-            write!(f, ";BYYEARDAY={}", by_year_day.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYYEARDAY={}",
+                by_year_day
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_week_no) = &self.by_week_no {
-            write!(f, ";BYWEEKNO={}", by_week_no.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYWEEKNO={}",
+                by_week_no
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_month) = &self.by_month {
-            write!(f, ";BYMONTH={}", by_month.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYMONTH={}",
+                by_month
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(by_set_pos) = &self.by_set_pos {
-            write!(f, ";BYSETPOS={}", by_set_pos.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))?;
+            write!(
+                f,
+                ";BYSETPOS={}",
+                by_set_pos
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         if let Some(week_start) = &self.week_start {
             write!(f, ";WKST={}", week_start)?;
@@ -341,10 +308,10 @@ impl Action {
     }
 
     /// Expand recurrence rule into a list of occurrence dates
-    /// 
+    ///
     /// Uses the do_date_time as DTSTART and the recurrence field as RRULE.
     /// Returns an empty vector if no recurrence is present or if parsing fails.
-    /// 
+    ///
     /// # Arguments
     /// * `limit` - Maximum number of occurrences to generate
     pub fn expand_occurrences(&self, limit: u16) -> Vec<DateTime<Tz>> {
@@ -359,11 +326,11 @@ impl Action {
         };
 
         // Construct the full RRULE string: "DTSTART:...\nRRULE:..."
-        // Note: rrule crate expects specific format. 
+        // Note: rrule crate expects specific format.
         // We need to convert Local DateTime to a specific timezone or UTC for rrule.
         // For simplicity in this CLI, we'll try to treat it as local/unspecified or UTC.
         // RFC 5545 requires DTSTART.
-        
+
         let recurrence_str = recurrence.to_string();
         let clean_recurrence = if recurrence_str.starts_with("R:") {
             &recurrence_str[2..]
@@ -371,12 +338,14 @@ impl Action {
             &recurrence_str
         };
 
-        let rrule_str = format!("DTSTART:{}\nRRULE:{}", dt_start.format("%Y%m%dT%H%M%S"), clean_recurrence);
-        
+        let rrule_str = format!(
+            "DTSTART:{}\nRRULE:{}",
+            dt_start.format("%Y%m%dT%H%M%S"),
+            clean_recurrence
+        );
+
         match rrule_str.parse::<rrule::RRuleSet>() {
-            Ok(rrule_set) => {
-                rrule_set.all(limit).dates
-            },
+            Ok(rrule_set) => rrule_set.all(limit).dates,
             Err(e) => {
                 eprintln!("Failed to parse recurrence rule: {}", e);
                 Vec::new()
@@ -396,68 +365,6 @@ impl TryFrom<TreeWrapper> for ActionList {
     fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
         let parsed: ParsedDocument = value.try_into()?;
         Ok(parsed.actions)
-    }
-}
-
-impl TryFrom<TreeWrapper> for ParsedDocument {
-    type Error = String;
-    fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
-        let root = value.tree.root_node();
-        let mut action_list = Vec::new();
-        let mut source_map = HashMap::new();
-        let mut tag_index = HashMap::new();
-        let mut syntax_errors = Vec::new();
-        let mut cursor = root.walk();
-
-        // Collect syntax errors (ERROR and MISSING nodes)
-        if root.has_error() {
-            let mut stack = vec![root];
-            while let Some(node) = stack.pop() {
-                if node.is_error() || node.is_missing() {
-                    let start = node.start_position();
-                    let end = node.end_position();
-                    let message = if node.is_missing() {
-                        format!("missing '{}'", node.kind())
-                    } else {
-                        "unexpected token".to_string()
-                    };
-                    syntax_errors.push(LintDiagnostic::error(
-                        "syntax-error",
-                        message,
-                        SourceRange {
-                            start_row: start.row,
-                            start_col: start.column,
-                            end_row: end.row,
-                            end_col: end.column,
-                        },
-                    ));
-                }
-                // Don't recurse into errors themselves, just find the top-most ones
-                if !node.is_error() {
-                    for child in node.children(&mut cursor) {
-                        stack.push(child);
-                    }
-                }
-            }
-        }
-
-        // Iterate through all root actions
-        for root_action in root.children(&mut cursor) {
-            if root_action.kind() == "root_action" {
-                let wrapper = create_node_wrapper(root_action, value.source.clone());
-                action_list.extend(
-                    parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)
-                        .map_err(|e| e.to_string())?,
-                );
-            }
-        }
-
-        Ok(ParsedDocument {
-            actions: action_list,
-            source_map,
-            tag_index,
-            syntax_errors,
-        })
     }
 }
 
@@ -536,10 +443,14 @@ pub fn parse_action_recursive(
     let mut raw_id = None;
 
     let mut metadata_cursor = node.node.walk();
-    for meta in node.node.children_by_field_name("metadata", &mut metadata_cursor) {
+    for meta in node
+        .node
+        .children_by_field_name("metadata", &mut metadata_cursor)
+    {
         // Track line end position for source mapping
         if meta.end_position().row > line_end_pos.row
-           || (meta.end_position().row == line_end_pos.row && meta.end_position().column > line_end_pos.column)
+            || (meta.end_position().row == line_end_pos.row
+                && meta.end_position().column > line_end_pos.column)
         {
             line_end_pos = meta.end_position();
         }
@@ -549,8 +460,7 @@ pub fn parse_action_recursive(
                 description = get_prefixed_text(&meta, &node.source, '$');
             }
             "priority" => {
-                priority = get_prefixed_text(&meta, &node.source, '!')
-                    .and_then(|s| s.parse().ok());
+                priority = get_prefixed_text(&meta, &node.source, '!').and_then(|s| s.parse().ok());
             }
             "story" => {
                 let text = get_node_text(&meta, &node.source);
@@ -613,20 +523,23 @@ pub fn parse_action_recursive(
     }
 
     // Record metadata
-    source_map.insert(action_id, SourceMetadata {
-        root: action_range,
-        line_range: SourceRange {
-            start_row: action_range.start_row,
-            start_col: action_range.start_col,
-            end_row: line_end_pos.row,
-            end_col: line_end_pos.column,
+    source_map.insert(
+        action_id,
+        SourceMetadata {
+            root: action_range,
+            line_range: SourceRange {
+                start_row: action_range.start_row,
+                start_col: action_range.start_col,
+                end_row: line_end_pos.row,
+                end_col: line_end_pos.column,
+            },
+            do_date: do_date_range,
+            completed_date: completed_date_range,
+            created_date: created_date_range,
+            is_id_generated,
+            raw_id,
         },
-        do_date: do_date_range,
-        completed_date: completed_date_range,
-        created_date: created_date_range,
-        is_id_generated,
-        raw_id,
-    });
+    );
 
     // Create the action
     actions.push(Action {
@@ -642,7 +555,11 @@ pub fn parse_action_recursive(
         recurrence,
         completed_date_time,
         created_date_time,
-        predecessors: if predecessors.is_empty() { None } else { Some(predecessors) },
+        predecessors: if predecessors.is_empty() {
+            None
+        } else {
+            Some(predecessors)
+        },
         story,
         alias,
         is_sequential,
@@ -652,13 +569,20 @@ pub fn parse_action_recursive(
     let mut child_cursor = node.node.walk();
     for child_node in node.node.children_by_field_name("child", &mut child_cursor) {
         let child_wrapper = create_node_wrapper(child_node, node.source.clone());
-        actions.extend(parse_action_recursive(child_wrapper, Some(action_id), source_map, tag_index)?);
+        actions.extend(parse_action_recursive(
+            child_wrapper,
+            Some(action_id),
+            source_map,
+            tag_index,
+        )?);
     }
 
     Ok(actions)
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reconcile, Hydrate)]
+#[derive(
+    Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reconcile, Hydrate,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionState {
     #[default]
@@ -695,8 +619,15 @@ fn parse_state_kind(kind: &str) -> Result<ActionState, &'static str> {
 }
 
 /// Add a tag reference to the index
-fn index_tag(tag_index: &mut HashMap<String, Vec<SourceRange>>, text: String, node: &tree_sitter::Node) {
-    tag_index.entry(text).or_default().push(SourceRange::from_node(node));
+fn index_tag(
+    tag_index: &mut HashMap<String, Vec<SourceRange>>,
+    text: String,
+    node: &tree_sitter::Node,
+) {
+    tag_index
+        .entry(text)
+        .or_default()
+        .push(SourceRange::from_node(node));
 }
 
 /// Parse a date field (do_date, completed_date, created_date) returning both the datetime and source range
@@ -798,9 +729,7 @@ fn parse_rrule(rrule_str: &str) -> Option<Recurrence> {
 }
 
 fn parse_int_list<T: std::str::FromStr>(s: &str) -> Vec<T> {
-    s.split(',')
-        .filter_map(|x| x.parse().ok())
-        .collect()
+    s.split(',').filter_map(|x| x.parse().ok()).collect()
 }
 
 #[cfg(test)]
@@ -819,7 +748,9 @@ mod tests {
             source: source.to_string(),
         };
 
-        tree_wrapper.try_into().expect("Failed to convert to ActionList")
+        tree_wrapper
+            .try_into()
+            .expect("Failed to convert to ActionList")
     }
 
     #[test]
@@ -841,7 +772,10 @@ mod tests {
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].name, "Buy groceries");
         assert_eq!(actions[0].state, ActionState::Completed);
-        assert_eq!(actions[0].description.as_ref().map(|s| s.trim()), Some("from the store"));
+        assert_eq!(
+            actions[0].description.as_ref().map(|s| s.trim()),
+            Some("from the store")
+        );
         assert_eq!(actions[0].priority, Some(1));
         assert!(actions[0].context_list.is_some());
     }
@@ -878,7 +812,10 @@ mod tests {
         assert!(action.do_date_time.is_some());
         assert_eq!(action.do_duration, Some(60));
 
-        let recurrence = action.recurrence.as_ref().expect("Recurrence should be present");
+        let recurrence = action
+            .recurrence
+            .as_ref()
+            .expect("Recurrence should be present");
         assert_eq!(recurrence.frequency, "weekly");
         assert_eq!(recurrence.by_day, Some(vec!["MO".to_string()]));
         assert_eq!(recurrence.interval, Some(2));
@@ -932,10 +869,10 @@ mod tests {
     #[test]
     fn test_expand_occurrences() {
         use chrono::TimeZone;
-        
+
         // Create a fixed start date: 2025-01-01 09:00:00 (Wednesday)
         let dt_start = Local.with_ymd_and_hms(2025, 1, 1, 9, 0, 0).unwrap();
-        
+
         let recurrence = Recurrence {
             frequency: "daily".to_string(),
             interval: Some(1),
@@ -973,9 +910,9 @@ mod tests {
         };
 
         let occurrences = action.expand_occurrences(10);
-        
+
         assert_eq!(occurrences.len(), 3);
-        
+
         // Verify dates (ignoring time zone specifics for this simple test, just checking sequence)
         // Note: rrule returns DateTime<Tz>, we can format to check
         assert_eq!(occurrences[0].format("%Y-%m-%d").to_string(), "2025-01-01");
@@ -1062,12 +999,12 @@ mod tests {
 
     #[test]
     fn test_parse_empty_context_behavior() {
-        // This test confirms that the new permissive grammar/parser treats a standalone "+" 
+        // This test confirms that the new permissive grammar/parser treats a standalone "+"
         // as a valid context node with an empty tag string.
         let source = "[ ] Task +";
         let actions = parse_actions(source);
         assert_eq!(actions.len(), 1);
-        
+
         // The permissive grammar accepts "+", resulting in Some([""])
         assert!(actions[0].context_list.is_some());
         let contexts = actions[0].context_list.as_ref().unwrap();

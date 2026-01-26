@@ -1,9 +1,70 @@
-use crate::entities::{
-    Action, ActionState, LintDiagnostic, LintResults, LintSeverity, ParsedDocument, SourceMetadata,
-};
+use crate::entities::{Action, ActionState, parse_action_recursive};
+use crate::treesitter::{TreeWrapper, create_node_wrapper};
+use crate::{ParsedDocument, SourceMetadata, SourceRange};
 use chrono::Local;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LintSeverity {
+    Error,
+    Warning,
+    Info,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LintDiagnostic {
+    pub code: String,
+    pub severity: LintSeverity,
+    pub message: String,
+    pub range: SourceRange,
+}
+
+impl LintDiagnostic {
+    pub fn new(code: &str, severity: LintSeverity, message: String, range: SourceRange) -> Self {
+        Self {
+            code: code.to_string(),
+            severity,
+            message,
+            range,
+        }
+    }
+
+    pub fn error(code: &str, message: String, range: SourceRange) -> Self {
+        Self::new(code, LintSeverity::Error, message, range)
+    }
+
+    pub fn warning(code: &str, message: String, range: SourceRange) -> Self {
+        Self::new(code, LintSeverity::Warning, message, range)
+    }
+
+    pub fn info(code: &str, message: String, range: SourceRange) -> Self {
+        Self::new(code, LintSeverity::Info, message, range)
+    }
+}
+
+/// Structured lint results grouped by severity
+#[derive(Debug, Clone, Default)]
+pub struct LintResults {
+    pub errors: Vec<LintDiagnostic>,
+    pub warnings: Vec<LintDiagnostic>,
+    pub info: Vec<LintDiagnostic>,
+}
+
+/// IntoIterator for ergonomic `for diag in results` usage
+impl IntoIterator for LintResults {
+    type Item = LintDiagnostic;
+    type IntoIter = std::vec::IntoIter<LintDiagnostic>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut all = Vec::with_capacity(self.errors.len() + self.warnings.len() + self.info.len());
+        all.extend(self.errors);
+        all.extend(self.warnings);
+        all.extend(self.info);
+        all.into_iter()
+    }
+}
 
 // ============================================================================
 // Check Types
@@ -27,7 +88,7 @@ pub const ACTION_ERROR_CHECKS: &[ActionCheck] = &[
     check_empty_context,              // E003
     // E004, E005 - parser/grammar level
     check_invalid_uuid, // E006
-                        // E007 - parser level
+    // E007 - parser level
     check_orphaned_child, // E010
     check_skipped_level,  // E011
 ];
@@ -139,7 +200,10 @@ fn check_hierarchy_levels(doc: &ParsedDocument) -> Vec<LintDiagnostic> {
             if depth > 5 {
                 diagnostics.push(LintDiagnostic::warning(
                     "W001",
-                    format!("Action depth {} exceeds recommended maximum of 5 (W001).", depth),
+                    format!(
+                        "Action depth {} exceeds recommended maximum of 5 (W001).",
+                        depth
+                    ),
                     metadata.root,
                 ));
             }
@@ -163,6 +227,67 @@ fn check_hierarchy_levels(doc: &ParsedDocument) -> Vec<LintDiagnostic> {
         }
     }
     diagnostics
+}
+impl TryFrom<TreeWrapper> for ParsedDocument {
+    type Error = String;
+    fn try_from(value: TreeWrapper) -> Result<Self, Self::Error> {
+        let root = value.tree.root_node();
+        let mut action_list = Vec::new();
+        let mut source_map = HashMap::new();
+        let mut tag_index = HashMap::new();
+        let mut syntax_errors = Vec::new();
+        let mut cursor = root.walk();
+
+        // Collect syntax errors (ERROR and MISSING nodes)
+        if root.has_error() {
+            let mut stack = vec![root];
+            while let Some(node) = stack.pop() {
+                if node.is_error() || node.is_missing() {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    let message = if node.is_missing() {
+                        format!("missing '{}'", node.kind())
+                    } else {
+                        "unexpected token".to_string()
+                    };
+                    syntax_errors.push(LintDiagnostic::error(
+                        "syntax-error",
+                        message,
+                        SourceRange {
+                            start_row: start.row,
+                            start_col: start.column,
+                            end_row: end.row,
+                            end_col: end.column,
+                        },
+                    ));
+                }
+                // Don't recurse into errors themselves, just find the top-most ones
+                if !node.is_error() {
+                    for child in node.children(&mut cursor) {
+                        stack.push(child);
+                    }
+                }
+            }
+        }
+
+        // Iterate through all root actions
+        for root_action in root.children(&mut cursor) {
+            if root_action.kind() == "root_action" {
+                let wrapper = create_node_wrapper(root_action, value.source.clone());
+                action_list.extend(
+                    parse_action_recursive(wrapper, None, &mut source_map, &mut tag_index)
+                        .map_err(|e| e.to_string())?,
+                );
+            }
+        }
+
+        Ok(ParsedDocument {
+            actions: action_list,
+            source_map,
+            tag_index,
+            syntax_errors,
+        })
+    }
 }
 
 /// Check if recurrence is present without a do-date (E002)
@@ -366,7 +491,6 @@ fn check_missing_creation_date(
 // Action-Level Checks (continued)
 // ============================================================================
 
-
 /// Check if creation date is in the future (W005)
 fn check_future_creation_date(
     action: &Action,
@@ -507,7 +631,7 @@ mod tests {
     #[test]
     fn test_check_invalid_uuid_format() {
         // Test the check_invalid_uuid function directly since grammar won't parse invalid formats
-        use crate::entities::{Action, SourceMetadata, SourceRange};
+        use crate::entities::Action;
         let action = Action {
             id: uuid::Uuid::nil(),
             parent_id: None,
@@ -616,7 +740,7 @@ mod tests {
     #[test]
     fn test_check_empty_context_tag() {
         // Test the check_empty_context function directly since grammar may prevent empty tags
-        use crate::entities::{Action, SourceMetadata, SourceRange};
+        use crate::entities::Action;
         let action = Action {
             id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
             parent_id: None,
@@ -696,7 +820,7 @@ mod tests {
     #[test]
     fn test_check_duration_without_do_date() {
         // Test the function directly since parsing D without @ may not be valid in grammar
-        use crate::entities::{Action, SourceMetadata, SourceRange};
+        use crate::entities::Action;
         let action = Action {
             id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
             parent_id: None,
@@ -744,7 +868,7 @@ mod tests {
 
     #[test]
     fn test_check_duration_with_do_date_ok() {
-        use crate::entities::{Action, SourceMetadata, SourceRange};
+        use crate::entities::Action;
         let action = Action {
             id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
             parent_id: None,
@@ -789,7 +913,7 @@ mod tests {
 
     #[test]
     fn test_check_recurrence_without_do_date() {
-        use crate::entities::{Action, Recurrence, SourceMetadata, SourceRange};
+        use crate::entities::{Action, Recurrence};
         let action = Action {
             id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
             parent_id: None,
@@ -853,7 +977,7 @@ mod tests {
 
     #[test]
     fn test_check_recurrence_with_do_date_ok() {
-        use crate::entities::{Action, Recurrence, SourceMetadata, SourceRange};
+        use crate::entities::{Action, Recurrence};
         let action = Action {
             id: uuid::Uuid::parse_str("01942d99-4c27-77f6-9316-107024843939").unwrap(),
             parent_id: None,

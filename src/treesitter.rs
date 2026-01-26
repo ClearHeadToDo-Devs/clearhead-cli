@@ -29,7 +29,7 @@ pub fn validate_tree(tree: &Tree) -> Result<(), String> {
         // Find the specific error node
         let mut cursor = root.walk();
         let mut error_node = None;
-        
+
         // Depth-first search for the first ERROR or MISSING node
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
@@ -48,7 +48,11 @@ pub fn validate_tree(tree: &Tree) -> Result<(), String> {
                 "Syntax error at line {}, column {}: {}",
                 start.row + 1,
                 start.column + 1,
-                if err.is_missing() { format!("missing '{}'", err.kind()) } else { "unexpected token".to_string() }
+                if err.is_missing() {
+                    format!("missing '{}'", err.kind())
+                } else {
+                    "unexpected token".to_string()
+                }
             ));
         }
         return Err("Syntax error in actions file".to_string());
@@ -76,7 +80,9 @@ pub struct NodeWrapper<'a> {
 impl<'a> NodeWrapper<'a> {
     /// Get a required child field, returning an error if missing
     pub fn require_field(&self, field: &str) -> Result<Node<'a>, &'static str> {
-        self.node.child_by_field_name(field).ok_or("Missing required field")
+        self.node
+            .child_by_field_name(field)
+            .ok_or("Missing required field")
     }
 
     /// Get the text content of this node
@@ -105,5 +111,36 @@ impl<'a> NodeWrapper<'a> {
             })
             .collect::<Vec<_>>()
             .into_iter()
+    }
+}
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SourceMetadata {
+    pub root: SourceRange,
+    pub line_range: SourceRange,
+    pub do_date: Option<SourceRange>,
+    pub completed_date: Option<SourceRange>,
+    pub created_date: Option<SourceRange>,
+    pub is_id_generated: bool,
+    pub raw_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SourceRange {
+    pub start_row: usize,
+    pub start_col: usize,
+    pub end_row: usize,
+    pub end_col: usize,
+}
+
+impl SourceRange {
+    pub fn from_node(node: &tree_sitter::Node) -> Self {
+        let start = node.start_position();
+        let end = node.end_position();
+        Self {
+            start_row: start.row,
+            start_col: start.column,
+            end_row: end.row,
+            end_col: end.column,
+        }
     }
 }

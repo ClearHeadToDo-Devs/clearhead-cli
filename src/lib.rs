@@ -1,25 +1,29 @@
 use serde_json::{Map, Value};
+use std::collections::HashMap;
 use tree_sitter::Tree;
+use uuid::Uuid;
 
-pub mod treesitter;
 pub mod sync_utils;
 
+pub mod treesitter;
+use treesitter::{SourceMetadata, SourceRange};
+
 pub mod entities;
-pub use entities::{Action, ActionList, ActionState, LintDiagnostic, LintResults, LintSeverity, ParsedDocument};
+pub use entities::{Action, ActionList, ActionState};
 
 pub mod domain;
-pub use domain::{ActPhase, Plan, PlannedAct, DomainModel};
+pub use domain::{ActPhase, DomainModel, Plan, PlannedAct};
 
 pub mod crdt;
 
 pub mod format;
-pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
+pub use format::{FormatConfig, FormatStyle, IndentStyle, OutputFormat, format};
 
 pub mod export;
 pub use export::format_as_icalendar;
 
 pub mod lint;
-pub use lint::lint_document;
+pub use lint::{LintDiagnostic, LintResults, LintSeverity, lint_document};
 
 pub mod archive;
 
@@ -35,7 +39,15 @@ pub mod workspace;
 pub mod diff;
 
 pub mod environment_reader;
-pub use environment_reader::{Config, load_config, get_data_dir, get_config_dir};
+pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
+
+#[derive(Debug, Clone)]
+pub struct ParsedDocument {
+    pub actions: ActionList,
+    pub source_map: HashMap<Uuid, SourceMetadata>,
+    pub tag_index: HashMap<String, Vec<SourceRange>>,
+    pub syntax_errors: Vec<LintDiagnostic>,
+}
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
 ///
@@ -77,7 +89,7 @@ pub fn merge_hashmaps(
 /// A `Vec<Action>` representing the flat list of parsed actions
 pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList, String> {
     let parsed_doc = get_parsed_document(actions)?;
-    
+
     // Check for syntax errors - for this strict function we still want to fail
     if !parsed_doc.syntax_errors.is_empty() {
         let err = &parsed_doc.syntax_errors[0];
@@ -88,7 +100,7 @@ pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList
             err.message
         ));
     }
-    
+
     Ok(parsed_doc.actions)
 }
 
@@ -183,8 +195,7 @@ pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionL
     use std::collections::HashSet;
 
     // Create in-memory store and load actions
-    let store = sql::create_database()
-        .map_err(|e| format!("Failed to create store: {}", e))?;
+    let store = sql::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
 
     sql::load_actions(&store, actions)
         .map_err(|e| format!("Failed to load actions into store: {}", e))?;
@@ -244,8 +255,7 @@ pub fn run_workspace_sql_query(
     use std::collections::HashSet;
 
     // Create in-memory store
-    let store = sql::create_database()
-        .map_err(|e| format!("Failed to create store: {}", e))?;
+    let store = sql::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
 
     // Load each file's actions with source metadata
     for sourced in &workspace.sourced_actions {

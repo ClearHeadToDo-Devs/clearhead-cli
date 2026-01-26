@@ -1,23 +1,22 @@
 use chrono::{DateTime, Local};
 use clearhead_cli::get_parsed_document;
-use clearhead_cli::entities::SourceRange;
 use clearhead_cli::lint::lint_document;
 use clearhead_cli::{LintDiagnostic, LintSeverity, ParsedDocument};
 use dashmap::DashMap;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
+use tracing::{debug, error, info, warn};
 use tree_sitter::{Parser, Tree};
 use uuid::Uuid;
-use tracing::{info, debug, warn, error};
 
-use clearhead_cli::format::{FormatConfig, OutputFormat, format};
-use clearhead_cli::treesitter::get_node_text;
 use clearhead_cli::archive::archive_actions;
-use clearhead_cli::diff::{diff_actions, FieldChange};
-use clearhead_cli::events::emit_event;
 use clearhead_cli::crdt::sync_file_to_crdt;
-use serde_json::{json, Value};
+use clearhead_cli::diff::{FieldChange, diff_actions};
+use clearhead_cli::events::emit_event;
+use clearhead_cli::format::{FormatConfig, OutputFormat, format};
+use clearhead_cli::treesitter::{SourceRange, get_node_text};
+use serde_json::{Value, json};
 use tower_lsp_server::jsonrpc::Error;
 
 #[derive(Debug)]
@@ -47,7 +46,7 @@ impl Backend {
         let mut parser = Self::get_parser();
         if let Some(tree) = parser.parse(&text, None) {
             let parsed = get_parsed_document(&text).ok();
-            
+
             let diagnostics = if let Some(ref p) = parsed {
                 debug!(uri = ?uri, action_count = p.actions.len(), "Document updated");
                 compute_diagnostics(p)
@@ -60,7 +59,9 @@ impl Backend {
             let last_saved_parsed = if is_fresh_load {
                 parsed.clone()
             } else {
-                self.documents.get(&uri).and_then(|d| d.last_saved_parsed.clone())
+                self.documents
+                    .get(&uri)
+                    .and_then(|d| d.last_saved_parsed.clone())
             };
 
             self.documents.insert(
@@ -77,8 +78,13 @@ impl Backend {
                 .publish_diagnostics(uri, diagnostics, None)
                 .await;
         } else {
-             error!(uri = ?uri, "Failed to parse document tree");
-             self.client.log_message(MessageType::ERROR, format!("Failed to parse document: {:?}", uri)).await;
+            error!(uri = ?uri, "Failed to parse document tree");
+            self.client
+                .log_message(
+                    MessageType::ERROR,
+                    format!("Failed to parse document: {:?}", uri),
+                )
+                .await;
         }
     }
 }
@@ -155,9 +161,9 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
     for action in &doc.actions {
         if let Some(metadata) = doc.source_map.get(&action.id) {
             let action_range = source_range_to_lsp_range(metadata.root);
-            
-            if range.start.line <= action_range.end.line 
-               && range.end.line >= action_range.start.line 
+
+            if range.start.line <= action_range.end.line
+                && range.end.line >= action_range.start.line
             {
                 let insert_pos = source_range_to_lsp_range(metadata.line_range).end;
 
@@ -173,8 +179,8 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                 }
 
                 // 2. Add Completion Date
-                if action.state == clearhead_cli::entities::ActionState::Completed 
-                   && action.completed_date_time.is_none() 
+                if action.state == clearhead_cli::entities::ActionState::Completed
+                    && action.completed_date_time.is_none()
                 {
                     let now = Local::now();
                     actions.push(create_quick_fix(
@@ -200,7 +206,10 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                     if !metadata.is_id_generated {
                         // Extract timestamp from UUID v7
                         let timestamp_ms = (action.id.as_u128() >> 80) as i64;
-                        if let Some(dt) = DateTime::from_timestamp(timestamp_ms / 1000, ((timestamp_ms % 1000) * 1_000_000) as u32) {
+                        if let Some(dt) = DateTime::from_timestamp(
+                            timestamp_ms / 1000,
+                            ((timestamp_ms % 1000) * 1_000_000) as u32,
+                        ) {
                             let local_dt: DateTime<Local> = dt.into();
                             actions.push(create_quick_fix(
                                 uri.clone(),
@@ -217,10 +226,7 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
     actions
 }
 /// Compute inlay hints using the parsed document model
-fn compute_inlay_hints(
-    doc: &ParsedDocument,
-    base_time: Option<DateTime<Local>>,
-) -> Vec<InlayHint> {
+fn compute_inlay_hints(doc: &ParsedDocument, base_time: Option<DateTime<Local>>) -> Vec<InlayHint> {
     let mut hints = Vec::new();
     let now = base_time.unwrap_or_else(Local::now);
 
@@ -400,7 +406,7 @@ impl LanguageServer for Backend {
             // Diff existing parsed vs last_saved
             if let (Some(current), Some(last)) = (&doc.parsed, &doc.last_saved_parsed) {
                 let diff = diff_actions(&last.actions, &current.actions);
-                
+
                 if !diff.is_empty() {
                     info!(
                         uri = ?uri,
@@ -419,21 +425,41 @@ impl LanguageServer for Backend {
                         "priority": action.priority,
                         "contexts": action.context_list,
                     });
-                    if let Err(e) = emit_event("action_created", &action.id.to_string(), file_path.as_deref(), metadata) {
+                    if let Err(e) = emit_event(
+                        "action_created",
+                        &action.id.to_string(),
+                        file_path.as_deref(),
+                        metadata,
+                    ) {
                         error!(error = %e, "Failed to log action_created");
-                        self.client.log_message(MessageType::WARNING, format!("Failed to log action_created: {}", e)).await;
+                        self.client
+                            .log_message(
+                                MessageType::WARNING,
+                                format!("Failed to log action_created: {}", e),
+                            )
+                            .await;
                     }
                 }
 
                 // Emit events for removed actions
                 for action in &diff.removed {
                     debug!(id = %action.id, name = %action.name, "Emitting action_deleted event");
-                     let metadata = json!({
+                    let metadata = json!({
                         "name": action.name,
                     });
-                    if let Err(e) = emit_event("action_deleted", &action.id.to_string(), file_path.as_deref(), metadata) {
+                    if let Err(e) = emit_event(
+                        "action_deleted",
+                        &action.id.to_string(),
+                        file_path.as_deref(),
+                        metadata,
+                    ) {
                         error!(error = %e, "Failed to log action_deleted");
-                        self.client.log_message(MessageType::WARNING, format!("Failed to log action_deleted: {}", e)).await;
+                        self.client
+                            .log_message(
+                                MessageType::WARNING,
+                                format!("Failed to log action_deleted: {}", e),
+                            )
+                            .await;
                     }
                 }
 
@@ -446,34 +472,77 @@ impl LanguageServer for Backend {
                                 if *new == clearhead_cli::entities::ActionState::Completed {
                                     // Completed
                                     let metadata = json!({ "previous_state": old.to_string() });
-                                    if let Err(e) = emit_event("action_completed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
-                                         error!(error = %e, "Failed to log action_completed");
-                                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_completed: {}", e)).await;
+                                    if let Err(e) = emit_event(
+                                        "action_completed",
+                                        &mod_action.id.to_string(),
+                                        file_path.as_deref(),
+                                        metadata,
+                                    ) {
+                                        error!(error = %e, "Failed to log action_completed");
+                                        self.client
+                                            .log_message(
+                                                MessageType::WARNING,
+                                                format!("Failed to log action_completed: {}", e),
+                                            )
+                                            .await;
                                     }
                                 } else if *old == clearhead_cli::entities::ActionState::Completed {
                                     // Un-completed (re-opened)
                                     let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
-                                    if let Err(e) = emit_event("action_reopened", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
-                                         error!(error = %e, "Failed to log action_reopened");
-                                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_reopened: {}", e)).await;
+                                    if let Err(e) = emit_event(
+                                        "action_reopened",
+                                        &mod_action.id.to_string(),
+                                        file_path.as_deref(),
+                                        metadata,
+                                    ) {
+                                        error!(error = %e, "Failed to log action_reopened");
+                                        self.client
+                                            .log_message(
+                                                MessageType::WARNING,
+                                                format!("Failed to log action_reopened: {}", e),
+                                            )
+                                            .await;
                                     }
                                 } else {
                                     // Other state change
                                     let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
-                                    if let Err(e) = emit_event("action_state_changed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
-                                         error!(error = %e, "Failed to log action_state_changed");
-                                         self.client.log_message(MessageType::WARNING, format!("Failed to log action_state_changed: {}", e)).await;
+                                    if let Err(e) = emit_event(
+                                        "action_state_changed",
+                                        &mod_action.id.to_string(),
+                                        file_path.as_deref(),
+                                        metadata,
+                                    ) {
+                                        error!(error = %e, "Failed to log action_state_changed");
+                                        self.client
+                                            .log_message(
+                                                MessageType::WARNING,
+                                                format!(
+                                                    "Failed to log action_state_changed: {}",
+                                                    e
+                                                ),
+                                            )
+                                            .await;
                                     }
                                 }
-                            },
+                            }
                             FieldChange::Name { old, new } => {
                                 debug!(id = %mod_action.id, old = %old, new = %new, "Emitting action rename event");
                                 let metadata = json!({ "old_name": old, "new_name": new });
-                                if let Err(e) = emit_event("action_renamed", &mod_action.id.to_string(), file_path.as_deref(), metadata) {
-                                     error!(error = %e, "Failed to log action_renamed");
-                                     self.client.log_message(MessageType::WARNING, format!("Failed to log action_renamed: {}", e)).await;
+                                if let Err(e) = emit_event(
+                                    "action_renamed",
+                                    &mod_action.id.to_string(),
+                                    file_path.as_deref(),
+                                    metadata,
+                                ) {
+                                    error!(error = %e, "Failed to log action_renamed");
+                                    self.client
+                                        .log_message(
+                                            MessageType::WARNING,
+                                            format!("Failed to log action_renamed: {}", e),
+                                        )
+                                        .await;
                                 }
-                            },
+                            }
                             // Log generic update for other fields
                             _ => {
                                 // We could be more specific, but for now just "action_updated"
@@ -493,7 +562,9 @@ impl LanguageServer for Backend {
                     }
                     Err(e) => {
                         warn!(error = %e, "Failed to sync to CRDT");
-                        self.client.log_message(MessageType::WARNING, format!("CRDT sync failed: {}", e)).await;
+                        self.client
+                            .log_message(MessageType::WARNING, format!("CRDT sync failed: {}", e))
+                            .await;
                     }
                 }
             }
@@ -603,10 +674,13 @@ impl LanguageServer for Backend {
                     let tag_text = get_node_text(&node, &doc.text);
                     if let Some(ref parsed) = doc.parsed {
                         if let Some(ranges) = parsed.tag_index.get(&tag_text) {
-                            let locations = ranges.iter().map(|r| Location {
-                                uri: uri.clone(),
-                                range: source_range_to_lsp_range(*r),
-                            }).collect();
+                            let locations = ranges
+                                .iter()
+                                .map(|r| Location {
+                                    uri: uri.clone(),
+                                    range: source_range_to_lsp_range(*r),
+                                })
+                                .collect();
                             return Ok(Some(locations));
                         }
                     }
@@ -619,27 +693,27 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        
+
         if let Some(doc) = self.documents.get(&uri) {
             // Simple line-based check for trigger characters
             // Note: This assumes ASCII alignment for column index, which is safe for @%^
             let line_idx = position.line as usize;
             let lines: Vec<&str> = doc.text.lines().collect();
-            
+
             if line_idx < lines.len() {
                 let line = lines[line_idx];
                 let char_idx = position.character as usize;
-                
+
                 if char_idx > 0 {
                     // Check character before cursor
                     let char_before = line.chars().nth(char_idx - 1);
-                    
+
                     if let Some(c) = char_before {
                         match c {
                             '@' | '%' | '^' => {
                                 let now = Local::now();
                                 let mut items = Vec::new();
-                                
+
                                 let make_item = |label: String, detail: &str| -> CompletionItem {
                                     CompletionItem {
                                         label: label.clone(),
@@ -653,11 +727,11 @@ impl LanguageServer for Backend {
                                 // 1. Full ISO DateTime (Now)
                                 let now_str = now.format("%Y-%m-%dT%H:%M").to_string();
                                 items.push(make_item(now_str, "Now"));
-                                
+
                                 // 2. Date Only (Today)
                                 let today_str = now.format("%Y-%m-%d").to_string();
                                 items.push(make_item(today_str, "Today"));
-                                
+
                                 // 3. Tomorrow
                                 let tomorrow = now + chrono::Duration::days(1);
                                 let tomorrow_str = tomorrow.format("%Y-%m-%d").to_string();
@@ -715,9 +789,11 @@ impl LanguageServer for Backend {
                         if let Some(doc) = self.documents.get(&uri) {
                             // Determine log directory (defaulting to data_dir/logs)
                             // In a real setup we might get this from the client config
-                            let source_path = uri.to_file_path().ok_or_else(|| Error::invalid_params("Invalid URI"))?;
+                            let source_path = uri
+                                .to_file_path()
+                                .ok_or_else(|| Error::invalid_params("Invalid URI"))?;
                             let log_dir = source_path.parent().unwrap().join("logs");
-                            
+
                             // Ensure log directory exists (ignoring errors for brevity in this step)
                             let _ = std::fs::create_dir_all(&log_dir);
 
@@ -727,10 +803,16 @@ impl LanguageServer for Backend {
                                     let edit = WorkspaceEdit {
                                         changes: Some({
                                             let mut map = std::collections::HashMap::new();
-                                            map.insert(uri.clone(), vec![TextEdit {
-                                                range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
-                                                new_text: new_content,
-                                            }]);
+                                            map.insert(
+                                                uri.clone(),
+                                                vec![TextEdit {
+                                                    range: Range::new(
+                                                        Position::new(0, 0),
+                                                        Position::new(u32::MAX, 0),
+                                                    ),
+                                                    new_text: new_content,
+                                                }],
+                                            );
                                             map
                                         }),
                                         ..Default::default()
@@ -739,16 +821,31 @@ impl LanguageServer for Backend {
                                     self.client.apply_edit(edit).await.map_err(|e| {
                                         let err = format!("Failed to apply edit: {}", e);
                                         Error {
-                                            code: tower_lsp_server::jsonrpc::ErrorCode::InternalError,
+                                            code:
+                                                tower_lsp_server::jsonrpc::ErrorCode::InternalError,
                                             message: err.into(),
                                             data: None,
                                         }
                                     })?;
 
-                                    self.client.show_message(MessageType::INFO, format!("Archived {} actions to {}", result.archived_count, result.log_path.display())).await;
+                                    self.client
+                                        .show_message(
+                                            MessageType::INFO,
+                                            format!(
+                                                "Archived {} actions to {}",
+                                                result.archived_count,
+                                                result.log_path.display()
+                                            ),
+                                        )
+                                        .await;
                                 }
                                 Err(e) => {
-                                    self.client.show_message(MessageType::WARNING, format!("Archive failed: {}", e)).await;
+                                    self.client
+                                        .show_message(
+                                            MessageType::WARNING,
+                                            format!("Archive failed: {}", e),
+                                        )
+                                        .await;
                                 }
                             }
                         }
@@ -795,7 +892,11 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
 
         // Verify LSP conversion
-        assert!(diagnostics.iter().all(|d| d.source == Some("clearhead-lsp".to_string())));
+        assert!(
+            diagnostics
+                .iter()
+                .all(|d| d.source == Some("clearhead-lsp".to_string()))
+        );
         assert!(diagnostics.iter().all(|d| d.code.is_some()));
     }
 
@@ -803,14 +904,14 @@ mod tests {
     fn test_lsp_format_normalizes() {
         let text = "[ ] Task without ID";
         let parsed = get_parsed_document(text).unwrap();
-        
+
         let config = FormatConfig {
             include_id: true,
             ..Default::default()
         };
 
         let formatted = format(&parsed.actions, OutputFormat::Actions, Some(config)).unwrap();
-        
+
         // Should contain a UUID
         assert!(formatted.contains("#"));
         assert!(formatted.contains("[ ] Task without ID"));
@@ -826,7 +927,9 @@ mod tests {
         let uri = Uri::from_file_path("/test.actions").unwrap();
 
         // 1. Initial load (did_open)
-        backend.update_document(uri.clone(), "[ ] Task 1".to_string(), true).await;
+        backend
+            .update_document(uri.clone(), "[ ] Task 1".to_string(), true)
+            .await;
         {
             let doc = backend.documents.get(&uri).unwrap();
             assert!(doc.last_saved_parsed.is_some());
@@ -834,7 +937,9 @@ mod tests {
         }
 
         // 2. Change (did_change)
-        backend.update_document(uri.clone(), "[ ] Task 1\n[ ] Task 2".to_string(), false).await;
+        backend
+            .update_document(uri.clone(), "[ ] Task 1\n[ ] Task 2".to_string(), false)
+            .await;
         {
             let doc = backend.documents.get(&uri).unwrap();
             assert_eq!(doc.parsed.as_ref().unwrap().actions.len(), 2);
@@ -853,7 +958,7 @@ mod tests {
         });
         let backend = service.inner();
         let uri = Uri::from_file_path("/test.actions").unwrap();
-        
+
         // Setup temp events DB
         let db_file = NamedTempFile::new().unwrap();
         let _db_path = db_file.path();
@@ -863,10 +968,22 @@ mod tests {
         // For this unit test, we'll just verify the diff logic and state update.
 
         // 1. Load initial state
-        backend.update_document(uri.clone(), "[ ] Task 1 #019baaec-00b6-7991-be34-94b68212619a".to_string(), true).await;
+        backend
+            .update_document(
+                uri.clone(),
+                "[ ] Task 1 #019baaec-00b6-7991-be34-94b68212619a".to_string(),
+                true,
+            )
+            .await;
 
         // 2. Change state to completed
-        backend.update_document(uri.clone(), "[x] Task 1 #019baaec-00b6-7991-be34-94b68212619a".to_string(), false).await;
+        backend
+            .update_document(
+                uri.clone(),
+                "[x] Task 1 #019baaec-00b6-7991-be34-94b68212619a".to_string(),
+                false,
+            )
+            .await;
 
         // 3. Trigger save
         let params = DidSaveTextDocumentParams {
@@ -878,7 +995,10 @@ mod tests {
         // 4. Verify last_saved was updated
         {
             let doc = backend.documents.get(&uri).unwrap();
-            assert_eq!(doc.last_saved_parsed.as_ref().unwrap().actions[0].state, clearhead_cli::entities::ActionState::Completed);
+            assert_eq!(
+                doc.last_saved_parsed.as_ref().unwrap().actions[0].state,
+                clearhead_cli::entities::ActionState::Completed
+            );
         }
     }
 
@@ -893,12 +1013,19 @@ mod tests {
 
         let actions = compute_code_actions(&parsed, &uri, range);
 
-        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
-            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
-            _ => None,
-        }).collect();
+        let titles: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+                _ => None,
+            })
+            .collect();
 
-        assert!(titles.contains(&"Hydrate Action (Add UUID)"), "Expected hydrate action, got: {:?}", titles);
+        assert!(
+            titles.contains(&"Hydrate Action (Add UUID)"),
+            "Expected hydrate action, got: {:?}",
+            titles
+        );
     }
 
     #[test]
@@ -910,12 +1037,19 @@ mod tests {
 
         let actions = compute_code_actions(&parsed, &uri, range);
 
-        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
-            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
-            _ => None,
-        }).collect();
+        let titles: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+                _ => None,
+            })
+            .collect();
 
-        assert!(titles.contains(&"Set Completion Date (Today)"), "Expected completion date action, got: {:?}", titles);
+        assert!(
+            titles.contains(&"Set Completion Date (Today)"),
+            "Expected completion date action, got: {:?}",
+            titles
+        );
     }
 
     #[test]
@@ -927,13 +1061,24 @@ mod tests {
 
         let actions = compute_code_actions(&parsed, &uri, range);
 
-        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
-            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
-            _ => None,
-        }).collect();
+        let titles: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+                _ => None,
+            })
+            .collect();
 
-        assert!(titles.contains(&"Set Creation Date (Today)"), "Expected creation date action, got: {:?}", titles);
-        assert!(titles.contains(&"Derive Creation Date from UUID"), "Expected derive from UUID action, got: {:?}", titles);
+        assert!(
+            titles.contains(&"Set Creation Date (Today)"),
+            "Expected creation date action, got: {:?}",
+            titles
+        );
+        assert!(
+            titles.contains(&"Derive Creation Date from UUID"),
+            "Expected derive from UUID action, got: {:?}",
+            titles
+        );
     }
 
     #[test]
@@ -946,7 +1091,11 @@ mod tests {
 
         let actions = compute_code_actions(&parsed, &uri, range);
 
-        assert!(actions.is_empty(), "Expected no actions when cursor is outside, got: {:?}", actions.len());
+        assert!(
+            actions.is_empty(),
+            "Expected no actions when cursor is outside, got: {:?}",
+            actions.len()
+        );
     }
 
     #[test]
@@ -958,12 +1107,18 @@ mod tests {
 
         let actions = compute_code_actions(&parsed, &uri, range);
 
-        let titles: Vec<_> = actions.iter().filter_map(|a| match a {
-            CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
-            _ => None,
-        }).collect();
+        let titles: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
+                _ => None,
+            })
+            .collect();
 
-        assert!(!titles.contains(&"Set Completion Date (Today)"), "Should not suggest completion date when already present");
+        assert!(
+            !titles.contains(&"Set Completion Date (Today)"),
+            "Should not suggest completion date when already present"
+        );
     }
 
     // Unit tests for compute_inlay_hints
@@ -980,7 +1135,9 @@ mod tests {
 
         assert_eq!(hints.len(), 1);
         match &hints[0].label {
-            InlayHintLabel::String(s) => assert!(s.contains("due in"), "Expected 'due in', got: {}", s),
+            InlayHintLabel::String(s) => {
+                assert!(s.contains("due in"), "Expected 'due in', got: {}", s)
+            }
             _ => panic!("Expected string label"),
         }
     }
@@ -1014,7 +1171,9 @@ mod tests {
 
         assert_eq!(hints.len(), 1);
         match &hints[0].label {
-            InlayHintLabel::String(s) => assert!(s.contains("due today"), "Expected 'due today', got: {}", s),
+            InlayHintLabel::String(s) => {
+                assert!(s.contains("due today"), "Expected 'due today', got: {}", s)
+            }
             _ => panic!("Expected string label"),
         }
     }
@@ -1031,7 +1190,11 @@ mod tests {
 
         assert_eq!(hints.len(), 1);
         match &hints[0].label {
-            InlayHintLabel::String(s) => assert!(s.contains("done") && s.contains("ago"), "Expected 'done X ago', got: {}", s),
+            InlayHintLabel::String(s) => assert!(
+                s.contains("done") && s.contains("ago"),
+                "Expected 'done X ago', got: {}",
+                s
+            ),
             _ => panic!("Expected string label"),
         }
     }
@@ -1050,7 +1213,9 @@ mod tests {
 
     fn get_tree(text: &str) -> Tree {
         let mut parser = Parser::new();
-        parser.set_language(&tree_sitter_actions::LANGUAGE.into()).unwrap();
+        parser
+            .set_language(&tree_sitter_actions::LANGUAGE.into())
+            .unwrap();
         parser.parse(text, None).unwrap()
     }
 
@@ -1062,7 +1227,10 @@ mod tests {
         let tokens = compute_semantic_tokens(&tree);
 
         // Should have token for id (type 0)
-        assert!(tokens.iter().any(|t| t.token_type == 0), "Expected id token (type 0)");
+        assert!(
+            tokens.iter().any(|t| t.token_type == 0),
+            "Expected id token (type 0)"
+        );
     }
 
     #[test]
@@ -1073,7 +1241,10 @@ mod tests {
         let tokens = compute_semantic_tokens(&tree);
 
         // Should have token for priority (type 1)
-        assert!(tokens.iter().any(|t| t.token_type == 1), "Expected priority token (type 1)");
+        assert!(
+            tokens.iter().any(|t| t.token_type == 1),
+            "Expected priority token (type 1)"
+        );
     }
 
     #[test]
@@ -1084,7 +1255,10 @@ mod tests {
         let tokens = compute_semantic_tokens(&tree);
 
         // Should have token for context (type 4)
-        assert!(tokens.iter().any(|t| t.token_type == 4), "Expected context token (type 4)");
+        assert!(
+            tokens.iter().any(|t| t.token_type == 4),
+            "Expected context token (type 4)"
+        );
     }
 
     #[test]
@@ -1095,7 +1269,10 @@ mod tests {
         let tokens = compute_semantic_tokens(&tree);
 
         // Should have token for do_date (type 5)
-        assert!(tokens.iter().any(|t| t.token_type == 5), "Expected date token (type 5)");
+        assert!(
+            tokens.iter().any(|t| t.token_type == 5),
+            "Expected date token (type 5)"
+        );
     }
 
     #[test]
@@ -1109,8 +1286,11 @@ mod tests {
         for window in tokens.windows(2) {
             let (a, b) = (&window[0], &window[1]);
             assert!(
-                b.delta_line > a.delta_line || (b.delta_line == a.delta_line && b.delta_start >= a.delta_start),
-                "Tokens not sorted: {:?} should come before {:?}", a, b
+                b.delta_line > a.delta_line
+                    || (b.delta_line == a.delta_line && b.delta_start >= a.delta_start),
+                "Tokens not sorted: {:?} should come before {:?}",
+                a,
+                b
             );
         }
     }
