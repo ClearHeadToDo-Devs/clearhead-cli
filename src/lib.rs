@@ -7,6 +7,9 @@ pub mod sync_utils;
 pub mod entities;
 pub use entities::{Action, ActionList, ActionState, LintDiagnostic, LintResults, LintSeverity, ParsedDocument};
 
+pub mod domain;
+pub use domain::{ActPhase, Plan, PlannedAct, DomainModel};
+
 pub mod crdt;
 
 pub mod format;
@@ -20,7 +23,10 @@ pub use lint::lint_document;
 
 pub mod archive;
 
-pub mod sql;
+pub mod graph;
+
+// Legacy alias for compatibility during refactor
+pub use graph as sql;
 
 pub mod events;
 

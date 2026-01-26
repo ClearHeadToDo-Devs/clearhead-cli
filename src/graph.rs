@@ -1,39 +1,44 @@
-//! SPARQL module for storing and querying actions using Oxigraph (RDF)
+//! RDF graph module for storing and querying actions using Oxigraph
 //!
-//! This module implements the RDF schema from the
-//! [actions specification](https://github.com/ClearHeadToDo-Devs/tree-sitter-actions/blob/main/docs/action_specification.md#rdf-mapping).
+//! This module implements the RDF schema from the Actions Vocabulary v4 ontology.
 //!
 //! # Architecture
 //!
 //! Actions are loaded into an in-memory Oxigraph store as RDF triples.
+//! The domain model (Plan, PlannedAct) maps to CCO-aligned classes.
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use clearhead_cli::sql;
+//! use clearhead_cli::graph;
 //!
 //! // Create store and load actions
-//! let store = sql::create_store()?;
-//! sql::load_actions(&store, &actions)?;
+//! let store = graph::create_store()?;
+//! graph::load_actions(&store, &actions)?;
 //!
 //! // Query for action IDs
-//! let ids = sql::query_actions(&store, "SELECT ?id WHERE { ?s <https://clearhead.us/vocab/actions/v3#hasPriority> 1 . ?s <https://clearhead.us/vocab/actions/v3#id> ?id }")?;
+//! let ids = graph::query_actions(&store, "SELECT ?id WHERE { ... }")?;
 //! ```
 
 use oxigraph::store::Store;
-use oxigraph::model::{NamedNode, Literal, Quad, Subject, Term, GraphName, BlankNode};
-use oxigraph::sparql::QueryResults;
+use oxigraph::model::{NamedNode, Literal, Quad, NamedOrBlankNode, Term, GraphName, BlankNode};
+use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use crate::entities::{Action, ActionList, ActionState, Recurrence};
+use crate::domain::{ActPhase, DomainModel, Plan, PlannedAct};
 use crate::environment_reader::Config;
 use chrono::DateTime;
 use uuid::Uuid;
 
-// Namespace constants
+// Namespace constants (v3 - legacy)
 const ACTIONS_NS: &str = "https://clearhead.us/vocab/actions/v3#";
 const SCHEMA_NS: &str = "http://schema.org/";
 const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
 const SKOS_NS: &str = "http://www.w3.org/2004/02/skos/core#";
+
+// Namespace constants (v4 - CCO-aligned)
+const ACTIONS_V4_NS: &str = "https://clearhead.us/vocab/actions/v4#";
+const CCO_NS: &str = "http://www.ontologyrepository.com/CommonCoreOntologies/";
 
 /// Create an in-memory Oxigraph store
 pub fn create_store() -> Result<Store, String> {
@@ -100,11 +105,11 @@ fn insert_action(
     file_path: Option<&str>,
     project: Option<&str>,
 ) -> Result<(), String> {
-    let subject = Subject::NamedNode(NamedNode::new(format!("urn:uuid:{}", action.id)).unwrap());
+    let subject = NamedOrBlankNode::NamedNode(NamedNode::new(format!("urn:uuid:{}", action.id)).unwrap());
     let graph = GraphName::DefaultGraph;
 
     // Helper to add triple
-    let mut add = |pred: NamedNode, term: Term| {
+    let add = |pred: NamedNode, term: Term| {
         store.insert(&Quad::new(subject.clone(), pred, term, graph.clone()))
             .map_err(|e| e.to_string())
     };
@@ -199,8 +204,8 @@ fn insert_action(
          let bnode = BlankNode::default();
          add(action_pred("hasRecurrence"), Term::BlankNode(bnode.clone()))?;
          
-         let r_subj = Subject::BlankNode(bnode);
-         let mut add_r = |pred: NamedNode, term: Term| {
+         let r_subj = NamedOrBlankNode::BlankNode(bnode);
+         let add_r = |pred: NamedNode, term: Term| {
             store.insert(&Quad::new(r_subj.clone(), pred, term, graph.clone()))
                 .map_err(|e| e.to_string())
         };
@@ -227,10 +232,15 @@ fn insert_action(
 ///
 /// The query should SELECT the `?id` variable.
 pub fn query_actions(store: &Store, sparql: &str) -> Result<Vec<String>, String> {
-    let results = store.query(sparql).map_err(|e| e.to_string())?;
-    
+    let results = SparqlEvaluator::new()
+        .parse_query(sparql)
+        .map_err(|e| e.to_string())?
+        .on_store(store)
+        .execute()
+        .map_err(|e| e.to_string())?;
+
     let mut ids = Vec::new();
-    
+
     if let QueryResults::Solutions(solutions) = results {
         for solution in solutions {
             let s = solution.map_err(|e| e.to_string())?;
@@ -241,7 +251,7 @@ pub fn query_actions(store: &Store, sparql: &str) -> Result<Vec<String>, String>
             }
         }
     }
-    
+
     Ok(ids)
 }
 
@@ -276,7 +286,7 @@ pub fn get_actions_from_sql(store: &Store, sql: &str) -> Result<ActionList, Stri
 }
 
 fn get_action_by_id(store: &Store, id: Uuid) -> Result<Action, String> {
-    let subject = Subject::NamedNode(NamedNode::new(format!("urn:uuid:{}", id)).unwrap());
+    let subject = NamedOrBlankNode::NamedNode(NamedNode::new(format!("urn:uuid:{}", id)).unwrap());
     let graph = GraphName::DefaultGraph;
     
     // Helper to find one object
@@ -437,7 +447,7 @@ pub fn load_tag_hierarchies(store: &Store, config: &Config) -> Result<(), String
             let child_uri = NamedNode::new(format!("urn:tag:{}", child.to_lowercase())).unwrap();
             
             store.insert(&Quad::new(
-                Subject::NamedNode(child_uri),
+                NamedOrBlankNode::NamedNode(child_uri),
                 NamedNode::new(format!("{}broader", SKOS_NS)).unwrap(),
                 Term::NamedNode(parent_uri),
                 GraphName::DefaultGraph
@@ -477,13 +487,282 @@ pub fn query_actions_by_context(store: &Store, context: &str) -> Result<Vec<Stri
 pub fn query_actions_by_project(store: &Store, project: &str) -> Result<Vec<String>, String> {
     // Search for explicit project OR inferred project
     let sparql = format!(
-        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{ ?s <{actions_ns}hasProject> \"{project}\" }}    UNION    {{ ?s <{actions_ns}inferredProject> \"{project}\" . 
+        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{ ?s <{actions_ns}hasProject> \"{project}\" }}    UNION    {{ ?s <{actions_ns}inferredProject> \"{project}\" .
                FILTER NOT EXISTS {{ ?s <{actions_ns}hasProject> ?any }}
             }}
         }}",
         actions_ns = ACTIONS_NS,
         project = project
     );
-    
+
     query_actions(store, &sparql)
+}
+
+// ============================================================================
+// V4 Domain Model (CCO-aligned)
+// ============================================================================
+
+fn v4_pred(name: &str) -> NamedNode {
+    ns(ACTIONS_V4_NS, name)
+}
+
+fn cco_class(name: &str) -> NamedNode {
+    ns(CCO_NS, name)
+}
+
+fn phase_node(phase: &ActPhase) -> NamedNode {
+    let name = match phase {
+        ActPhase::NotStarted => "NotStarted",
+        ActPhase::InProgress => "InProgress",
+        ActPhase::Completed => "Completed",
+        ActPhase::Blocked => "Blocked",
+        ActPhase::Cancelled => "Cancelled",
+    };
+    v4_pred(name)
+}
+
+/// Load a DomainModel into the store using v4 ontology
+///
+/// This inserts Plans and PlannedActs as separate entities with proper
+/// CCO-aligned types and relationships.
+pub fn load_domain_model(store: &Store, model: &DomainModel) -> Result<(), String> {
+    for plan in &model.plans {
+        insert_plan(store, plan)?;
+    }
+    for act in &model.acts {
+        insert_planned_act(store, act)?;
+    }
+    Ok(())
+}
+
+/// Insert a Plan into the store
+///
+/// Maps to cco:Plan - information content that defines a task.
+fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
+    let subject = NamedOrBlankNode::NamedNode(
+        NamedNode::new(format!("urn:uuid:{}", plan.id)).unwrap()
+    );
+    let graph = GraphName::DefaultGraph;
+
+    let add = |pred: NamedNode, term: Term| {
+        store.insert(&Quad::new(subject.clone(), pred, term, graph.clone()))
+            .map_err(|e| e.to_string())
+    };
+
+    // rdf:type cco:Plan
+    add(rdf_type(), Term::NamedNode(cco_class("Plan")))?;
+
+    // actions:id
+    add(v4_pred("id"), Term::Literal(Literal::new_simple_literal(plan.id.to_string())))?;
+
+    // schema:name
+    add(schema_pred("name"), Term::Literal(Literal::new_simple_literal(&plan.name)))?;
+
+    // schema:description
+    if let Some(desc) = &plan.description {
+        add(schema_pred("description"), Term::Literal(Literal::new_simple_literal(desc)))?;
+    }
+
+    // actions:hasPriority
+    if let Some(priority) = plan.priority {
+        add(
+            v4_pred("hasPriority"),
+            Term::Literal(Literal::new_typed_literal(priority.to_string(), ns(XSD_NS, "integer"))),
+        )?;
+    }
+
+    // actions:hasContext (multiple)
+    if let Some(contexts) = &plan.contexts {
+        for context in contexts {
+            add(v4_pred("hasContext"), Term::Literal(Literal::new_simple_literal(context)))?;
+        }
+    }
+
+    // actions:hasObjective (story/project)
+    if let Some(objective) = &plan.objective {
+        add(v4_pred("hasObjective"), Term::Literal(Literal::new_simple_literal(objective)))?;
+    }
+
+    // actions:partOf (parent plan)
+    if let Some(parent_id) = plan.parent {
+        let parent_uri = NamedNode::new(format!("urn:uuid:{}", parent_id)).unwrap();
+        add(v4_pred("partOf"), Term::NamedNode(parent_uri))?;
+    }
+
+    // actions:dependsOn (predecessor plans)
+    if let Some(deps) = &plan.depends_on {
+        for dep_id in deps {
+            let dep_uri = NamedNode::new(format!("urn:uuid:{}", dep_id)).unwrap();
+            add(v4_pred("dependsOn"), Term::NamedNode(dep_uri))?;
+        }
+    }
+
+    // actions:alias
+    if let Some(alias) = &plan.alias {
+        add(v4_pred("alias"), Term::Literal(Literal::new_simple_literal(alias)))?;
+    }
+
+    // actions:isSequential
+    if let Some(true) = plan.is_sequential {
+        add(
+            v4_pred("isSequential"),
+            Term::Literal(Literal::new_typed_literal("true", ns(XSD_NS, "boolean"))),
+        )?;
+    }
+
+    // Recurrence (as blank node)
+    if let Some(recurrence) = &plan.recurrence {
+        let bnode = BlankNode::default();
+        add(v4_pred("hasRecurrence"), Term::BlankNode(bnode.clone()))?;
+
+        let r_subj = NamedOrBlankNode::BlankNode(bnode);
+        let add_r = |pred: NamedNode, term: Term| {
+            store.insert(&Quad::new(r_subj.clone(), pred, term, graph.clone()))
+                .map_err(|e| e.to_string())
+        };
+
+        add_r(
+            v4_pred("frequency"),
+            Term::Literal(Literal::new_simple_literal(&recurrence.frequency)),
+        )?;
+
+        if let Some(interval) = recurrence.interval {
+            add_r(
+                v4_pred("interval"),
+                Term::Literal(Literal::new_typed_literal(interval.to_string(), ns(XSD_NS, "integer"))),
+            )?;
+        }
+
+        if let Some(by_day) = &recurrence.by_day {
+            for day in by_day {
+                add_r(v4_pred("byDay"), Term::Literal(Literal::new_simple_literal(day)))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Insert a PlannedAct into the store
+///
+/// Maps to cco:PlannedAct - an occurrence that realizes a Plan.
+fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
+    let subject = NamedOrBlankNode::NamedNode(
+        NamedNode::new(format!("urn:uuid:{}", act.id)).unwrap()
+    );
+    let graph = GraphName::DefaultGraph;
+
+    let add = |pred: NamedNode, term: Term| {
+        store.insert(&Quad::new(subject.clone(), pred, term, graph.clone()))
+            .map_err(|e| e.to_string())
+    };
+
+    // rdf:type cco:PlannedAct
+    add(rdf_type(), Term::NamedNode(cco_class("PlannedAct")))?;
+
+    // actions:id
+    add(v4_pred("id"), Term::Literal(Literal::new_simple_literal(act.id.to_string())))?;
+
+    // actions:prescribedBy (link to Plan)
+    let plan_uri = NamedNode::new(format!("urn:uuid:{}", act.plan_id)).unwrap();
+    add(v4_pred("prescribedBy"), Term::NamedNode(plan_uri))?;
+
+    // actions:hasPhase
+    add(v4_pred("hasPhase"), Term::NamedNode(phase_node(&act.phase)))?;
+
+    // actions:scheduledAt
+    if let Some(dt) = &act.scheduled_at {
+        add(
+            v4_pred("scheduledAt"),
+            Term::Literal(Literal::new_typed_literal(dt.to_rfc3339(), ns(XSD_NS, "dateTime"))),
+        )?;
+    }
+
+    // actions:duration
+    if let Some(duration) = act.duration {
+        add(
+            v4_pred("duration"),
+            Term::Literal(Literal::new_typed_literal(duration.to_string(), ns(XSD_NS, "integer"))),
+        )?;
+    }
+
+    // actions:completedAt
+    if let Some(dt) = &act.completed_at {
+        add(
+            v4_pred("completedAt"),
+            Term::Literal(Literal::new_typed_literal(dt.to_rfc3339(), ns(XSD_NS, "dateTime"))),
+        )?;
+    }
+
+    // actions:createdAt
+    if let Some(dt) = &act.created_at {
+        add(
+            v4_pred("createdAt"),
+            Term::Literal(Literal::new_typed_literal(dt.to_rfc3339(), ns(XSD_NS, "dateTime"))),
+        )?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+    use crate::entities::Action;
+
+    #[test]
+    fn test_load_domain_model() {
+        let store = create_store().unwrap();
+
+        let actions = vec![
+            Action::new("Test task"),
+        ];
+        let model = DomainModel::from_actions(&actions);
+
+        load_domain_model(&store, &model).unwrap();
+
+        // Verify Plan was inserted
+        let plan_query = format!(
+            "SELECT ?name WHERE {{ ?s a <{}Plan> . ?s <{}name> ?name }}",
+            CCO_NS, SCHEMA_NS
+        );
+        let results = SparqlEvaluator::new()
+            .parse_query(&plan_query).unwrap()
+            .on_store(&store)
+            .execute().unwrap();
+
+        if let QueryResults::Solutions(solutions) = results {
+            let names: Vec<_> = solutions
+                .filter_map(|s| s.ok())
+                .filter_map(|s| s.get("name").cloned())
+                .collect();
+            assert_eq!(names.len(), 1);
+        }
+    }
+
+    #[test]
+    fn test_plan_and_act_linked() {
+        let store = create_store().unwrap();
+
+        let actions = vec![Action::new("Linked task")];
+        let model = DomainModel::from_actions(&actions);
+        let plan_id = model.plans[0].id;
+
+        load_domain_model(&store, &model).unwrap();
+
+        // Query for PlannedAct that prescribedBy the Plan
+        let query = format!(
+            "SELECT ?act WHERE {{ ?act <{}prescribedBy> <urn:uuid:{}> }}",
+            ACTIONS_V4_NS, plan_id
+        );
+        let results = SparqlEvaluator::new()
+            .parse_query(&query).unwrap()
+            .on_store(&store)
+            .execute().unwrap();
+
+        if let QueryResults::Solutions(solutions) = results {
+            let acts: Vec<_> = solutions.filter_map(|s| s.ok()).collect();
+            assert_eq!(acts.len(), 1);
+        }
+    }
 }

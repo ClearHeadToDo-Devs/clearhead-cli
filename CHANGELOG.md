@@ -4,6 +4,95 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## 2026-01-25
+
+### Added
+- **V4 Domain Model (`domain.rs`):** New module with CCO-aligned structs that separate task definition from execution:
+  - `Plan` - information content (cco:Plan) - holds name, description, priority, contexts, recurrence, hierarchy
+  - `PlannedAct` - occurrence (cco:PlannedAct) - holds phase, scheduled time, completion time
+  - `ActPhase` - lifecycle state enum (NotStarted, InProgress, Completed, Blocked, Cancelled)
+  - `DomainModel` - container with `from_actions()` conversion from ActionList
+  - This implements the BFO insight: Plans are continuants (persist), PlannedActs are occurrents (unfold in time)
+
+- **V4 Graph Loading (`graph.rs`):** New functions for loading domain model into Oxigraph with v4 ontology:
+  - `load_domain_model(&store, &model)` - inserts Plans and PlannedActs as separate RDF entities
+  - `insert_plan()` / `insert_planned_act()` - v4 predicates with CCO types
+  - Uses `https://clearhead.us/vocab/actions/v4#` namespace
+
+### Changed
+- **Renamed `sql.rs` → `graph.rs`:** Better reflects that this is RDF/SPARQL graph operations, not SQL.
+  - Legacy alias `pub use graph as sql` preserved for compatibility during migration.
+
+- **Fixed Deprecated Oxigraph APIs:**
+  - `Subject` → `NamedOrBlankNode`
+  - `store.query()` → `SparqlEvaluator::new().parse_query().on_store().execute()`
+  - Removed unnecessary `mut` on closures
+
+- **Refactored Tree-sitter Parsing (`entities.rs`, `treesitter.rs`):** Cleaner helper functions reduce boilerplate:
+  - `get_prefixed_text(node, source, prefix)` - strips prefix char and trims
+  - `SourceRange::from_node(node)` - extract range from any node
+  - `parse_date_field()`, `parse_duration_field()`, `parse_recurrence_field()` - focused helpers
+  - Metadata parsing loop reduced from ~180 lines to ~65 lines
+
+### Architecture Note
+The data flow is now:
+```
+.actions file → Parse Tree → ActionList → DomainModel → Oxigraph (v4)
+                                       ↘ (v3 legacy path still works)
+```
+
+---
+
+## Roadmap: CRUD Operations
+
+The following work remains to enable full Create/Read/Update/Delete operations via the CLI:
+
+### 1. Create (Add new actions)
+- [ ] **`add` command**: Add new action to a file
+  - Parse existing file → ActionList
+  - Create new Action with provided name/metadata
+  - Append to list (or insert at position)
+  - Write back to file using formatter
+- [ ] **Interactive mode**: Prompt for name, priority, contexts, etc.
+- [ ] **Stdin support**: `echo "Buy milk" | clearhead add --file inbox.actions`
+
+### 2. Read (Already mostly complete)
+- [x] `read` command reads workspace or specific files
+- [x] Multiple output formats (actions, json, xml, table)
+- [ ] **Query by Plan vs PlannedAct**: Extend SPARQL queries to use v4 model
+- [ ] **Fix failing integration tests**: The `build_where_query()` generates malformed SPARQL
+
+### 3. Update (Modify existing actions)
+- [ ] **`update` command**: Modify action by ID
+  - `clearhead update <uuid> --state completed`
+  - `clearhead update <uuid> --priority 1 --context work`
+- [ ] **Surgical file edits**: Use source ranges from `ParsedDocument.source_map` to edit in-place
+  - Avoids full reparse/reformat cycle
+  - Preserves user formatting where possible
+- [ ] **Batch updates**: Update multiple actions matching a query
+  - `clearhead update --where "state = 'not_started'" --state in_progress`
+
+### 4. Delete (Remove actions)
+- [ ] **`delete` command**: Remove action by ID
+  - `clearhead delete <uuid>`
+  - Use source ranges for surgical removal
+- [ ] **Archive vs Delete**: Option to move to archive file instead of permanent delete
+- [ ] **Cascade option**: Delete action and all children
+
+### 5. Supporting Infrastructure
+- [ ] **File write-back**: Safe atomic writes (write to temp, rename)
+- [ ] **Conflict detection**: Check file hasn't changed since read (mtime or hash)
+- [ ] **Undo/history**: Integration with events.rs for operation logging
+- [ ] **CRDT sync**: Use crdt.rs for multi-device merge after local edits
+
+### 6. Graph/Query Improvements
+- [ ] **Migrate queries to v4**: Update `query_actions()` to query Plans/PlannedActs
+- [ ] **Fix `build_where_query()`**: Current SPARQL template has formatting issues
+- [ ] **Query by phase**: `clearhead read --phase completed`
+- [ ] **Query by plan hierarchy**: Find all acts under a plan subtree
+
+---
+
 ## 2026-01-17
 
 ### Changed
