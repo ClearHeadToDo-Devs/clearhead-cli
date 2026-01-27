@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn test_parse_with_metadata() {
-        let source = "[x] Buy groceries $from the store !1 +shopping";
+        let source = "[x] Buy groceries $from the store$ !1 +shopping";
         let actions = parse_actions(source);
 
         assert_eq!(actions.len(), 1);
