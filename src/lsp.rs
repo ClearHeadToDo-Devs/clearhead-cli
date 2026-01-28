@@ -758,7 +758,7 @@ impl LanguageServer for Backend {
                     ..Default::default()
                 };
 
-                match format(&parsed.actions, OutputFormat::Actions, Some(config)) {
+                match format(&parsed.actions, OutputFormat::Actions, Some(config), None) {
                     Ok(formatted_text) => {
                         // Replace the entire document using a standard large range
                         let start = Position::new(0, 0);
@@ -910,7 +910,7 @@ mod tests {
             ..Default::default()
         };
 
-        let formatted = format(&parsed.actions, OutputFormat::Actions, Some(config)).unwrap();
+        let formatted = format(&parsed.actions, OutputFormat::Actions, Some(config), None).unwrap();
 
         // Should contain a UUID
         assert!(formatted.contains("#"));

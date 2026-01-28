@@ -6,6 +6,65 @@ pub fn parse_cli() -> Cli {
     Cli::parse()
 }
 
+/// Valid column names for table output
+pub const VALID_COLUMNS: &[&str] = &[
+    "state",
+    "name",
+    "priority",
+    "due",
+    "dur",
+    "recurrence",
+    "context",
+    "description",
+    "id",
+];
+
+/// Validate column names and return error with valid options
+pub fn validate_column_names(names: &[String]) -> Result<(), String> {
+    let invalid: Vec<String> = names
+        .iter()
+        .filter(|name| !VALID_COLUMNS.contains(&name.to_lowercase().as_str()))
+        .map(|s| s.clone())
+        .collect();
+
+    if !invalid.is_empty() {
+        Err(format!(
+            "Unknown column(s): {}\nValid columns are: {}",
+            invalid.join(", "),
+            VALID_COLUMNS.join(", ")
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// CLI-specific table column filtering options (for use with clap arg parsing)
+#[derive(Args, Clone, Default, Debug, PartialEq)]
+pub struct CliTableOptions {
+    /// Only show these columns (comma-separated: name,state,priority)
+    #[arg(long, value_delimiter = ',')]
+    pub columns: Option<Vec<String>>,
+
+    /// Hide these columns (comma-separated)
+    #[arg(long, value_delimiter = ',')]
+    pub hide_columns: Option<Vec<String>>,
+
+    /// List all available column names and descriptions
+    #[arg(long)]
+    pub list_columns: bool,
+}
+
+impl CliTableOptions {
+    /// Convert CLI options to library's TableFormatOptions
+    pub fn to_lib_opts(&self) -> clearhead_cli::format::TableFormatOptions {
+        clearhead_cli::format::TableFormatOptions {
+            columns: self.columns.clone(),
+            hide_columns: self.hide_columns.clone(),
+            list_columns: self.list_columns,
+        }
+    }
+}
+
 /// Shared action field options used by Add and Update commands
 #[derive(Args, Clone, Default, Debug)]
 pub struct ActionFields {
@@ -37,7 +96,11 @@ impl From<ActionFields> for clearhead_cli::ActionUpdate {
             name: None, // name is handled separately
             priority: f.priority,
             description: f.description,
-            context: if f.context.is_empty() { None } else { Some(f.context) },
+            context: if f.context.is_empty() {
+                None
+            } else {
+                Some(f.context)
+            },
             alias: f.alias,
             state: f.state.map(|s| s.into()),
         }
@@ -101,6 +164,10 @@ pub enum Commands {
         /// Full SPARQL query (overrides --where)
         #[arg(long, conflicts_with = "where_clause")]
         sparql: Option<String>,
+
+        /// Table column filtering options
+        #[command(flatten)]
+        table_options: CliTableOptions,
 
         /// Input source (defaults to workspace-wide read)
         #[command(subcommand)]

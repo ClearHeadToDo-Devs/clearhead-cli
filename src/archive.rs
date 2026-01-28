@@ -105,7 +105,7 @@ pub fn archive_actions(
         String::new()
     };
 
-    let archived_text = format(&archived_actions, OutputFormat::Actions, None)?;
+    let archived_text = format(&archived_actions, OutputFormat::Actions, None, None)?;
     if !log_content.is_empty() && !log_content.ends_with('\n') {
         log_content.push('\n');
     }
@@ -116,7 +116,7 @@ pub fn archive_actions(
         .map_err(|e| format!("Failed to write to log file '{}': {}", log_path.display(), e))?;
 
     // Return new active content
-    let active_text = format(&active_actions, OutputFormat::Actions, None)?;
+    let active_text = format(&active_actions, OutputFormat::Actions, None, None)?;
     
     Ok((active_text, ArchiveResult {
         archived_count: archived_actions.len(),

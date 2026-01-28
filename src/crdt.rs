@@ -71,8 +71,13 @@ impl Workspace {
 
     pub fn ensure_dir(&self) -> Result<(), String> {
         let dir = self.crdt_dir();
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create workspace directory '{}': {}", dir.display(), e))
+        std::fs::create_dir_all(&dir).map_err(|e| {
+            format!(
+                "Failed to create workspace directory '{}': {}",
+                dir.display(),
+                e
+            )
+        })
     }
 }
 
@@ -145,13 +150,16 @@ impl CrdtStorage {
     pub fn workspace(&self) -> &Workspace {
         &self.workspace
     }
-    
+
     // Test helper
     pub fn with_dir(storage_dir: PathBuf) -> Result<Self, String> {
         std::fs::create_dir_all(&storage_dir).map_err(|e| format!("Failed: {}", e))?;
         // For tests, assume data dir is same as state dir unless specified
         Ok(CrdtStorage {
-            workspace: Workspace { state_dir: storage_dir.clone(), data_dir: storage_dir },
+            workspace: Workspace {
+                state_dir: storage_dir.clone(),
+                data_dir: storage_dir,
+            },
         })
     }
 }
@@ -163,15 +171,14 @@ impl WorkspaceDoc {
         let empty_state = WorkspaceState {
             files: HashMap::new(),
         };
-        reconcile(&mut doc, &empty_state)
-            .map_err(|e| format!("Failed to init CRDT: {}", e))?;
+        reconcile(&mut doc, &empty_state).map_err(|e| format!("Failed to init CRDT: {}", e))?;
         Ok(WorkspaceDoc { doc, workspace })
     }
 
     /// Get the ActionList for a specific file key
     pub fn get_actions_for_file(&self, key: &str) -> Result<ActionList, String> {
-        let state: WorkspaceState = hydrate(&self.doc)
-            .map_err(|e| format!("Failed to hydrate workspace: {}", e))?;
+        let state: WorkspaceState =
+            hydrate(&self.doc).map_err(|e| format!("Failed to hydrate workspace: {}", e))?;
 
         if let Some(domain) = state.files.get(key) {
             Ok(domain.to_action_list())
@@ -204,24 +211,25 @@ impl WorkspaceDoc {
 
     /// Project all files in the CRDT back to the filesystem
     pub fn project_all(&self) -> Result<(), String> {
-        let state: WorkspaceState = hydrate(&self.doc)
-            .map_err(|e| format!("Failed to hydrate workspace: {}", e))?;
+        let state: WorkspaceState =
+            hydrate(&self.doc).map_err(|e| format!("Failed to hydrate workspace: {}", e))?;
 
         let root = self.workspace.root_dir();
 
         for (relative_path, domain) in state.files {
             let full_path = root.join(relative_path);
-            
+
             // Ensure parent directory exists
             if let Some(parent) = full_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create directory {}: {}", parent.display(), e)
+                })?;
             }
 
             let actions = domain.to_action_list();
-            
-            use crate::{OutputFormat, format};
-            let formatted = format(&actions, OutputFormat::Actions, None)?;
+
+            use crate::{format, OutputFormat};
+            let formatted = format(&actions, OutputFormat::Actions, None, None)?;
 
             std::fs::write(&full_path, formatted)
                 .map_err(|e| format!("Failed to write file {}: {}", full_path.display(), e))?;
@@ -245,19 +253,22 @@ impl ActionRepository {
     pub fn load(file_path: PathBuf) -> Result<Self, String> {
         let storage = CrdtStorage::for_file(&file_path)?;
         let workspace = storage.workspace();
-        
+
         // Calculate stable relative key
         let root = workspace.root_dir();
         // Canonicalize if possible to ensure matching
         let file_abs = if file_path.is_absolute() {
             file_path.clone()
         } else {
-             // Best effort for relative paths passed in CLI
-             std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(&file_path)
+            // Best effort for relative paths passed in CLI
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(&file_path)
         };
-        
+
         // Try to make relative to root
-        let file_key = file_abs.strip_prefix(&root)
+        let file_key = file_abs
+            .strip_prefix(&root)
             .unwrap_or_else(|_| {
                 // Fallback: use filename if outside root (shouldn't happen in normal usage)
                 // or just use the full path string if we can't strip.
@@ -281,19 +292,19 @@ impl ActionRepository {
         // CRDT-First means we trust CRDT. But if CRDT is empty/missing key, and file exists,
         // we assume it's a new file import.
         if file_path.exists() {
-             let stored_actions = doc.get_actions_for_file(&file_key)?;
-             if stored_actions.is_empty() {
-                 // Potentially import from file
-                 let content = std::fs::read_to_string(&file_path)
-                     .map_err(|e| format!("Failed to read file: {}", e))?;
-                 
-                 // Avoid parsing empty files as errors
-                 if !content.trim().is_empty() {
-                     use crate::get_action_list_struct;
-                     let file_actions = get_action_list_struct(&serde_json::json!({}), &content)?;
-                     doc.update_file(&file_key, &file_actions)?;
-                 }
-             }
+            let stored_actions = doc.get_actions_for_file(&file_key)?;
+            if stored_actions.is_empty() {
+                // Potentially import from file
+                let content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+
+                // Avoid parsing empty files as errors
+                if !content.trim().is_empty() {
+                    use crate::get_action_list_struct;
+                    let file_actions = get_action_list_struct(&serde_json::json!({}), &content)?;
+                    doc.update_file(&file_key, &file_actions)?;
+                }
+            }
         }
 
         Ok(Self {
@@ -326,12 +337,11 @@ impl ActionRepository {
             write_shadow_file(&self.file_path)?;
         }
 
-        use crate::{OutputFormat, format};
-        let formatted = format(actions, OutputFormat::Actions, None)?;
+        use crate::{format, OutputFormat};
+        let formatted = format(actions, OutputFormat::Actions, None, None)?;
 
-        std::fs::write(&self.file_path, formatted).map_err(|e| {
-            format!("Failed to write to file: {}", e)
-        })?;
+        std::fs::write(&self.file_path, formatted)
+            .map_err(|e| format!("Failed to write to file: {}", e))?;
 
         Ok(())
     }
@@ -342,7 +352,10 @@ fn write_shadow_file(file_path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(&shadow_dir)
         .map_err(|e| format!("Failed to create shadow dir: {}", e))?;
 
-    let filename = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    let filename = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
     let shadow_path = shadow_dir.join(format!("{}.base", filename));
 
     std::fs::copy(file_path, &shadow_path)
@@ -362,7 +375,7 @@ mod tests {
         // Test that two files in the same workspace do not overwrite each other
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path().to_path_buf();
-        let workspace = Workspace { 
+        let workspace = Workspace {
             state_dir: root.clone(),
             data_dir: root.clone(),
         };
@@ -382,7 +395,7 @@ mod tests {
 
         // Reload and verify
         let loaded_doc = storage.load().unwrap();
-        
+
         let actions_a = loaded_doc.get_actions_for_file("file_a.actions").unwrap();
         assert_eq!(actions_a.len(), 1);
         assert_eq!(actions_a[0].name, "Task A");

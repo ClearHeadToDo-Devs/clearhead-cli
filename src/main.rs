@@ -59,7 +59,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
     debug!(data_dir = %data_dir.display(), "Data directory resolved");
 
     match &cli.command {
-        Commands::Read { format, where_clause, sparql, source } => {
+        Commands::Read { format, where_clause, sparql, table_options, source } => {
             use argparser::ReadSource;
 
             // Resolve format: CLI > Env > Config > Default
@@ -75,6 +75,20 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 return Err("SPARQL filtering (--where, --sparql) is only supported for workspace reads. \
                            Use 'read' without a subcommand to query the workspace.".to_string());
             }
+
+            // Convert CLI table options to library format if needed
+            let lib_table_opts = if output_format == clearhead_cli::OutputFormat::Table {
+                // Validate column names first
+                if let Some(ref cols) = table_options.columns {
+                    argparser::validate_column_names(cols)?;
+                }
+                if let Some(ref hide) = table_options.hide_columns {
+                    argparser::validate_column_names(hide)?;
+                }
+                Some(&table_options.to_lib_opts())
+            } else {
+                None
+            };
 
             let actions = match source {
                 // Workspace-wide read with optional filtering
@@ -114,7 +128,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             };
 
             info!(action_count = actions.len(), "Loaded actions");
-            println!("{}", clearhead_cli::format(&actions, output_format, None)?);
+            println!("{}", clearhead_cli::format(&actions, output_format, None, lib_table_opts)?);
             Ok(())
         }
         Commands::Query { query, file } => {
@@ -129,7 +143,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
             let actions = clearhead_cli::run_workspace_sql_query(&workspace, &sparql)?;
 
-            println!("{}", clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?);
+            println!("{}", clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?);
             Ok(())
         }
         Commands::Format { file, write, style, indent_style, indent_width } => {
@@ -155,7 +169,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 include_id: true,  // Preserve existing UUIDs (don't add new ones)
             };
 
-            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config))?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config), None)?;
 
             if *write {
                 if let Some(path) = input_file {
@@ -178,7 +192,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             let output = if *no_format {
                 // Just output with UUIDs, no formatting
-                clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?
+                clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?
             } else {
                 // Resolve indent settings from config
                 let resolved_indent_style = parse_indent_style(&config.cli_indent_style);
@@ -191,7 +205,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     indent_width: resolved_indent_width,
                     include_id: true,
                 };
-                clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config))?
+                clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, Some(format_config), None)?
             };
 
             if *write {
@@ -218,7 +232,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             clearhead_cli::patch_action_list(&mut primary_actions, &secondary_actions);
 
-            let formatted = clearhead_cli::format(&primary_actions, clearhead_cli::OutputFormat::Actions, None)?;
+            let formatted = clearhead_cli::format(&primary_actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
                 info!(path = %primary.display(), "Writing patched output to primary file");
@@ -534,7 +548,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             actions.push(new_action.clone());
 
-            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
                 repo.save(&actions)
@@ -648,7 +662,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 actions.push(instance);
             }
 
-            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
                 // Phase 2: Save Repo (Sync Out)
@@ -713,7 +727,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let action_name = action.name.clone();
             apply_updates(action, updates);
 
-            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
                 repo.save(&actions)
@@ -783,7 +797,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     info!(name = %action.name, id = %action.id, "Action deleted successfully");
                     println!("Deleted action: {} #{}", action.name, action.id);
                 } else {
-                     let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
+                     let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
                      println!("{}", formatted);
                 }
             } else {
