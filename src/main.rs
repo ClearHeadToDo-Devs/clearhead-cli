@@ -482,7 +482,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             }
             Ok(())
         }
-        Commands::Add { file, name, priority, context, description, write } => {
+        Commands::Add { file, name, fields, write } => {
             use chrono::Local;
             use uuid::Uuid;
             use clearhead_cli::entities::{Action, ActionState};
@@ -506,11 +506,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             }
 
             // Phase 1: Load Repo (Sync In)
-            // This loads CRDT and reconciles any manual file edits
             let mut repo = ActionRepository::load(input_file.clone())
                 .map_err(|e| format!("Failed to load repository: {}", e))?;
-            
-            // Get current state from Source of Truth
+
             let mut actions = repo.get_actions()
                 .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
 
@@ -518,11 +516,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let new_action = Action {
                 id: new_id,
                 parent_id: None,
-                state: ActionState::NotStarted,
+                state: fields.state.map(|s| s.into()).unwrap_or(ActionState::NotStarted),
                 name: name.clone(),
-                description: description.clone(),
-                priority: *priority,
-                context_list: if context.is_empty() { None } else { Some(context.clone()) },
+                description: fields.description.clone(),
+                priority: fields.priority,
+                context_list: if fields.context.is_empty() { None } else { Some(fields.context.clone()) },
                 do_date_time: None,
                 do_duration: None,
                 recurrence: None,
@@ -530,32 +528,29 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 created_date_time: Some(Local::now()),
                 predecessors: None,
                 story: None,
-                alias: None,
+                alias: fields.alias.clone(),
                 is_sequential: None,
             };
 
             actions.push(new_action.clone());
 
-            // Preview formatted output
             let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
 
             if *write {
-                // Phase 2: Save Repo (Sync Out)
-                // Updates CRDT, persists to disk, and updates file
                 repo.save(&actions)
                     .map_err(|e| format!("Failed to save repository: {}", e))?;
-                
-                // Emit event (Analytics/History)
+
                 let metadata = serde_json::json!({
                     "name": name,
-                    "priority": priority,
-                    "contexts": context,
+                    "priority": fields.priority,
+                    "contexts": fields.context,
+                    "alias": fields.alias,
                 });
-                
+
                 if let Err(e) = emit_event("action_created", &new_id.to_string(), Some(input_file.to_string_lossy().as_ref()), metadata) {
                     warn!(error = %e, "Failed to log data event");
                 }
-                
+
                 info!(name = %name, id = %new_id, "Action added successfully");
                 println!("Added action: {} #{}", name, new_id);
             } else {
@@ -678,6 +673,63 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     info!(name = %action_name, id = %action_id, "Action completed successfully");
                     println!("Completed action: {} #{}", action_name, action_id);
                 }
+            } else {
+                println!("{}", formatted);
+            }
+            Ok(())
+        }
+        Commands::Update { file, query, name, fields, write } => {
+            use clearhead_cli::events::emit_event;
+            use clearhead_cli::crdt::ActionRepository;
+            use clearhead_cli::{resolve_reference, apply_updates, ActionUpdate};
+
+            let input_file = file
+                .as_ref()
+                .map(|p| p.clone())
+                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
+
+            debug!(query = %query, input_file = %input_file.display(), "Executing Update command");
+
+            // Load repository
+            let mut repo = ActionRepository::load(input_file.clone())
+                .map_err(|e| format!("Failed to load repository: {}", e))?;
+
+            let mut actions = repo.get_actions()
+                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
+
+            // Resolve the reference
+            let resolved = resolve_reference(&actions, query)
+                .ok_or_else(|| format!("No action found matching '{}'", query))?;
+
+            debug!(index = resolved.index, match_type = ?resolved.match_type, "Resolved action reference");
+
+            // Build the update from CLI args
+            let mut updates: ActionUpdate = fields.clone().into();
+            updates.name = name.clone();
+
+            // Apply updates
+            let action = &mut actions[resolved.index];
+            let action_id = action.id;
+            let action_name = action.name.clone();
+            apply_updates(action, updates);
+
+            let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None)?;
+
+            if *write {
+                repo.save(&actions)
+                    .map_err(|e| format!("Failed to save repository: {}", e))?;
+
+                let metadata = serde_json::json!({
+                    "query": query,
+                    "match_type": format!("{:?}", resolved.match_type),
+                });
+
+                if let Err(e) = emit_event("action_updated", &action_id.to_string(), Some(input_file.to_string_lossy().as_ref()), metadata) {
+                    warn!(error = %e, "Failed to log data event");
+                }
+
+                info!(name = %action_name, id = %action_id, "Action updated successfully");
+                println!("Updated action: {} #{}", action_name, action_id);
             } else {
                 println!("{}", formatted);
             }

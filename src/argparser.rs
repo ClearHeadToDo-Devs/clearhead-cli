@@ -1,9 +1,74 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// CLI argument parser - returns typed structs for ergonomic access
 pub fn parse_cli() -> Cli {
     Cli::parse()
+}
+
+/// Shared action field options used by Add and Update commands
+#[derive(Args, Clone, Default, Debug)]
+pub struct ActionFields {
+    /// Priority of the action (1-9)
+    #[arg(short, long)]
+    pub priority: Option<u32>,
+
+    /// Contexts for the action (can be specified multiple times)
+    #[arg(short, long)]
+    pub context: Vec<String>,
+
+    /// Description of the action
+    #[arg(short, long)]
+    pub description: Option<String>,
+
+    /// Alias for referencing this action
+    #[arg(short, long)]
+    pub alias: Option<String>,
+
+    /// State of the action
+    #[arg(short, long, value_enum)]
+    pub state: Option<ActionStateArg>,
+}
+
+/// Convert CLI ActionFields to library ActionUpdate
+impl From<ActionFields> for clearhead_cli::ActionUpdate {
+    fn from(f: ActionFields) -> Self {
+        clearhead_cli::ActionUpdate {
+            name: None, // name is handled separately
+            priority: f.priority,
+            description: f.description,
+            context: if f.context.is_empty() { None } else { Some(f.context) },
+            alias: f.alias,
+            state: f.state.map(|s| s.into()),
+        }
+    }
+}
+
+/// Action state values for CLI
+#[derive(Clone, Copy, ValueEnum, Debug)]
+pub enum ActionStateArg {
+    /// Not started (default)
+    NotStarted,
+    /// In progress
+    InProgress,
+    /// Blocked/waiting
+    Blocked,
+    /// Completed
+    Completed,
+    /// Cancelled
+    Cancelled,
+}
+
+impl From<ActionStateArg> for clearhead_cli::ActionState {
+    fn from(s: ActionStateArg) -> Self {
+        match s {
+            ActionStateArg::NotStarted => clearhead_cli::ActionState::NotStarted,
+            ActionStateArg::InProgress => clearhead_cli::ActionState::InProgress,
+            ActionStateArg::Blocked => clearhead_cli::ActionState::BlockedorAwaiting,
+            ActionStateArg::Completed => clearhead_cli::ActionState::Completed,
+            ActionStateArg::Cancelled => clearhead_cli::ActionState::Cancelled,
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -138,19 +203,32 @@ pub enum Commands {
         /// File to add to. If not provided, uses the default file
         file: Option<PathBuf>,
 
-        /// Priority of the action (1-9)
-        #[arg(short, long)]
-        priority: Option<u32>,
-
-        /// Contexts for the action (can be specified multiple times)
-        #[arg(short, long)]
-        context: Vec<String>,
-
-        /// Description of the action
-        #[arg(short, long)]
-        description: Option<String>,
+        /// Action fields (priority, context, description, alias, state)
+        #[command(flatten)]
+        fields: ActionFields,
 
         /// Overwrite the input file with the added action
+        #[arg(short, long)]
+        write: bool,
+    },
+
+    /// Update an existing action
+    Update {
+        /// UUID, short UUID, alias, or name of the action to update
+        query: String,
+
+        /// File containing the action. If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// New name for the action
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// Action fields to update (priority, context, description, alias, state)
+        #[command(flatten)]
+        fields: ActionFields,
+
+        /// Overwrite the input file with the updates
         #[arg(short, long)]
         write: bool,
     },

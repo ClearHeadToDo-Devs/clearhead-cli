@@ -253,10 +253,10 @@ impl Action {
         }
 
         // Add metadata with spec-compliant spacing:
-        // - Space after $ (description icon only)
+        // - Description enclosed in $ ... $
         // - No space after other icons
         if let Some(description) = &self.description {
-            write!(f, " $ {}", description)?;
+            write!(f, " $ {} $", description)?;
         }
         if let Some(priority) = &self.priority {
             write!(f, " !{}", priority)?;
@@ -457,7 +457,10 @@ pub fn parse_action_recursive(
 
         match meta.kind() {
             "description" => {
-                description = get_prefixed_text(&meta, &node.source, '$');
+                // Extract just the 'text' field content, not the $ markers
+                description = meta
+                    .child_by_field_name("text")
+                    .map(|text_node| get_node_text(&text_node, &node.source).trim().to_string());
             }
             "priority" => {
                 priority = get_prefixed_text(&meta, &node.source, '!').and_then(|s| s.parse().ok());

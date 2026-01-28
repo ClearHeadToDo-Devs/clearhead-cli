@@ -27,6 +27,9 @@ pub use lint::{LintDiagnostic, LintResults, LintSeverity, lint_document};
 
 pub mod archive;
 
+pub mod mutations;
+pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
+
 pub mod graph;
 
 // Legacy alias for compatibility during refactor
