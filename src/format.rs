@@ -1,22 +1,9 @@
 use crate::entities::{Action, ActionList};
-use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
+use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use topiary_core::{formatter, Language, Operation, TopiaryQuery};
+use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 use topiary_tree_sitter_facade::Language as TreeSitterLanguage;
-
-/// Valid column names for table output
-const VALID_COLUMNS: &[&str] = &[
-    "state",
-    "name",
-    "priority",
-    "due",
-    "dur",
-    "recurrence",
-    "context",
-    "description",
-    "id",
-];
 
 /// Table column filtering options (defined in library for reusability)
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -253,7 +240,7 @@ fn format_as_table(
     }
 
     // Column names in fixed order
-    const COLUMN_NAMES: [&str; 9] = [
+    const COLUMN_NAMES: [&str; 10] = [
         "State",
         "Name",
         "Priority",
@@ -263,6 +250,7 @@ fn format_as_table(
         "Context",
         "Description",
         "ID",
+        "Story",
     ];
 
     // Build column index list based on filters
@@ -330,6 +318,11 @@ fn format_as_table(
                 .map(|d| d.to_string())
                 .unwrap_or_else(|| "-".to_string()),
             action.id.to_string()[..8].to_string(),
+            action
+                .story
+                .as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "-".to_string()),
         ];
 
         // Select only requested columns
@@ -342,7 +335,7 @@ fn format_as_table(
 }
 
 fn columns_to_show(names: &[String]) -> Vec<usize> {
-    const COLUMN_NAMES: [&str; 9] = [
+    const COLUMN_NAMES: [&str; 10] = [
         "State",
         "Name",
         "Priority",
@@ -352,6 +345,7 @@ fn columns_to_show(names: &[String]) -> Vec<usize> {
         "Context",
         "Description",
         "ID",
+        "Story",
     ];
 
     names

@@ -10,7 +10,7 @@ fn test_json_output_includes_context() {
         }
     ];
 
-    let result = format(&actions, OutputFormat::Json, None).unwrap();
+    let result = format(&actions, OutputFormat::Json, None, None).unwrap();
 
     // The JSON should contain @context reference
     assert!(result.contains("@context"));

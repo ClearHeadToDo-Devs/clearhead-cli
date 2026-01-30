@@ -35,14 +35,19 @@ pub mod graph;
 // Legacy alias for compatibility during refactor
 pub use graph as sql;
 
-pub mod events;
-
 pub mod workspace;
 
 pub mod diff;
 
 pub mod environment_reader;
 pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
+
+pub mod telemetry;
+pub use telemetry::{
+    TelemetryEvent, TelemetryRecord, Tool,
+    emit, emit_event, get_telemetry_dir,
+    event_from_field_change, event_from_state_change,
+};
 
 #[derive(Debug, Clone)]
 pub struct ParsedDocument {

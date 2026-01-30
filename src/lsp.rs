@@ -12,10 +12,12 @@ use uuid::Uuid;
 
 use clearhead_cli::archive::archive_actions;
 use clearhead_cli::diff::{FieldChange, diff_actions};
-use clearhead_cli::events::emit_event;
 use clearhead_cli::format::{FormatConfig, OutputFormat, format};
+use clearhead_cli::telemetry::{
+    emit_event, event_from_field_change, event_from_state_change, TelemetryEvent, Tool,
+};
 use clearhead_cli::treesitter::{SourceRange, get_node_text};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tower_lsp_server::jsonrpc::Error;
 
 #[derive(Debug)]
@@ -416,136 +418,64 @@ impl LanguageServer for Backend {
                     );
                 }
 
+                // Get file path for events
+                let event_file_path = file_path.clone().unwrap_or_default();
+
                 // Emit events for added actions
                 for action in &diff.added {
                     debug!(id = %action.id, name = %action.name, "Emitting action_created event");
-                    let metadata = json!({
-                        "name": action.name,
-                        "priority": action.priority,
-                        "contexts": action.context_list,
-                    });
                     if let Err(e) = emit_event(
-                        "action_created",
-                        &action.id.to_string(),
-                        file_path.as_deref(),
-                        metadata,
+                        Tool::Lsp,
+                        Some(action.id.to_string()),
+                        TelemetryEvent::ActionCreated {
+                            name: action.name.clone(),
+                            file_path: event_file_path.clone(),
+                        },
                     ) {
-                        error!(error = %e, "Failed to log action_created");
-                        self.client
-                            .log_message(
-                                MessageType::WARNING,
-                                format!("Failed to log action_created: {}", e),
-                            )
-                            .await;
+                        warn!(error = %e, "Failed to emit action_created event");
                     }
                 }
 
                 // Emit events for removed actions
                 for action in &diff.removed {
                     debug!(id = %action.id, name = %action.name, "Emitting action_deleted event");
-                    let metadata = json!({
-                        "name": action.name,
-                    });
                     if let Err(e) = emit_event(
-                        "action_deleted",
-                        &action.id.to_string(),
-                        file_path.as_deref(),
-                        metadata,
+                        Tool::Lsp,
+                        Some(action.id.to_string()),
+                        TelemetryEvent::ActionDeleted {
+                            name: action.name.clone(),
+                        },
                     ) {
-                        error!(error = %e, "Failed to log action_deleted");
-                        self.client
-                            .log_message(
-                                MessageType::WARNING,
-                                format!("Failed to log action_deleted: {}", e),
-                            )
-                            .await;
+                        warn!(error = %e, "Failed to emit action_deleted event");
                     }
                 }
 
                 // Emit events for modified actions
                 for mod_action in &diff.modified {
+                    let action_uuid = Some(mod_action.id.to_string());
+
+                    // Look up action name for state change events
+                    let action_name = current
+                        .actions
+                        .iter()
+                        .find(|a| a.id == mod_action.id)
+                        .map(|a| a.name.as_str())
+                        .unwrap_or("");
+
                     for change in &mod_action.changes {
-                        match change {
+                        let event = match change {
                             FieldChange::State { old, new } => {
-                                debug!(id = %mod_action.id, old = ?old, new = ?new, "Emitting action state change event");
-                                if *new == clearhead_cli::entities::ActionState::Completed {
-                                    // Completed
-                                    let metadata = json!({ "previous_state": old.to_string() });
-                                    if let Err(e) = emit_event(
-                                        "action_completed",
-                                        &mod_action.id.to_string(),
-                                        file_path.as_deref(),
-                                        metadata,
-                                    ) {
-                                        error!(error = %e, "Failed to log action_completed");
-                                        self.client
-                                            .log_message(
-                                                MessageType::WARNING,
-                                                format!("Failed to log action_completed: {}", e),
-                                            )
-                                            .await;
-                                    }
-                                } else if *old == clearhead_cli::entities::ActionState::Completed {
-                                    // Un-completed (re-opened)
-                                    let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
-                                    if let Err(e) = emit_event(
-                                        "action_reopened",
-                                        &mod_action.id.to_string(),
-                                        file_path.as_deref(),
-                                        metadata,
-                                    ) {
-                                        error!(error = %e, "Failed to log action_reopened");
-                                        self.client
-                                            .log_message(
-                                                MessageType::WARNING,
-                                                format!("Failed to log action_reopened: {}", e),
-                                            )
-                                            .await;
-                                    }
-                                } else {
-                                    // Other state change
-                                    let metadata = json!({ "previous_state": old.to_string(), "new_state": new.to_string() });
-                                    if let Err(e) = emit_event(
-                                        "action_state_changed",
-                                        &mod_action.id.to_string(),
-                                        file_path.as_deref(),
-                                        metadata,
-                                    ) {
-                                        error!(error = %e, "Failed to log action_state_changed");
-                                        self.client
-                                            .log_message(
-                                                MessageType::WARNING,
-                                                format!(
-                                                    "Failed to log action_state_changed: {}",
-                                                    e
-                                                ),
-                                            )
-                                            .await;
-                                    }
-                                }
+                                debug!(id = %mod_action.id, old = ?old, new = ?new, "Emitting state change event");
+                                event_from_state_change(*old, *new, action_name)
                             }
-                            FieldChange::Name { old, new } => {
-                                debug!(id = %mod_action.id, old = %old, new = %new, "Emitting action rename event");
-                                let metadata = json!({ "old_name": old, "new_name": new });
-                                if let Err(e) = emit_event(
-                                    "action_renamed",
-                                    &mod_action.id.to_string(),
-                                    file_path.as_deref(),
-                                    metadata,
-                                ) {
-                                    error!(error = %e, "Failed to log action_renamed");
-                                    self.client
-                                        .log_message(
-                                            MessageType::WARNING,
-                                            format!("Failed to log action_renamed: {}", e),
-                                        )
-                                        .await;
-                                }
-                            }
-                            // Log generic update for other fields
                             _ => {
-                                // We could be more specific, but for now just "action_updated"
-                                // or skip if we only care about lifecycle
+                                // Use helper for property changes
+                                event_from_field_change(change)
+                            }
+                        };
+                        if let Some(evt) = event {
+                            if let Err(e) = emit_event(Tool::Lsp, action_uuid.clone(), evt) {
+                                warn!(error = %e, "Failed to emit property change event");
                             }
                         }
                     }
@@ -556,7 +486,9 @@ impl LanguageServer for Backend {
             if let (Some(parsed), Some(path_str)) = (&doc.parsed, &file_path) {
                 let path = std::path::Path::new(path_str);
                 use clearhead_cli::crdt::ActionRepository;
-                match ActionRepository::load(path.to_path_buf()).and_then(|mut repo| repo.save(&parsed.actions)) {
+                match ActionRepository::load(path.to_path_buf())
+                    .and_then(|mut repo| repo.save(&parsed.actions))
+                {
                     Ok(_) => {
                         debug!(uri = ?uri, "Synced changes to CRDT");
                     }
