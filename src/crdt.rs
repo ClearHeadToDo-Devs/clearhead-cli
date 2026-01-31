@@ -41,10 +41,30 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    /// Always returns the user-level workspace.
-    /// Project-based discovery is disabled in favor of a single unified hub.
-    pub fn detect(_file_path: &Path) -> Result<Self, String> {
-        Ok(Workspace::global()?)
+    /// Validates file is within the managed workspace and returns workspace config.
+    /// Only files in $XDG_DATA_HOME/clearhead/ are eligible for CRDT sync.
+    pub fn detect(file_path: &Path) -> Result<Self, String> {
+        let workspace = Workspace::global()?;
+
+        // Canonicalize paths to resolve symlinks and get absolute paths
+        let canonical_file = file_path
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve file path '{}': {}", file_path.display(), e))?;
+        let canonical_data = workspace
+            .data_dir
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.data_dir.clone()); // data_dir might not exist yet
+
+        // Validate file is within managed workspace
+        if !canonical_file.starts_with(&canonical_data) {
+            return Err(format!(
+                "File outside managed workspace (file: {}, workspace: {})",
+                canonical_file.display(),
+                canonical_data.display()
+            ));
+        }
+
+        Ok(workspace)
     }
 
     pub fn global() -> Result<Self, String> {
@@ -319,20 +339,31 @@ impl ActionRepository {
         self.doc.get_actions_for_file(&self.file_key)
     }
 
-    pub fn save(&mut self, actions: &ActionList) -> Result<(), String> {
+    /// Save actions to CRDT and return formatted content.
+    ///
+    /// This method updates the CRDT and persists it, then returns the formatted
+    /// content for the LSP to apply via workspace/applyEdit. It does NOT write
+    /// directly to the file to avoid race conditions with the editor.
+    pub fn save(&mut self, actions: &ActionList) -> Result<String, String> {
         // 1. Update CRDT
         self.doc.update_file(&self.file_key, actions)?;
 
         // 2. Persist CRDT
         self.storage.save(&mut self.doc)?;
 
-        // 3. Project to File
-        self.project_to_file(actions)?;
+        // 3. Format actions with UUIDs (but don't write to file)
+        use crate::{format, OutputFormat};
+        let formatted = format(actions, OutputFormat::Actions, None, None)?;
 
-        Ok(())
+        Ok(formatted)
     }
 
-    fn project_to_file(&self, actions: &ActionList) -> Result<(), String> {
+    /// Project actions to file (used by CLI commands, not LSP).
+    ///
+    /// This method writes the formatted actions directly to the file system.
+    /// The LSP should NOT call this - instead use save() and apply the result
+    /// via workspace/applyEdit to avoid editor sync issues.
+    pub fn project_to_file(&self, actions: &ActionList) -> Result<(), String> {
         if self.file_path.exists() {
             write_shadow_file(&self.file_path)?;
         }
