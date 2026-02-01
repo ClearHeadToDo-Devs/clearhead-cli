@@ -17,18 +17,18 @@ pub use domain::{ActPhase, DomainModel, Plan, PlannedAct};
 pub mod crdt;
 
 pub mod format;
-pub use format::{FormatConfig, FormatStyle, IndentStyle, OutputFormat, format};
+pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
 
 pub mod export;
 pub use export::format_as_icalendar;
 
 pub mod lint;
-pub use lint::{LintDiagnostic, LintResults, LintSeverity, lint_document};
+pub use lint::{lint_document, LintDiagnostic, LintResults, LintSeverity};
 
 pub mod archive;
 
 pub mod mutations;
-pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
+pub use mutations::{apply_updates, resolve_reference, ActionUpdate, MatchType, ResolvedAction};
 
 pub mod graph;
 
@@ -39,14 +39,17 @@ pub mod workspace;
 
 pub mod diff;
 
+pub mod sync;
+
+pub mod document;
+
 pub mod environment_reader;
-pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
+pub use environment_reader::{get_config_dir, get_data_dir, load_config, Config};
 
 pub mod telemetry;
 pub use telemetry::{
+    emit, emit_event, event_from_field_change, event_from_state_change, get_telemetry_dir,
     TelemetryEvent, TelemetryRecord, Tool,
-    emit, emit_event, get_telemetry_dir,
-    event_from_field_change, event_from_state_change,
 };
 
 #[derive(Debug, Clone)]

@@ -166,29 +166,33 @@ impl Backend {
         &self,
         uri: &Uri,
         file_path: &str,
-        parsed: &ParsedDocument,
         current_buffer: &str,
     ) {
         use clearhead_cli::crdt::ActionRepository;
+        use clearhead_cli::document::{process_save, SaveResult};
+        
         let path = std::path::Path::new(file_path);
 
         match ActionRepository::load(path.to_path_buf()) {
             Ok(mut repo) => {
                 // File is in managed workspace, proceed with CRDT sync
-                match repo.save(&parsed.actions) {
-                    Ok(formatted_content) => {
-                        debug!(uri = ?uri, "Synced changes to CRDT");
+                match process_save(current_buffer, file_path, &mut repo) {
+                    Ok(SaveResult::NoChange) => {
+                        debug!(uri = ?uri, "No semantic changes, preserving user formatting");
+                        // Don't apply workspace edit - preserve user's formatting
+                    }
+                    Ok(SaveResult::Changed { new_content, .. }) => {
+                        debug!(uri = ?uri, "Semantic changes detected, syncing to CRDT");
                         self.apply_workspace_edit_if_different(
                             uri,
                             current_buffer,
-                            formatted_content,
+                            new_content,
                         )
                         .await;
                     }
                     Err(e) => {
-                        warn!(error = %e, "Failed to save to CRDT");
-                        self.show_crdt_sync_error(uri, e, !parsed.actions.is_empty())
-                            .await;
+                        warn!(error = %e, "Failed to process save");
+                        self.show_crdt_sync_error(uri, e, true).await;
                     }
                 }
             }
@@ -621,8 +625,8 @@ impl LanguageServer for Backend {
             }
 
             // Sync to CRDT (source of truth) - only for managed workspace files
-            if let (Some(parsed), Some(path_str)) = (&doc.parsed, &file_path) {
-                self.sync_to_crdt_and_apply_edit(&uri, path_str, parsed, &doc.text)
+            if let Some(path_str) = &file_path {
+                self.sync_to_crdt_and_apply_edit(&uri, path_str, &doc.text)
                     .await;
             }
 

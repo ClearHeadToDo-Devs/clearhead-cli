@@ -43,7 +43,7 @@ pub enum FieldChange {
     },
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct Diff {
     pub added: Vec<Action>,
     pub removed: Vec<Action>,
@@ -133,15 +133,15 @@ fn compare_action(old: &Action, new: &Action) -> Vec<FieldChange> {
 
     // Compare contexts (as sets for robust comparison, but list equality for now)
     if old.context_list != new.context_list {
-         changes.push(FieldChange::Generic {
+        changes.push(FieldChange::Generic {
             field: "contexts".to_string(),
             old: json!(old.context_list),
             new: json!(new.context_list),
         });
     }
 
-     if old.story != new.story {
-         changes.push(FieldChange::Generic {
+    if old.story != new.story {
+        changes.push(FieldChange::Generic {
             field: "story".to_string(),
             old: json!(old.story),
             new: json!(new.story),
@@ -180,7 +180,10 @@ mod tests {
     #[test]
     fn test_diff_added() {
         let old = vec![];
-        let new = vec![make_action("019baaec-00b6-7991-be34-94b68212619a", "New Action")];
+        let new = vec![make_action(
+            "019baaec-00b6-7991-be34-94b68212619a",
+            "New Action",
+        )];
 
         let diff = diff_actions(&old, &new);
 
@@ -192,7 +195,10 @@ mod tests {
 
     #[test]
     fn test_diff_removed() {
-        let old = vec![make_action("019baaec-00b6-7991-be34-94b68212619a", "Old Action")];
+        let old = vec![make_action(
+            "019baaec-00b6-7991-be34-94b68212619a",
+            "Old Action",
+        )];
         let new = vec![];
 
         let diff = diff_actions(&old, &new);
@@ -221,7 +227,7 @@ mod tests {
         let modification = &diff.modified[0];
         assert_eq!(modification.id.to_string(), id);
         assert_eq!(modification.changes.len(), 1);
-        
+
         match &modification.changes[0] {
             FieldChange::State { old, new } => {
                 assert_eq!(*old, ActionState::NotStarted);
@@ -247,9 +253,13 @@ mod tests {
         assert_eq!(changes.len(), 2);
 
         // Sort changes isn't guaranteed, so check existence
-        let has_name_change = changes.iter().any(|c| matches!(c, FieldChange::Name { .. }));
-        let has_prio_change = changes.iter().any(|c| matches!(c, FieldChange::Priority { .. }));
-        
+        let has_name_change = changes
+            .iter()
+            .any(|c| matches!(c, FieldChange::Name { .. }));
+        let has_prio_change = changes
+            .iter()
+            .any(|c| matches!(c, FieldChange::Priority { .. }));
+
         assert!(has_name_change);
         assert!(has_prio_change);
     }
