@@ -13,8 +13,9 @@ fn test_save_returns_formatted_content_without_writing_file() {
     // Write initial file
     fs::write(&file_path, "[ ] Initial action\n").unwrap();
 
-    // Load repository
-    let mut repo = ActionRepository::load(file_path.clone()).unwrap();
+    // Load repository using test constructor
+    let mut repo =
+        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
 
     // Create new action
     let mut action = Action::new("Buy milk");
@@ -42,7 +43,8 @@ fn test_uuid_stability_across_parses() {
     fs::write(&file_path, "[ ] Task\n").unwrap();
 
     // First save: assign UUID
-    let mut repo = ActionRepository::load(file_path.clone()).unwrap();
+    let mut repo =
+        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
     let parsed1 = get_parsed_document("[ ] Task\n").unwrap();
     let formatted1 = repo.save(&parsed1.actions).unwrap();
 
@@ -68,7 +70,8 @@ fn test_whitespace_normalization() {
     let file_path = temp_dir.path().join("test.actions");
     fs::write(&file_path, "[ ]  Task   \n").unwrap();
 
-    let mut repo = ActionRepository::load(file_path).unwrap();
+    let mut repo =
+        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
     let parsed = get_parsed_document("[ ]  Task   \n").unwrap();
     let formatted = repo.save(&parsed.actions).unwrap();
 
@@ -84,7 +87,8 @@ fn test_project_to_file_still_works_for_cli() {
     let file_path = temp_dir.path().join("test.actions");
     fs::write(&file_path, "[ ] Old content\n").unwrap();
 
-    let repo = ActionRepository::load(file_path.clone()).unwrap();
+    let repo =
+        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
     let parsed = get_parsed_document("[ ] New task\n").unwrap();
 
     // Call project_to_file directly (for CLI usage)

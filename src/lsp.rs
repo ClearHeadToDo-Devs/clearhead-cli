@@ -14,7 +14,7 @@ use clearhead_cli::archive::archive_actions;
 use clearhead_cli::diff::{FieldChange, diff_actions};
 use clearhead_cli::format::{FormatConfig, OutputFormat, format};
 use clearhead_cli::telemetry::{
-    emit_event, event_from_field_change, event_from_state_change, TelemetryEvent, Tool,
+    TelemetryEvent, Tool, emit_event, event_from_field_change, event_from_state_change,
 };
 use clearhead_cli::treesitter::{SourceRange, get_node_text};
 use serde_json::Value;
@@ -86,6 +86,141 @@ impl Backend {
                     format!("Failed to parse document: {:?}", uri),
                 )
                 .await;
+        }
+    }
+
+    /// Apply workspace edit if the formatted content differs from current buffer
+    async fn apply_workspace_edit_if_different(
+        &self,
+        uri: &Uri,
+        current_buffer: &str,
+        formatted: String,
+    ) {
+        if &formatted == current_buffer {
+            debug!(uri = ?uri, "Buffer matches formatted output, no edit needed");
+            return;
+        }
+
+        debug!(uri = ?uri, "Buffer differs from formatted output, sending workspace/applyEdit");
+
+        // Create text edit to replace entire buffer
+        let line_count = current_buffer.lines().count();
+        let last_line = current_buffer.lines().last().unwrap_or("");
+        let edit = TextEdit {
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(line_count as u32, last_line.len() as u32),
+            },
+            new_text: formatted,
+        };
+
+        // Create workspace edit
+        let mut changes = std::collections::HashMap::new();
+        changes.insert(uri.clone(), vec![edit]);
+
+        let workspace_edit = WorkspaceEdit {
+            changes: Some(changes),
+            document_changes: None,
+            change_annotations: None,
+        };
+
+        // Send workspace/applyEdit request
+        if let Err(e) = self.client.apply_edit(workspace_edit).await {
+            warn!(error = ?e, "Failed to apply workspace edit");
+        }
+    }
+
+    /// Show CRDT sync error as diagnostic
+    async fn show_crdt_sync_error(&self, uri: &Uri, error: String, has_actions: bool) {
+        let diagnostic_range = if has_actions {
+            Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 10),
+            }
+        } else {
+            Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 0),
+            }
+        };
+
+        let diagnostic = Diagnostic {
+            range: diagnostic_range,
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: Some("clearhead-lsp".to_string()),
+            message: format!("CRDT sync failed: {}", error),
+            related_information: None,
+            tags: None,
+            data: None,
+        };
+
+        self.client
+            .publish_diagnostics(uri.clone(), vec![diagnostic], None)
+            .await;
+    }
+
+    /// Sync parsed document to CRDT and apply workspace edit if needed
+    async fn sync_to_crdt_and_apply_edit(
+        &self,
+        uri: &Uri,
+        file_path: &str,
+        parsed: &ParsedDocument,
+        current_buffer: &str,
+    ) {
+        use clearhead_cli::crdt::ActionRepository;
+        let path = std::path::Path::new(file_path);
+
+        match ActionRepository::load(path.to_path_buf()) {
+            Ok(mut repo) => {
+                // File is in managed workspace, proceed with CRDT sync
+                match repo.save(&parsed.actions) {
+                    Ok(formatted_content) => {
+                        debug!(uri = ?uri, "Synced changes to CRDT");
+                        self.apply_workspace_edit_if_different(
+                            uri,
+                            current_buffer,
+                            formatted_content,
+                        )
+                        .await;
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to save to CRDT");
+                        self.show_crdt_sync_error(uri, e, !parsed.actions.is_empty())
+                            .await;
+                    }
+                }
+            }
+            Err(e) if e.contains("outside managed workspace") => {
+                // File is outside workspace - skip CRDT sync silently
+                // LSP still provides parsing, linting, formatting
+                debug!(uri = ?uri, reason = %e, "Skipping CRDT sync for non-workspace file");
+                // No error diagnostic, no user-facing message
+            }
+            Err(e) => {
+                // Actual error (CRDT corrupted, permissions, etc.)
+                warn!(error = %e, "Failed to load CRDT repository");
+
+                let diagnostic = Diagnostic {
+                    range: Range {
+                        start: Position::new(0, 0),
+                        end: Position::new(0, 0),
+                    },
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: None,
+                    code_description: None,
+                    source: Some("clearhead-lsp".to_string()),
+                    message: format!("Failed to load CRDT: {}", e),
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                };
+
+                self.client
+                    .publish_diagnostics(uri.clone(), vec![diagnostic], None)
+                    .await;
+            }
         }
     }
 }
@@ -487,115 +622,8 @@ impl LanguageServer for Backend {
 
             // Sync to CRDT (source of truth) - only for managed workspace files
             if let (Some(parsed), Some(path_str)) = (&doc.parsed, &file_path) {
-                let path = std::path::Path::new(path_str);
-                use clearhead_cli::crdt::ActionRepository;
-                
-                match ActionRepository::load(path.to_path_buf()) {
-                    Ok(mut repo) => {
-                        // File is in managed workspace, proceed with CRDT sync
-                        match repo.save(&parsed.actions) {
-                            Ok(formatted_content) => {
-                                debug!(uri = ?uri, "Synced changes to CRDT");
-                                
-                                // Compare formatted output with current buffer
-                                let current_buffer = &doc.text;
-                        
-                        if &formatted_content != current_buffer {
-                            debug!(uri = ?uri, "Buffer differs from formatted output, sending workspace/applyEdit");
-                            
-                            // Create text edit to replace entire buffer
-                            let line_count = current_buffer.lines().count();
-                            let last_line = current_buffer.lines().last().unwrap_or("");
-                            let edit = TextEdit {
-                                range: Range {
-                                    start: Position::new(0, 0),
-                                    end: Position::new(line_count as u32, last_line.len() as u32),
-                                },
-                                new_text: formatted_content,
-                            };
-                            
-                            // Create workspace edit
-                            let mut changes = std::collections::HashMap::new();
-                            changes.insert(uri.clone(), vec![edit]);
-                            
-                            let workspace_edit = WorkspaceEdit {
-                                changes: Some(changes),
-                                document_changes: None,
-                                change_annotations: None,
-                            };
-                            
-                            // Send workspace/applyEdit request
-                            if let Err(e) = self.client.apply_edit(workspace_edit).await {
-                                warn!(error = ?e, "Failed to apply workspace edit");
-                            }
-                                } else {
-                                    debug!(uri = ?uri, "Buffer matches formatted output, no edit needed");
-                                }
-                            }
-                            Err(e) => {
-                                warn!(error = %e, "Failed to save to CRDT");
-                                
-                                // Show error diagnostic
-                                let diagnostic_range = if let Some(_action) = parsed.actions.first() {
-                                    Range {
-                                        start: Position::new(0, 0),
-                                        end: Position::new(0, 10),
-                                    }
-                                } else {
-                                    Range {
-                                        start: Position::new(0, 0),
-                                        end: Position::new(0, 0),
-                                    }
-                                };
-                                
-                                let diagnostic = Diagnostic {
-                                    range: diagnostic_range,
-                                    severity: Some(DiagnosticSeverity::ERROR),
-                                    code: None,
-                                    code_description: None,
-                                    source: Some("clearhead-lsp".to_string()),
-                                    message: format!("CRDT sync failed: {}", e),
-                                    related_information: None,
-                                    tags: None,
-                                    data: None,
-                                };
-                                
-                                self.client
-                                    .publish_diagnostics(uri.clone(), vec![diagnostic], None)
-                                    .await;
-                            }
-                        }
-                    }
-                    Err(e) if e.contains("outside managed workspace") => {
-                        // File is outside workspace - skip CRDT sync silently
-                        // LSP still provides parsing, linting, formatting
-                        debug!(uri = ?uri, reason = %e, "Skipping CRDT sync for non-workspace file");
-                        // No error diagnostic, no user-facing message
-                    }
-                    Err(e) => {
-                        // Actual error (CRDT corrupted, permissions, etc.)
-                        warn!(error = %e, "Failed to load CRDT repository");
-                        
-                        let diagnostic = Diagnostic {
-                            range: Range {
-                                start: Position::new(0, 0),
-                                end: Position::new(0, 0),
-                            },
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            code: None,
-                            code_description: None,
-                            source: Some("clearhead-lsp".to_string()),
-                            message: format!("Failed to load CRDT: {}", e),
-                            related_information: None,
-                            tags: None,
-                            data: None,
-                        };
-                        
-                        self.client
-                            .publish_diagnostics(uri.clone(), vec![diagnostic], None)
-                            .await;
-                    }
-                }
+                self.sync_to_crdt_and_apply_edit(&uri, path_str, parsed, &doc.text)
+                    .await;
             }
 
             // Update last_saved_parsed to current
@@ -888,20 +916,21 @@ impl LanguageServer for Backend {
                         let source_path = uri
                             .to_file_path()
                             .ok_or_else(|| Error::invalid_params("Invalid URI"))?;
-                        
+
                         // Load CRDT and format
                         use clearhead_cli::crdt::ActionRepository;
                         match ActionRepository::load(source_path.to_path_buf()) {
                             Ok(repo) => {
                                 match repo.get_actions() {
                                     Ok(actions) => {
-                                        use clearhead_cli::{format, OutputFormat};
+                                        use clearhead_cli::{OutputFormat, format};
                                         match format(&actions, OutputFormat::Actions, None, None) {
                                             Ok(formatted_content) => {
                                                 // Apply the change to the editor via WorkspaceEdit
                                                 let edit = WorkspaceEdit {
                                                     changes: Some({
-                                                        let mut map = std::collections::HashMap::new();
+                                                        let mut map =
+                                                            std::collections::HashMap::new();
                                                         map.insert(
                                                             uri.clone(),
                                                             vec![TextEdit {
@@ -916,7 +945,7 @@ impl LanguageServer for Backend {
                                                     }),
                                                     ..Default::default()
                                                 };
-                                                
+
                                                 self.client.apply_edit(edit).await.map_err(|e| {
                                                     let err = format!("Failed to apply edit: {}", e);
                                                     Error {
@@ -925,7 +954,7 @@ impl LanguageServer for Backend {
                                                         data: None,
                                                     }
                                                 })?;
-                                                
+
                                                 self.client
                                                     .show_message(
                                                         MessageType::INFO,
@@ -956,14 +985,16 @@ impl LanguageServer for Backend {
                             Err(e) if e.contains("outside managed workspace") => {
                                 // File is outside workspace
                                 use clearhead_cli::environment_reader::get_data_dir;
-                                self.client.show_message(
-                                    MessageType::WARNING,
-                                    format!(
-                                        "File is outside managed workspace.\n\
+                                self.client
+                                    .show_message(
+                                        MessageType::WARNING,
+                                        format!(
+                                            "File is outside managed workspace.\n\
                                          CRDT sync only available for files in: {}",
-                                        get_data_dir().display()
-                                    ),
-                                ).await;
+                                            get_data_dir().display()
+                                        ),
+                                    )
+                                    .await;
                             }
                             Err(e) => {
                                 self.client

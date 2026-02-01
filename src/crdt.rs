@@ -76,6 +76,16 @@ impl Workspace {
         })
     }
 
+    /// Create a test workspace with custom paths (bypasses boundary validation)
+    /// Only use this in tests!
+    #[cfg(test)]
+    pub fn test_workspace(dir: PathBuf) -> Self {
+        Workspace {
+            state_dir: dir.clone(),
+            data_dir: dir,
+        }
+    }
+
     pub fn crdt_path(&self) -> PathBuf {
         self.state_dir.join(CRDT_FILENAME)
     }
@@ -375,6 +385,53 @@ impl ActionRepository {
             .map_err(|e| format!("Failed to write to file: {}", e))?;
 
         Ok(())
+    }
+
+    /// Create an ActionRepository for testing with a custom workspace directory.
+    /// This bypasses workspace boundary validation.
+    ///
+    /// **WARNING:** This is only for tests! Do not use in production code.
+    #[doc(hidden)]
+    pub fn test_repo(file_path: PathBuf, workspace_dir: PathBuf) -> Result<Self, String> {
+        let workspace = Workspace {
+            state_dir: workspace_dir.clone(),
+            data_dir: workspace_dir,
+        };
+        let storage = CrdtStorage::new(workspace.clone())?;
+
+        let file_key = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("test.actions")
+            .to_string();
+
+        let mut doc = if storage.exists() {
+            storage.load()?
+        } else {
+            WorkspaceDoc::new(workspace.clone())?
+        };
+
+        // If file exists, import it
+        if file_path.exists() {
+            let stored_actions = doc.get_actions_for_file(&file_key)?;
+            if stored_actions.is_empty() {
+                let content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+
+                if !content.trim().is_empty() {
+                    use crate::get_action_list_struct;
+                    let file_actions = get_action_list_struct(&serde_json::json!({}), &content)?;
+                    doc.update_file(&file_key, &file_actions)?;
+                }
+            }
+        }
+
+        Ok(Self {
+            storage,
+            file_path,
+            file_key,
+            doc,
+        })
     }
 }
 
