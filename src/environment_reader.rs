@@ -139,8 +139,8 @@ fn expand_path(path: &str) -> PathBuf {
 /// Load configuration with proper precedence:
 /// defaults → global config → env vars
 pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, ConfigError> {
-    let global_config_path = custom_config_path
-        .unwrap_or_else(|| get_config_dir().join("config.json"));
+    let global_config_path =
+        custom_config_path.unwrap_or_else(|| get_config_dir().join("config.json"));
 
     ConfigBuilder::builder()
         // 1. Set defaults
@@ -154,14 +154,14 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
         .add_source(
             File::from(global_config_path)
                 .format(FileFormat::Json)
-                .required(false)
+                .required(false),
         )
         // 3. Load environment variables with CLEARHEAD_ prefix
         .add_source(
             Environment::with_prefix("CLEARHEAD")
                 .prefix_separator("_")
                 .separator("__")
-                .try_parsing(true)
+                .try_parsing(true),
         )
         .build()?
         .try_deserialize()
@@ -199,8 +199,14 @@ mod tests {
         let mut tag_hierarchies = HashMap::new();
         // computer -> terminal -> neovim
         //          -> browser
-        tag_hierarchies.insert("computer".to_string(), vec!["terminal".to_string(), "browser".to_string()]);
-        tag_hierarchies.insert("terminal".to_string(), vec!["neovim".to_string(), "tmux".to_string()]);
+        tag_hierarchies.insert(
+            "computer".to_string(),
+            vec!["terminal".to_string(), "browser".to_string()],
+        );
+        tag_hierarchies.insert(
+            "terminal".to_string(),
+            vec!["neovim".to_string(), "tmux".to_string()],
+        );
         // driving -> grocery_store
         tag_hierarchies.insert("driving".to_string(), vec!["grocery_store".to_string()]);
 
@@ -296,6 +302,9 @@ mod tests {
         // neovim -> terminal, computer
         // grocery_store -> driving
         // Combined: computer, driving, grocery_store, neovim, terminal
-        assert_eq!(expanded, vec!["computer", "driving", "grocery_store", "neovim", "terminal"]);
+        assert_eq!(
+            expanded,
+            vec!["computer", "driving", "grocery_store", "neovim", "terminal"]
+        );
     }
 }

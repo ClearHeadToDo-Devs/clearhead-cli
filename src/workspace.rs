@@ -14,9 +14,9 @@
 //!
 //! See: specifications/naming_conventions.md
 
-use std::path::{Path, PathBuf};
 use crate::entities::{Action, ActionList};
 use crate::get_action_list_struct;
+use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
 
 /// Metadata about an action's source file
@@ -50,7 +50,10 @@ impl WorkspaceActions {
 
     /// Get a flat list of all actions (without source metadata)
     pub fn to_action_list(&self) -> ActionList {
-        self.sourced_actions.iter().map(|sa| sa.action.clone()).collect()
+        self.sourced_actions
+            .iter()
+            .map(|sa| sa.action.clone())
+            .collect()
     }
 
     /// Add actions from a file
@@ -143,8 +146,7 @@ fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String
         .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?;
 
     for entry in entries {
-        let entry = entry
-            .map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
         if path.is_dir() {
@@ -257,12 +259,15 @@ pub fn load_workspace_with_sources(data_dir: &Path) -> Result<WorkspaceActions, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_infer_project_name_root_file() {
-        assert_eq!(infer_project_name(Path::new("work.actions")), Some("work".to_string()));
+        assert_eq!(
+            infer_project_name(Path::new("work.actions")),
+            Some("work".to_string())
+        );
         assert_eq!(infer_project_name(Path::new("inbox.actions")), None); // special case
     }
 
@@ -308,7 +313,9 @@ mod tests {
         assert!(files.iter().any(|f| f.ends_with("next.actions")));
         assert!(files.iter().any(|f| f.ends_with("2026-01.actions")));
         // Hidden dir should be skipped
-        assert!(!files.iter().any(|f| f.to_string_lossy().contains(".clearhead")));
+        assert!(!files
+            .iter()
+            .any(|f| f.to_string_lossy().contains(".clearhead")));
     }
 
     #[test]
@@ -330,7 +337,11 @@ mod tests {
         let root = temp.path();
 
         fs::write(root.join("valid.actions"), "[ ] Valid task").unwrap();
-        fs::write(root.join("invalid.actions"), "this is not valid action syntax {{{{").unwrap();
+        fs::write(
+            root.join("invalid.actions"),
+            "this is not valid action syntax {{{{",
+        )
+        .unwrap();
 
         // Should not error, just skip the invalid file
         let actions = load_workspace_actions(root).unwrap();

@@ -115,7 +115,11 @@ pub fn apply_updates(action: &mut Action, updates: ActionUpdate) {
         action.priority = Some(priority);
     }
     if let Some(context) = updates.context {
-        action.context_list = if context.is_empty() { None } else { Some(context) };
+        action.context_list = if context.is_empty() {
+            None
+        } else {
+            Some(context)
+        };
     }
     if let Some(alias) = updates.alias {
         action.alias = Some(alias);
@@ -187,10 +191,13 @@ mod tests {
         let mut action = make_action("Original name", None);
         action.priority = Some(3);
 
-        apply_updates(&mut action, ActionUpdate {
-            priority: Some(1),
-            ..Default::default()
-        });
+        apply_updates(
+            &mut action,
+            ActionUpdate {
+                priority: Some(1),
+                ..Default::default()
+            },
+        );
 
         assert_eq!(action.name, "Original name"); // unchanged
         assert_eq!(action.priority, Some(1)); // updated

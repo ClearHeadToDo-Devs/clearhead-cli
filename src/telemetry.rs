@@ -99,7 +99,6 @@ pub enum TelemetryEvent {
     // =========================================================================
     // Action Lifecycle Events
     // =========================================================================
-
     /// A new action was created.
     #[serde(rename = "action_created")]
     ActionCreated {
@@ -165,7 +164,6 @@ pub enum TelemetryEvent {
     // =========================================================================
     // Property Change Events
     // =========================================================================
-
     /// An action's priority was changed.
     #[serde(rename = "priority_changed")]
     PriorityChanged {
@@ -210,7 +208,6 @@ pub enum TelemetryEvent {
     // =========================================================================
     // Recurring Action Events
     // =========================================================================
-
     /// A new instance was generated from a recurring template.
     #[serde(rename = "instance_generated")]
     InstanceGenerated {
@@ -255,7 +252,6 @@ pub enum TelemetryEvent {
     // =========================================================================
     // Sync Events
     // =========================================================================
-
     /// A sync operation started.
     #[serde(rename = "sync_started")]
     SyncStarted {
@@ -297,7 +293,6 @@ pub enum TelemetryEvent {
     // =========================================================================
     // System Events
     // =========================================================================
-
     /// A workspace was opened.
     #[serde(rename = "workspace_opened")]
     WorkspaceOpened {
@@ -682,10 +677,12 @@ pub fn event_from_state_change(
             reason: None,
         }),
         // Restarting a completed action
-        (ActionState::Completed, ActionState::NotStarted) => Some(TelemetryEvent::ActionRestarted {
-            name: name.to_string(),
-            reason: None,
-        }),
+        (ActionState::Completed, ActionState::NotStarted) => {
+            Some(TelemetryEvent::ActionRestarted {
+                name: name.to_string(),
+                reason: None,
+            })
+        }
         // No semantic event for other transitions
         _ => None,
     }
@@ -1169,11 +1166,8 @@ mod tests {
 
     #[test]
     fn test_event_from_state_change_completed() {
-        let event = event_from_state_change(
-            ActionState::NotStarted,
-            ActionState::Completed,
-            "My task",
-        );
+        let event =
+            event_from_state_change(ActionState::NotStarted, ActionState::Completed, "My task");
 
         assert!(event.is_some());
         match event.unwrap() {
@@ -1186,11 +1180,8 @@ mod tests {
 
     #[test]
     fn test_event_from_state_change_started() {
-        let event = event_from_state_change(
-            ActionState::NotStarted,
-            ActionState::InProgress,
-            "My task",
-        );
+        let event =
+            event_from_state_change(ActionState::NotStarted, ActionState::InProgress, "My task");
 
         assert!(event.is_some());
         match event.unwrap() {
@@ -1221,11 +1212,8 @@ mod tests {
 
     #[test]
     fn test_event_from_state_change_cancelled() {
-        let event = event_from_state_change(
-            ActionState::InProgress,
-            ActionState::Cancelled,
-            "My task",
-        );
+        let event =
+            event_from_state_change(ActionState::InProgress, ActionState::Cancelled, "My task");
 
         assert!(event.is_some());
         match event.unwrap() {
@@ -1239,11 +1227,8 @@ mod tests {
 
     #[test]
     fn test_event_from_state_change_restarted() {
-        let event = event_from_state_change(
-            ActionState::Completed,
-            ActionState::NotStarted,
-            "My task",
-        );
+        let event =
+            event_from_state_change(ActionState::Completed, ActionState::NotStarted, "My task");
 
         assert!(event.is_some());
         match event.unwrap() {
@@ -1258,11 +1243,8 @@ mod tests {
     #[test]
     fn test_event_from_state_change_no_op() {
         // Same state → no event
-        let event = event_from_state_change(
-            ActionState::NotStarted,
-            ActionState::NotStarted,
-            "My task",
-        );
+        let event =
+            event_from_state_change(ActionState::NotStarted, ActionState::NotStarted, "My task");
 
         assert!(event.is_none());
     }
@@ -1270,11 +1252,8 @@ mod tests {
     #[test]
     fn test_event_from_state_change_in_progress_to_not_started() {
         // Going back from InProgress to NotStarted isn't "restarted" (that's only from Completed)
-        let event = event_from_state_change(
-            ActionState::InProgress,
-            ActionState::NotStarted,
-            "My task",
-        );
+        let event =
+            event_from_state_change(ActionState::InProgress, ActionState::NotStarted, "My task");
 
         assert!(event.is_none());
     }

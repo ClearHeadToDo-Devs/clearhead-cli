@@ -9,17 +9,20 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
     // 1. Identify "archive-ready" root actions
     // A root action is archive-ready if it is completed AND all its descendants are completed
     let mut archive_root_ids = HashSet::new();
-    
+
     for action in all_actions {
         if action.parent_id.is_none() {
             // Check if entire tree is completed
             let mut tree_completed = action.state == ActionState::Completed;
-            
+
             if tree_completed {
                 // Check descendants
                 let mut stack = vec![action.id];
                 while let Some(current_id) = stack.pop() {
-                    let children: Vec<_> = all_actions.iter().filter(|a| a.parent_id == Some(current_id)).collect();
+                    let children: Vec<_> = all_actions
+                        .iter()
+                        .filter(|a| a.parent_id == Some(current_id))
+                        .collect();
                     for child in children {
                         if child.state != ActionState::Completed {
                             tree_completed = false;
@@ -27,7 +30,9 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
                         }
                         stack.push(child.id);
                     }
-                    if !tree_completed { break; }
+                    if !tree_completed {
+                        break;
+                    }
                 }
             }
 
@@ -49,12 +54,14 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
         // Find root of this action
         let mut current_root_id = action.id;
         let mut current_parent_id = action.parent_id;
-        
+
         let mut path = HashSet::new();
         path.insert(action.id);
 
         while let Some(pid) = current_parent_id {
-            if !path.insert(pid) { break; } // Cycle detected
+            if !path.insert(pid) {
+                break;
+            } // Cycle detected
             current_root_id = pid;
             current_parent_id = all_actions
                 .iter()
@@ -112,16 +119,24 @@ pub fn archive_actions(
     log_content.push_str(&archived_text);
 
     // Write to log
-    fs::write(&log_path, log_content)
-        .map_err(|e| format!("Failed to write to log file '{}': {}", log_path.display(), e))?;
+    fs::write(&log_path, log_content).map_err(|e| {
+        format!(
+            "Failed to write to log file '{}': {}",
+            log_path.display(),
+            e
+        )
+    })?;
 
     // Return new active content
     let active_text = format(&active_actions, OutputFormat::Actions, None, None)?;
-    
-    Ok((active_text, ArchiveResult {
-        archived_count: archived_actions.len(),
-        log_path,
-    }))
+
+    Ok((
+        active_text,
+        ArchiveResult {
+            archived_count: archived_actions.len(),
+            log_path,
+        },
+    ))
 }
 
 #[cfg(test)]
@@ -164,7 +179,7 @@ mod tests {
         ];
 
         let (active, archived) = partition_actions_for_archive(&actions);
-        
+
         // id1 and id2 form a completed tree, id3 is active
         assert_eq!(archived.len(), 2);
         assert_eq!(active.len(), 1);
@@ -182,7 +197,7 @@ mod tests {
         ];
 
         let (active, archived) = partition_actions_for_archive(&actions);
-        
+
         // Even though parent is completed, child is not, so nothing is archived
         assert_eq!(archived.len(), 0);
         assert_eq!(active.len(), 2);

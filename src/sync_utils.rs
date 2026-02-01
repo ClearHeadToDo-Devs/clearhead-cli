@@ -1,5 +1,5 @@
-use autosurgeon::{Hydrate, HydrateError, ReadDoc, Reconcile, Prop, Reconciler};
 use automerge::ObjId;
+use autosurgeon::{Hydrate, HydrateError, Prop, ReadDoc, Reconcile, Reconciler};
 use chrono::{DateTime, Local};
 
 /// Helper for reconciling Chrono DateTime as ISO8601 strings in Automerge
@@ -21,14 +21,11 @@ pub fn hydrate_date<D: ReadDoc>(
 ) -> Result<Option<DateTime<Local>>, HydrateError> {
     let val = Option::<String>::hydrate(doc, obj, prop)?;
     match val {
-        Some(s) => {
-            DateTime::parse_from_rfc3339(&s)
-                .map(|dt| Some(dt.with_timezone(&Local)))
-                .map_err(|e| HydrateError::unexpected(
-                    "ISO8601 DateTime string",
-                    format!("{}: {}", s, e)
-                ))
-        }
+        Some(s) => DateTime::parse_from_rfc3339(&s)
+            .map(|dt| Some(dt.with_timezone(&Local)))
+            .map_err(|e| {
+                HydrateError::unexpected("ISO8601 DateTime string", format!("{}: {}", s, e))
+            }),
         None => Ok(None),
     }
 }

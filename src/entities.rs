@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::treesitter::{
-    NodeWrapper, TreeWrapper, create_node_wrapper, get_node_text, get_prefixed_text,
+    create_node_wrapper, get_node_text, get_prefixed_text, NodeWrapper, TreeWrapper,
 };
 use uuid::Uuid;
 

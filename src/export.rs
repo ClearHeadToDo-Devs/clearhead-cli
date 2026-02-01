@@ -195,7 +195,10 @@ mod tests {
         let (start, end) = calculate_event_times(dt, None);
 
         assert_eq!(start, dt.with_timezone(&Utc));
-        assert_eq!(end, (dt + chrono::Duration::minutes(15)).with_timezone(&Utc));
+        assert_eq!(
+            end,
+            (dt + chrono::Duration::minutes(15)).with_timezone(&Utc)
+        );
     }
 
     #[test]
@@ -204,7 +207,10 @@ mod tests {
         let (start, end) = calculate_event_times(dt, Some(60));
 
         assert_eq!(start, dt.with_timezone(&Utc));
-        assert_eq!(end, (dt + chrono::Duration::minutes(60)).with_timezone(&Utc));
+        assert_eq!(
+            end,
+            (dt + chrono::Duration::minutes(60)).with_timezone(&Utc)
+        );
     }
 
     #[test]

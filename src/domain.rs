@@ -14,9 +14,9 @@
 //! "Do laundry weekly" is one Plan. Each week's laundry is a separate PlannedAct.
 //! For non-recurring tasks, there's still one Plan and one PlannedAct.
 
+use autosurgeon::{Hydrate, Reconcile};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use autosurgeon::{Hydrate, Reconcile};
 use uuid::Uuid;
 
 use crate::entities::{Action, ActionList, ActionState, Recurrence};
@@ -26,7 +26,9 @@ use crate::sync_utils::{hydrate_date, reconcile_date};
 ///
 /// Maps to `actions:ActPhase` (subclass of bfo:Quality).
 /// The phase inheres in the PlannedAct, not the Plan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reconcile, Hydrate)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reconcile, Hydrate,
+)]
 pub enum ActPhase {
     #[default]
     NotStarted,
@@ -159,7 +161,10 @@ impl DomainModel {
         let mut acts_by_plan: std::collections::HashMap<String, Vec<&PlannedAct>> =
             std::collections::HashMap::new();
         for act in self.acts.values() {
-            acts_by_plan.entry(act.plan_id.to_string()).or_default().push(act);
+            acts_by_plan
+                .entry(act.plan_id.to_string())
+                .or_default()
+                .push(act);
         }
 
         // Iterate over requested plans
@@ -195,7 +200,10 @@ impl DomainModel {
 
     /// Find all PlannedActs for a given Plan
     pub fn acts_for_plan(&self, plan_id: Uuid) -> Vec<&PlannedAct> {
-        self.acts.values().filter(|a| a.plan_id == plan_id).collect()
+        self.acts
+            .values()
+            .filter(|a| a.plan_id == plan_id)
+            .collect()
     }
 
     /// Get all incomplete acts
@@ -264,12 +272,10 @@ fn split_action(action: &Action) -> (Plan, PlannedAct) {
         objective: action.story.clone(),
         alias: action.alias.clone(),
         is_sequential: action.is_sequential,
-        depends_on: action.predecessors.as_ref().map(|preds| {
-            preds
-                .iter()
-                .filter_map(|p| p.resolved_uuid)
-                .collect()
-        }),
+        depends_on: action
+            .predecessors
+            .as_ref()
+            .map(|preds| preds.iter().filter_map(|p| p.resolved_uuid).collect()),
     };
 
     let act = PlannedAct {
@@ -325,10 +331,7 @@ mod tests {
 
     #[test]
     fn test_domain_model_from_actions() {
-        let actions = vec![
-            Action::new("Task 1"),
-            Action::new("Task 2"),
-        ];
+        let actions = vec![Action::new("Task 1"), Action::new("Task 2")];
 
         let model = DomainModel::from_actions(&actions);
 
