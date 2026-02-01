@@ -1,8 +1,8 @@
 use crate::entities::{Action, ActionList};
-use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
+use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use topiary_core::{Language, Operation, TopiaryQuery, formatter};
+use topiary_core::{formatter, Language, Operation, TopiaryQuery};
 use topiary_tree_sitter_facade::Language as TreeSitterLanguage;
 
 /// Table column filtering options (defined in library for reusability)
@@ -104,8 +104,8 @@ fn format_as_actions(list: &ActionList, config: Option<FormatConfig>) -> Result<
     // We strictly use Compact style now as List style is removed in spec v2.0.0
     let raw_content = serialize_actions_canonical(list, &config);
 
-    // 2. Pass through Topiary for structural enforcement (vertical spacing)
-    format_with_topiary(&raw_content)
+    // 2. Pass through Topiary for structural enforcement (vertical spacing + indentation)
+    format_with_topiary(&raw_content, &config)
 }
 
 /// Serialize actions to the canonical string format (compact, no indentation)
@@ -155,7 +155,7 @@ fn serialize_actions_canonical(list: &ActionList, config: &FormatConfig) -> Stri
 }
 
 /// Format a string using Topiary with the .actions grammar
-fn format_with_topiary(input_text: &str) -> Result<String, String> {
+fn format_with_topiary(input_text: &str, config: &FormatConfig) -> Result<String, String> {
     let mut input = Cursor::new(input_text.as_bytes());
     let mut output = Vec::new();
 
@@ -167,11 +167,17 @@ fn format_with_topiary(input_text: &str) -> Result<String, String> {
     let query = TopiaryQuery::new(&grammar, query_content)
         .map_err(|e| format!("Failed to compile Topiary query: {}", e))?;
 
+    // Configure indentation based on user preferences
+    let indent_unit = match config.indent_style {
+        IndentStyle::Spaces => " ".repeat(config.indent_width),
+        IndentStyle::Tabs => "\t".to_string(),
+    };
+
     // Initialize Language
     let language = Language {
         name: "actions".to_string(),
-        grammar,      // consumes grammar
-        indent: None, // No auto-indentation config
+        grammar,
+        indent: Some(indent_unit),
         query,
     };
 
@@ -465,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn test_indentation_removed() {
+    fn test_indentation_applied() {
         let mut actions = vec![create_test_action("Root", ActionState::NotStarted, None)];
         let root_id = actions[0].id;
         actions.push(create_test_action(
@@ -474,7 +480,7 @@ mod tests {
             Some(root_id),
         ));
 
-        // Test Spaces - Should be ignored and flat
+        // Test Spaces - Should be indented with 2 spaces
         let config = FormatConfig {
             style: FormatStyle::Compact,
             indent_style: IndentStyle::Spaces,
@@ -482,11 +488,10 @@ mod tests {
             ..Default::default()
         };
         let formatted = format(&actions, OutputFormat::Actions, Some(config), None).unwrap();
-        // Expect NO indentation
-        assert!(formatted.contains(">[ ] Child"));
-        assert!(!formatted.contains("  >[ ] Child"));
+        // Expect indentation with 2 spaces
+        assert!(formatted.contains("  >[ ] Child"));
 
-        // Test Tabs - Should be ignored and flat
+        // Test Tabs - Should be indented with 1 tab
         let config_tabs = FormatConfig {
             style: FormatStyle::Compact,
             indent_style: IndentStyle::Tabs,
@@ -495,7 +500,6 @@ mod tests {
         };
         let formatted_tabs =
             format(&actions, OutputFormat::Actions, Some(config_tabs), None).unwrap();
-        assert!(formatted_tabs.contains(">[ ] Child"));
-        assert!(!formatted_tabs.contains("\t>[ ] Child"));
+        assert!(formatted_tabs.contains("\t>[ ] Child"));
     }
 }
