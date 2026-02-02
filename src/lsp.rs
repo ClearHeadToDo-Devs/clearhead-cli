@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 use clearhead_cli::get_parsed_document;
-use clearhead_cli::lint::lint_document;
-use clearhead_cli::{LintDiagnostic, LintSeverity, ParsedDocument};
+use clearhead_cli::{lint_document, LintDiagnostic, LintSeverity, ParsedDocument};
+use clearhead_core::{diff::{FieldChange, diff_actions}, treesitter::{SourceRange, get_node_text}};
 use dashmap::DashMap;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
@@ -11,12 +11,10 @@ use tree_sitter::{Parser, Tree};
 use uuid::Uuid;
 
 use clearhead_cli::archive::archive_actions;
-use clearhead_cli::diff::{FieldChange, diff_actions};
-use clearhead_cli::format::{FormatConfig, OutputFormat, format};
+use clearhead_cli::{format, FormatConfig, OutputFormat};
 use clearhead_cli::telemetry::{
     TelemetryEvent, Tool, emit_event, event_from_field_change, event_from_state_change,
 };
-use clearhead_cli::treesitter::{SourceRange, get_node_text};
 use serde_json::Value;
 use tower_lsp_server::jsonrpc::Error;
 
@@ -319,7 +317,7 @@ fn compute_code_actions(doc: &ParsedDocument, uri: &Uri, range: Range) -> Vec<Co
                 }
 
                 // 2. Add Completion Date
-                if action.state == clearhead_cli::entities::ActionState::Completed
+                if action.state == clearhead_cli::ActionState::Completed
                     && action.completed_date_time.is_none()
                 {
                     let now = Local::now();
@@ -1157,7 +1155,7 @@ mod tests {
             let doc = backend.documents.get(&uri).unwrap();
             assert_eq!(
                 doc.last_saved_parsed.as_ref().unwrap().actions[0].state,
-                clearhead_cli::entities::ActionState::Completed
+                clearhead_cli::ActionState::Completed
             );
         }
     }

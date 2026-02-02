@@ -14,8 +14,8 @@
 //!
 //! See: specifications/naming_conventions.md
 
-use crate::entities::{Action, ActionList};
 use crate::get_action_list_struct;
+use clearhead_core::{Action, ActionList};
 use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
 

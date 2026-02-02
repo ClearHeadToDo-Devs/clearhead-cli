@@ -1,5 +1,5 @@
-use crate::entities::{Action, ActionList, ActionState};
 use chrono::{DateTime, Local, Utc};
+use clearhead_core::{Action, ActionList, ActionState};
 use icalendar::{Calendar, Component, Event, EventLike, EventStatus};
 
 // ============================================================================

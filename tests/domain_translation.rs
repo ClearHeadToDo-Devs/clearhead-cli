@@ -1,10 +1,7 @@
-use clearhead_cli::{
-    domain::{DomainModel, Plan, PlannedAct, ActPhase},
-    entities::{Action, ActionState},
-};
-use uuid::Uuid;
 use chrono::Local;
+use clearhead_cli::{ActPhase, Action, ActionState, DomainModel, Plan, PlannedAct};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[test]
 fn test_domain_round_trip_simple() {
@@ -44,7 +41,7 @@ fn test_domain_round_trip_simple() {
     let domain = DomainModel { plans, acts };
 
     // 2. Convert to ActionList (The missing function we need to implement)
-    // For now, this won't compile until we add the method. 
+    // For now, this won't compile until we add the method.
     // This test drives the implementation.
     let actions = domain.to_action_list();
 
@@ -52,7 +49,10 @@ fn test_domain_round_trip_simple() {
     let action = &actions[0];
 
     // 3. Verify Translation
-    assert_eq!(action.id, plan_id, "Action ID should match Plan ID for singleton");
+    assert_eq!(
+        action.id, plan_id,
+        "Action ID should match Plan ID for singleton"
+    );
     assert_eq!(action.name, "Test Task");
     assert_eq!(action.state, ActionState::NotStarted);
     assert_eq!(action.description, Some("Description".to_string()));

@@ -4,7 +4,7 @@
 //! Used by CLI commands (add, update, complete, delete) and can be
 //! used programmatically by other consumers of the library.
 
-use crate::entities::{Action, ActionList, ActionState};
+use clearhead_core::{Action, ActionList, ActionState};
 
 /// Updates to apply to an action
 ///

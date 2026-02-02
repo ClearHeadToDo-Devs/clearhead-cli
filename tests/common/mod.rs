@@ -1,16 +1,15 @@
 #![allow(dead_code)]
+use clearhead_cli::{Action, ActionState};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use clearhead_cli::entities::{Action, ActionState};
 use uuid::Uuid;
 
 /// Helper to read a specific example file content
 pub fn read_example(filename: &str) -> String {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let example_path = manifest_dir.join("examples").join(filename);
-    fs::read_to_string(&example_path)
-        .expect(&format!("Failed to read example file: {}", filename))
+    fs::read_to_string(&example_path).expect(&format!("Failed to read example file: {}", filename))
 }
 
 pub fn get_examples() -> HashMap<String, String> {

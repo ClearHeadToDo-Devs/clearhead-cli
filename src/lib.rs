@@ -1,47 +1,73 @@
+//! ClearHead CLI Library
+//!
+//! This library provides the CLI and LSP server implementation for the ClearHead framework.
+//! It builds on top of clearhead_core, adding filesystem, configuration, and runtime concerns.
+
 use serde_json::{Map, Value};
-use std::collections::HashMap;
 use tree_sitter::Tree;
-use uuid::Uuid;
 
-pub mod sync_utils;
+// Re-export core library types and functions
+pub use clearhead_core::{
+    // Diff types
+    diff as core_diff,
 
-pub mod treesitter;
-use treesitter::{SourceMetadata, SourceRange};
+    // Format types and functions
+    format,
+    // Lint types and functions
+    lint_document,
+    // Parsing types and functions
+    parse_actions,
+    parse_document,
+    parse_tree,
+    // Patch function
+    patch_action_list,
+    // Sync types
+    sync as core_sync,
 
-pub mod entities;
-pub use entities::{Action, ActionList, ActionState};
+    // Source metadata (from treesitter)
+    treesitter::{SourceMetadata, SourceRange},
 
-pub mod domain;
-pub use domain::{ActPhase, DomainModel, Plan, PlannedAct};
+    // Domain models
+    ActPhase,
+    // Core entities
+    Action,
+    ActionList,
+    ActionState,
 
+    DomainModel,
+    FormatConfig,
+    FormatStyle,
+    IndentStyle,
+    LintDiagnostic,
+    LintResults,
+    LintSeverity,
+
+    OutputFormat,
+
+    ParsedDocument,
+
+    Plan,
+    PlannedAct,
+};
+
+// CLI-specific modules with environment integration
 pub mod crdt;
 
-pub mod format;
-pub use format::{format, FormatConfig, FormatStyle, IndentStyle, OutputFormat};
+pub mod document;
+
+pub mod graph;
+// Legacy alias for compatibility
+pub use graph as sql;
 
 pub mod export;
 pub use export::format_as_icalendar;
-
-pub mod lint;
-pub use lint::{lint_document, LintDiagnostic, LintResults, LintSeverity};
 
 pub mod archive;
 
 pub mod mutations;
 pub use mutations::{apply_updates, resolve_reference, ActionUpdate, MatchType, ResolvedAction};
 
-pub mod graph;
-
-// Legacy alias for compatibility during refactor
-pub use graph as sql;
-
 pub mod workspace;
-
-pub mod diff;
-
-pub mod sync;
-
-pub mod document;
 
 pub mod environment_reader;
 pub use environment_reader::{get_config_dir, get_data_dir, load_config, Config};
@@ -51,14 +77,6 @@ pub use telemetry::{
     emit, emit_event, event_from_field_change, event_from_state_change, get_telemetry_dir,
     TelemetryEvent, TelemetryRecord, Tool,
 };
-
-#[derive(Debug, Clone)]
-pub struct ParsedDocument {
-    pub actions: ActionList,
-    pub source_map: HashMap<Uuid, SourceMetadata>,
-    pub tag_index: HashMap<String, Vec<SourceRange>>,
-    pub syntax_errors: Vec<LintDiagnostic>,
-}
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
 ///
@@ -71,14 +89,6 @@ pub struct ParsedDocument {
 ///
 /// # Returns
 /// A merged JSON Value object
-///
-/// # Example
-/// ```ignore
-/// let base = json!({"a": 1, "b": 2});
-/// let override = json!({"b": 3, "c": 4});
-/// let merged = merge_hashmaps(&base.as_object().unwrap(), &override.as_object().unwrap());
-/// // Result: {"a": 1, "b": 3, "c": 4}
-/// ```
 pub fn merge_hashmaps(
     left: &Map<String, Value>,
     right: &Map<String, Value>,
@@ -90,6 +100,8 @@ pub fn merge_hashmaps(
     Ok(Value::Object(merged))
 }
 
+// CLI wrappers for backward compatibility
+
 /// Parse a .actions file into a structured ActionList
 ///
 /// # Arguments
@@ -99,20 +111,7 @@ pub fn merge_hashmaps(
 /// # Returns
 /// A `Vec<Action>` representing the flat list of parsed actions
 pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList, String> {
-    let parsed_doc = get_parsed_document(actions)?;
-
-    // Check for syntax errors - for this strict function we still want to fail
-    if !parsed_doc.syntax_errors.is_empty() {
-        let err = &parsed_doc.syntax_errors[0];
-        return Err(format!(
-            "Syntax error at line {}, column {}: {}",
-            err.range.start_row + 1,
-            err.range.start_col + 1,
-            err.message
-        ));
-    }
-
-    Ok(parsed_doc.actions)
+    parse_actions(actions)
 }
 
 /// Parse a .actions file into a ParsedDocument (Actions + Source Metadata)
@@ -123,13 +122,7 @@ pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList
 /// # Returns
 /// A ParsedDocument containing the list of actions and their source locations
 pub fn get_parsed_document(actions: &str) -> Result<ParsedDocument, String> {
-    let tree = get_action_list_tree(actions)?;
-    let tree_wrapper = treesitter::TreeWrapper {
-        tree,
-        source: actions.to_string(),
-    };
-    let parsed_doc: ParsedDocument = tree_wrapper.try_into()?;
-    Ok(parsed_doc)
+    parse_document(actions)
 }
 
 /// Parse a .actions file and return as JSON Value
@@ -160,38 +153,7 @@ pub fn get_action_list(opts: &Value, actions: String) -> Result<Value, String> {
 /// # Returns
 /// A tree-sitter Tree representing the parsed structure
 pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
-    let mut action_parser = tree_sitter::Parser::new();
-
-    action_parser
-        .set_language(&tree_sitter_actions::LANGUAGE.into())
-        .expect("Failed to set language for tree-sitter parser");
-
-    action_parser
-        .parse(actions, None)
-        .ok_or("Failed to parse tree".to_string())
-}
-
-/// Patch a primary ActionList with updates from a secondary list
-
-/// Patch a primary ActionList with updates from a secondary list
-///
-/// Matches actions by UUID. If an action exists in both, it is updated
-/// in the primary list. If it only exists in the secondary list, it is
-/// appended to the primary list.
-///
-/// # Arguments
-/// * `primary` - The source of truth list to be modified
-/// * `secondary` - The list containing updates/additions
-pub fn patch_action_list(primary: &mut ActionList, secondary: &ActionList) {
-    for patch_action in secondary {
-        if let Some(original_action) = primary.iter_mut().find(|a| a.id == patch_action.id) {
-            // Update existing action
-            *original_action = patch_action.clone();
-        } else {
-            // Add new action
-            primary.push(patch_action.clone());
-        }
-    }
+    parse_tree(actions)
 }
 
 /// Filter actions using a SPARQL query
@@ -251,7 +213,6 @@ pub fn run_sql_where(
 /// Run a SPARQL query on workspace actions with source tracking
 ///
 /// This enables cross-file queries using the file_path and project properties.
-/// Example: `SELECT ?id WHERE { ?s <...hasProject> "work" . ?s <...id> ?id }`
 ///
 /// # Arguments
 /// * `workspace` - Workspace actions with source metadata

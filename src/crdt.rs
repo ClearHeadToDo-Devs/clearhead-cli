@@ -1,5 +1,7 @@
-use crate::domain::DomainModel;
-use crate::entities::ActionList;
+// Import core types
+use clearhead_core::{ActionList, DomainModel};
+
+// CLI-specific imports
 use crate::environment_reader::get_data_dir;
 use automerge::AutoCommit;
 use autosurgeon::{hydrate, reconcile, Hydrate, Reconcile};
@@ -455,7 +457,7 @@ fn write_shadow_file(file_path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::Action;
+    use clearhead_core::Action;
     use tempfile::TempDir;
 
     #[test]

@@ -1,8 +1,7 @@
 /// Integration tests for SQL query functionality
 ///
 /// Tests examples from the canonical SQL schema specification
-
-use clearhead_cli::entities::{ActionList, ActionState};
+use clearhead_cli::{ActionList, ActionState};
 use uuid::Uuid;
 
 mod common;
@@ -53,8 +52,8 @@ fn create_test_actions() -> ActionList {
 fn test_basic_priority_filter() {
     // Example from spec: "All P1 actions"
     let actions = create_test_actions();
-    let filtered = clearhead_cli::run_sql_where(&actions, "priority = 1", None, None)
-        .expect("Query failed");
+    let filtered =
+        clearhead_cli::run_sql_where(&actions, "priority = 1", None, None).expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 P1 actions");
     assert!(filtered.iter().all(|a| a.priority == Some(1)));
@@ -76,8 +75,7 @@ fn test_context_filter() {
     // Example from spec: "Actions in 'work' context"
     let actions = create_test_actions();
     let sql = "SELECT a.id FROM actions a JOIN action_contexts c ON a.id = c.action_id WHERE c.context = 'work'";
-    let filtered = clearhead_cli::run_sql_query(&actions, sql)
-        .expect("Query failed");
+    let filtered = clearhead_cli::run_sql_query(&actions, sql).expect("Query failed");
 
     assert_eq!(filtered.len(), 3, "Expected 3 actions in 'work' context");
 }
@@ -87,10 +85,13 @@ fn test_multiple_contexts() {
     // Example from spec: "Actions in 'work' OR 'urgent' context"
     let actions = create_test_actions();
     let sql = "SELECT DISTINCT a.id FROM actions a JOIN action_contexts c ON a.id = c.action_id WHERE c.context IN ('work', 'urgent')";
-    let filtered = clearhead_cli::run_sql_query(&actions, sql)
-        .expect("Query failed");
+    let filtered = clearhead_cli::run_sql_query(&actions, sql).expect("Query failed");
 
-    assert_eq!(filtered.len(), 3, "Expected 3 actions with work or urgent context");
+    assert_eq!(
+        filtered.len(),
+        3,
+        "Expected 3 actions with work or urgent context"
+    );
 }
 
 #[test]
@@ -108,14 +109,14 @@ fn test_root_actions_only() {
 fn test_children_of_action() {
     // Example from spec: "Immediate children of an action"
     let actions = create_test_actions();
-    let p2_id = actions.iter()
+    let p2_id = actions
+        .iter()
         .find(|a| a.name == "P2 Action")
         .map(|a| a.id.to_string())
         .expect("P2 action not found");
 
     let sql = format!("SELECT id FROM actions WHERE parent_id = '{}'", p2_id);
-    let filtered = clearhead_cli::run_sql_query(&actions, &sql)
-        .expect("Query failed");
+    let filtered = clearhead_cli::run_sql_query(&actions, &sql).expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 children of P2");
 }
@@ -125,8 +126,7 @@ fn test_complex_combined_query() {
     // Example from spec: "P1 actions in 'work' context"
     let actions = create_test_actions();
     let sql = "SELECT a.id FROM actions a JOIN action_contexts c ON a.id = c.action_id WHERE a.priority = 1 AND c.context = 'work'";
-    let filtered = clearhead_cli::run_sql_query(&actions, sql)
-        .expect("Query failed");
+    let filtered = clearhead_cli::run_sql_query(&actions, sql).expect("Query failed");
 
     assert_eq!(filtered.len(), 2, "Expected 2 P1 actions in work context");
 }

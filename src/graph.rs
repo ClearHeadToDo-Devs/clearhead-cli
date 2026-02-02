@@ -20,8 +20,12 @@
 //! let ids = graph::query_actions(&store, "SELECT ?id WHERE { ... }")?;
 //! ```
 
-use crate::domain::{ActPhase, DomainModel, Plan, PlannedAct};
-use crate::entities::{Action, ActionList, ActionState, Recurrence};
+// Import core types
+use clearhead_core::{
+    entities::Recurrence, ActPhase, Action, ActionList, ActionState, DomainModel, Plan, PlannedAct,
+};
+
+// CLI-specific imports
 use crate::environment_reader::Config;
 use chrono::DateTime;
 use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -832,7 +836,7 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
 #[cfg(test)]
 mod v4_tests {
     use super::*;
-    use crate::entities::Action;
+    use clearhead_core::Action;
 
     #[test]
     fn test_load_domain_model() {

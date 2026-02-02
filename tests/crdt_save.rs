@@ -1,6 +1,6 @@
 use clearhead_cli::crdt::ActionRepository;
-use clearhead_cli::entities::Action;
 use clearhead_cli::get_parsed_document;
+use clearhead_cli::Action;
 use std::fs;
 use tempfile::TempDir;
 

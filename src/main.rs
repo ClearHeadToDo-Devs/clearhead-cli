@@ -331,7 +331,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             // First pass: identify completed instances
             for action in &all_actions {
-                if action.state == clearhead_cli::entities::ActionState::Completed {
+                if action.state == clearhead_cli::ActionState::Completed {
                     if let Some(do_dt) = action.do_date_time {
                         // Store (template_id, date) to skip projected occurrences
                         // We use the ID as a proxy for the template link
@@ -344,7 +344,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             for action in &all_actions {
                 // Skip the actual completed log entries in the second pass
-                if action.state == clearhead_cli::entities::ActionState::Completed
+                if action.state == clearhead_cli::ActionState::Completed
                     && action.recurrence.is_none()
                 {
                     continue;
@@ -602,7 +602,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         } => {
             use chrono::Local;
             use clearhead_cli::crdt::ActionRepository;
-            use clearhead_cli::entities::{Action, ActionState};
+            use clearhead_cli::{Action, ActionState};
             use uuid::Uuid;
 
             let input_file = file
@@ -687,7 +687,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Commands::Complete { file, query, write } => {
             use chrono::Local;
             use clearhead_cli::crdt::ActionRepository;
-            use clearhead_cli::entities::{Action, ActionState};
+            use clearhead_cli::{Action, ActionState};
             use uuid::Uuid;
 
             let input_file = file
@@ -870,7 +870,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     .map_err(|e| format!("Failed to save repository: {}", e))?;
 
                 // Emit telemetry for property changes
-                use clearhead_cli::diff::diff_actions;
+                use clearhead_core::diff::diff_actions;
                 let changes = diff_actions(&vec![old_action], &vec![new_action]);
                 if let Some(action_diff) = changes.modified.first() {
                     for change in &action_diff.changes {
@@ -962,7 +962,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let parsed = clearhead_cli::get_parsed_document(&content)
                 .map_err(|e| format!("Failed to parse document: {}", e))?;
 
-            let results = clearhead_cli::lint::lint_document(&parsed);
+            let results = clearhead_cli::lint_document(&parsed);
 
             if results.errors.is_empty() && results.warnings.is_empty() && results.info.is_empty() {
                 info!("No linting errors found");

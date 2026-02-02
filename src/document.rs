@@ -3,10 +3,15 @@
 //! This module coordinates the parse → sync → format pipeline for document saves.
 //! It delegates to specialized modules for parsing, CRDT operations, and formatting.
 
+// Import core types
+use clearhead_core::{
+    diff::Diff,
+    sync::{should_sync, SyncDecision},
+};
+
+// CLI-specific imports
 use crate::crdt::ActionRepository;
-use crate::diff::Diff;
 use crate::get_parsed_document;
-use crate::sync::{should_sync, SyncDecision};
 
 /// Result of processing a document save
 #[derive(Debug)]
@@ -75,7 +80,7 @@ pub fn process_save(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{Action, ActionState};
+    use clearhead_core::{Action, ActionState};
     use tempfile::TempDir;
     use uuid::Uuid;
 

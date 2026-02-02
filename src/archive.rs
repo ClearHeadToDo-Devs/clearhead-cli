@@ -1,5 +1,4 @@
-use crate::entities::{ActionList, ActionState};
-use crate::format::{format, OutputFormat};
+use clearhead_core::{format, ActionList, ActionState, OutputFormat};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -142,7 +141,7 @@ pub fn archive_actions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{Action, ActionState};
+    use clearhead_core::{Action, ActionState};
     use uuid::Uuid;
 
     fn mock_action(id: Uuid, parent: Option<Uuid>, state: ActionState) -> Action {

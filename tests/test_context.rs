@@ -1,14 +1,12 @@
 #[test]
 fn test_json_output_includes_context() {
     use clearhead_cli::format::{format, OutputFormat};
-    use clearhead_cli::entities::Action;
+    use clearhead_cli::Action;
 
-    let actions = vec![
-        Action {
-            priority: Some(1),
-            ..Action::new("Test action")
-        }
-    ];
+    let actions = vec![Action {
+        priority: Some(1),
+        ..Action::new("Test action")
+    }];
 
     let result = format(&actions, OutputFormat::Json, None, None).unwrap();
 

@@ -1,4 +1,4 @@
-use clearhead_cli::entities::*;
+use clearhead_cli::*;
 use clearhead_cli::*;
 
 mod common;
@@ -65,7 +65,10 @@ fn parse_action_with_description_from_grammar_examples() {
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::Completed);
     assert_eq!(actions[0].name, "buy milk");
-    assert_eq!(actions[0].description.as_ref().map(|s| s.trim()), Some("from the organic section"));
+    assert_eq!(
+        actions[0].description.as_ref().map(|s| s.trim()),
+        Some("from the organic section")
+    );
 }
 
 /// Test parsing action with priority
@@ -93,7 +96,10 @@ fn parse_action_with_story_from_grammar_examples() {
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::Completed);
     assert_eq!(actions[0].name, "story test");
-    assert_eq!(actions[0].story.as_ref().map(|s| s.trim()), Some("Parent Story"));
+    assert_eq!(
+        actions[0].story.as_ref().map(|s| s.trim()),
+        Some("Parent Story")
+    );
 }
 
 /// Test parsing action with context tags
@@ -162,7 +168,8 @@ fn roundtrip_minimal_action() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
+    let formatted =
+        clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -184,7 +191,8 @@ fn roundtrip_action_with_children() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
+    let formatted =
+        clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -211,7 +219,8 @@ fn roundtrip_action_with_metadata() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
+    let formatted =
+        clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -230,7 +239,8 @@ fn show_formatted_output() {
     let original = read_example("with_children.actions");
     let test_config = serde_json::json!({});
     let actions = get_action_list_struct(&test_config, &original).unwrap();
-    let formatted = clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
+    let formatted =
+        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     eprintln!("\n=== Formatted .actions file ===");
     eprintln!("{}", formatted);
@@ -247,7 +257,8 @@ fn roundtrip_action_with_everything() {
     let actions1 = get_action_list_struct(&test_config, &original).unwrap();
 
     // Format back to string
-    let formatted = clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
+    let formatted =
+        clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
     let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
@@ -263,7 +274,10 @@ fn roundtrip_action_with_everything() {
         assert_eq!(a1.name, a2.name, "Names should match");
         assert_eq!(a1.description, a2.description, "Descriptions should match");
         assert_eq!(a1.priority, a2.priority, "Priorities should match");
-        assert_eq!(a1.context_list, a2.context_list, "Context lists should match");
+        assert_eq!(
+            a1.context_list, a2.context_list,
+            "Context lists should match"
+        );
         assert_eq!(a1.story, a2.story, "Stories should match");
     }
 }

@@ -69,8 +69,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use tracing::info;
 
-use crate::diff::FieldChange;
-use crate::entities::ActionState;
+use clearhead_core::diff::FieldChange;
+use clearhead_core::ActionState;
 
 /// Tool identifier indicating the source of an event.
 ///
