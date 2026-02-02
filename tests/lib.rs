@@ -1,5 +1,4 @@
 use clearhead_cli::*;
-use clearhead_cli::*;
 
 mod common;
 use common::read_example;

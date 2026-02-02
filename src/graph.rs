@@ -299,10 +299,9 @@ pub fn query_actions(store: &Store, sparql: &str) -> Result<Vec<String>, String>
     if let QueryResults::Solutions(solutions) = results {
         for solution in solutions {
             let s = solution.map_err(|e| e.to_string())?;
-            if let Some(term) = s.get("id") {
-                if let Term::Literal(lit) = term {
-                    ids.push(lit.value().to_string());
-                }
+            if let Some(term) = s.get("id")
+                && let Term::Literal(lit) = term {
+                ids.push(lit.value().to_string());
             }
         }
     }
@@ -325,10 +324,9 @@ pub fn get_actions_from_query(store: &Store, sparql: &str) -> Result<ActionList,
     let mut actions = ActionList::new();
 
     for id_str in ids {
-        if let Ok(uuid) = Uuid::parse_str(&id_str) {
-            if let Ok(action) = get_action_by_id(store, uuid) {
-                actions.push(action);
-            }
+        if let Ok(uuid) = Uuid::parse_str(&id_str)
+            && let Ok(action) = get_action_by_id(store, uuid) {
+            actions.push(action);
         }
     }
 
