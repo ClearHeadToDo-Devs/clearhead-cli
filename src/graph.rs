@@ -22,7 +22,7 @@
 
 // Import core types
 use clearhead_core::{
-    entities::Recurrence, ActPhase, Action, ActionList, ActionState, DomainModel, Plan, PlannedAct,
+    ActPhase, Action, ActionList, ActionState, DomainModel, Plan, PlannedAct, entities::Recurrence,
 };
 
 // CLI-specific imports
@@ -300,7 +300,8 @@ pub fn query_actions(store: &Store, sparql: &str) -> Result<Vec<String>, String>
         for solution in solutions {
             let s = solution.map_err(|e| e.to_string())?;
             if let Some(term) = s.get("id")
-                && let Term::Literal(lit) = term {
+                && let Term::Literal(lit) = term
+            {
                 ids.push(lit.value().to_string());
             }
         }
@@ -325,7 +326,8 @@ pub fn get_actions_from_query(store: &Store, sparql: &str) -> Result<ActionList,
 
     for id_str in ids {
         if let Ok(uuid) = Uuid::parse_str(&id_str)
-            && let Ok(action) = get_action_by_id(store, uuid) {
+            && let Ok(action) = get_action_by_id(store, uuid)
+        {
             actions.push(action);
         }
     }

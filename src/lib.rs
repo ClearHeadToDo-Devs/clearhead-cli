@@ -8,25 +8,6 @@ use tree_sitter::Tree;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
-    // Diff types
-    diff as core_diff,
-
-    // Format types and functions
-    format,
-    // Lint types and functions
-    lint_document,
-    // Parsing types and functions
-    parse_actions,
-    parse_document,
-    parse_tree,
-    // Patch function
-    patch_action_list,
-    // Sync types
-    sync as core_sync,
-
-    // Source metadata (from treesitter)
-    treesitter::{SourceMetadata, SourceRange},
-
     // Domain models
     ActPhase,
     // Core entities
@@ -48,6 +29,24 @@ pub use clearhead_core::{
 
     Plan,
     PlannedAct,
+    // Diff types
+    diff as core_diff,
+
+    // Format types and functions
+    format,
+    // Lint types and functions
+    lint_document,
+    // Parsing types and functions
+    parse_actions,
+    parse_document,
+    parse_tree,
+    // Patch function
+    patch_action_list,
+    // Sync types
+    sync as core_sync,
+
+    // Source metadata (from treesitter)
+    treesitter::{SourceMetadata, SourceRange},
 };
 
 // CLI-specific modules with environment integration
@@ -65,17 +64,17 @@ pub use export::format_as_icalendar;
 pub mod archive;
 
 pub mod mutations;
-pub use mutations::{apply_updates, resolve_reference, ActionUpdate, MatchType, ResolvedAction};
+pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
 
 pub mod workspace;
 
 pub mod environment_reader;
-pub use environment_reader::{get_config_dir, get_data_dir, load_config, Config};
+pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
 
 pub mod telemetry;
 pub use telemetry::{
-    emit, emit_event, event_from_field_change, event_from_state_change, get_telemetry_dir,
-    TelemetryEvent, TelemetryRecord, Tool,
+    TelemetryEvent, TelemetryRecord, Tool, emit, emit_event, event_from_field_change,
+    event_from_state_change, get_telemetry_dir,
 };
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
