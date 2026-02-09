@@ -342,6 +342,12 @@ pub enum Commands {
         file: Option<PathBuf>,
     },
 
+    /// Manage charters (high-level directives that organize plans)
+    Charter {
+        #[command(subcommand)]
+        action: CharterAction,
+    },
+
     /// Export actions to calendar format (iCalendar)
     Export {
         /// File to export (.actions format). If not provided, reads from stdin
@@ -367,6 +373,45 @@ pub enum ReadSource {
     },
     /// Read from standard input
     Stdio,
+}
+
+/// Actions for the `charter` subcommand
+#[derive(Subcommand)]
+pub enum CharterAction {
+    /// List all discovered charters
+    List {
+        /// Output format
+        #[arg(short, long, value_enum)]
+        format: Option<Format>,
+
+        /// Show only explicit (file-backed) charters
+        #[arg(long)]
+        explicit_only: bool,
+    },
+
+    /// Show details of a specific charter
+    Show {
+        /// UUID, alias, or name of the charter
+        query: String,
+    },
+
+    /// Create a new charter
+    Add {
+        /// Title of the charter
+        title: String,
+
+        /// Short alias for the charter
+        #[arg(short, long)]
+        alias: Option<String>,
+
+        /// Parent charter reference
+        #[arg(short, long)]
+        parent: Option<String>,
+
+        /// Write the charter to a file in the data directory
+        #[arg(short, long)]
+        write: bool,
+    },
 }
 
 /// CLI-specific format enum that maps to library's OutputFormat

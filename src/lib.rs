@@ -15,6 +15,9 @@ pub use clearhead_core::{
     ActionList,
     ActionState,
 
+    // Charter types
+    Charter,
+
     DomainModel,
     FormatConfig,
     FormatStyle,
@@ -29,6 +32,11 @@ pub use clearhead_core::{
 
     Plan,
     PlannedAct,
+
+    // Charter functions
+    format_charter,
+    implicit_charter,
+    parse_charter,
     // Diff types
     diff as core_diff,
 

@@ -15,7 +15,7 @@
 //! See: specifications/naming_conventions.md
 
 use crate::get_action_list_struct;
-use clearhead_core::{Action, ActionList};
+use clearhead_core::{Action, ActionList, Charter, parse_charter, implicit_charter};
 use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
 
@@ -256,6 +256,288 @@ pub fn load_workspace_with_sources(data_dir: &Path) -> Result<WorkspaceActions, 
     Ok(workspace)
 }
 
+// ============================================================================
+// Charter Discovery
+// ============================================================================
+
+/// A charter with metadata about how it was discovered.
+#[derive(Debug, Clone)]
+pub struct SourcedCharter {
+    pub charter: Charter,
+    pub source: CharterSource,
+}
+
+/// How a charter was discovered in the workspace.
+#[derive(Debug, Clone)]
+pub enum CharterSource {
+    /// Parsed from an explicit .md file (e.g., health.md)
+    ExplicitFile(PathBuf),
+    /// Inferred from a .actions filename (e.g., health.actions → "health")
+    ImplicitFromFile(PathBuf),
+    /// Inferred from a project directory (e.g., build_clearhead/ → "build_clearhead")
+    ImplicitFromDirectory(PathBuf),
+}
+
+impl SourcedCharter {
+    pub fn is_explicit(&self) -> bool {
+        matches!(self.source, CharterSource::ExplicitFile(_))
+    }
+}
+
+/// Full workspace model composing charters and actions.
+#[derive(Debug)]
+pub struct Workspace {
+    pub charters: Vec<SourcedCharter>,
+    pub actions: WorkspaceActions,
+}
+
+/// Discover all charters in a data directory.
+///
+/// Discovery order:
+/// 1. Explicit: .md files at root level, README.md in project directories
+/// 2. Implicit: inferred from .actions filenames and project directories
+///
+/// Implicit charters are deduplicated — if an explicit charter exists with
+/// the same name, the implicit one is skipped.
+pub fn discover_charters(data_dir: &Path) -> Result<Vec<SourcedCharter>, String> {
+    let mut charters = Vec::new();
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    if !data_dir.is_dir() {
+        return Ok(charters);
+    }
+
+    let entries = std::fs::read_dir(data_dir)
+        .map_err(|e| format!("Failed to read directory '{}': {}", data_dir.display(), e))?;
+
+    let mut root_md_files = Vec::new();
+    let mut root_actions_files = Vec::new();
+    let mut directories = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            if let Some(name) = path.file_name() {
+                if !name.to_string_lossy().starts_with('.') {
+                    directories.push(path);
+                }
+            }
+        } else if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if ext == "md" {
+                    root_md_files.push(path);
+                } else if ext == "actions" {
+                    root_actions_files.push(path);
+                }
+            }
+        }
+    }
+
+    // Phase 1: Explicit charters from .md files at root
+    for md_path in &root_md_files {
+        match load_explicit_charter(md_path) {
+            Ok(charter) => {
+                let name = charter.title.to_lowercase();
+                seen_names.insert(name);
+                if let Some(ref alias) = charter.alias {
+                    seen_names.insert(alias.to_lowercase());
+                }
+                // Also track the file stem so health.md deduplicates health.actions
+                if let Some(stem) = md_path.file_stem().and_then(|s| s.to_str()) {
+                    seen_names.insert(stem.to_lowercase());
+                }
+                charters.push(SourcedCharter {
+                    charter,
+                    source: CharterSource::ExplicitFile(md_path.clone()),
+                });
+            }
+            Err(e) => {
+                debug!(file = %md_path.display(), error = %e, "Skipping .md file (not a valid charter)");
+            }
+        }
+    }
+
+    // Phase 1b: Explicit charters from README.md in project directories
+    for dir_path in &directories {
+        let readme = dir_path.join("README.md");
+        if readme.is_file() {
+            match load_explicit_charter(&readme) {
+                Ok(charter) => {
+                    let dir_name = dir_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
+                    let name = charter.title.to_lowercase();
+                    seen_names.insert(name);
+                    seen_names.insert(dir_name.to_lowercase());
+                    if let Some(ref alias) = charter.alias {
+                        seen_names.insert(alias.to_lowercase());
+                    }
+                    charters.push(SourcedCharter {
+                        charter,
+                        source: CharterSource::ExplicitFile(readme),
+                    });
+                }
+                Err(e) => {
+                    debug!(dir = %dir_path.display(), error = %e, "Skipping README.md (not a valid charter)");
+                }
+            }
+        }
+
+        // Check for sub-directory charters
+        if let Ok(sub_entries) = std::fs::read_dir(dir_path) {
+            let parent_name = dir_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            for sub_entry in sub_entries.flatten() {
+                let sub_path = sub_entry.path();
+                if sub_path.is_dir() {
+                    if let Some(name) = sub_path.file_name() {
+                        if name.to_string_lossy().starts_with('.') {
+                            continue;
+                        }
+                    }
+                    // Check for .actions files in subdirectory to infer sub-charters
+                    let has_actions = sub_path.join("next.actions").is_file()
+                        || std::fs::read_dir(&sub_path)
+                            .ok()
+                            .map(|entries| {
+                                entries
+                                    .flatten()
+                                    .any(|e| {
+                                        e.path().extension().is_some_and(|ext| ext == "actions")
+                                    })
+                            })
+                            .unwrap_or(false);
+
+                    if has_actions {
+                        let sub_name = sub_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if !seen_names.contains(&sub_name.to_lowercase()) {
+                            let mut sub_charter = implicit_charter(&sub_name);
+                            sub_charter.parent = Some(parent_name.clone());
+                            seen_names.insert(sub_name.to_lowercase());
+                            charters.push(SourcedCharter {
+                                charter: sub_charter,
+                                source: CharterSource::ImplicitFromDirectory(sub_path),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2: Implicit charters from .actions files
+    for actions_path in &root_actions_files {
+        if let Some(stem) = actions_path.file_stem().and_then(|s| s.to_str()) {
+            if stem == "inbox" {
+                continue;
+            }
+            if !seen_names.contains(&stem.to_lowercase()) {
+                seen_names.insert(stem.to_lowercase());
+                charters.push(SourcedCharter {
+                    charter: implicit_charter(stem),
+                    source: CharterSource::ImplicitFromFile(actions_path.clone()),
+                });
+            }
+        }
+    }
+
+    // Phase 2b: Implicit charters from directories (that don't already have explicit charters)
+    for dir_path in &directories {
+        if let Some(dir_name) = dir_path.file_name().and_then(|n| n.to_str()) {
+            if !seen_names.contains(&dir_name.to_lowercase()) {
+                // Only create implicit charter if directory has .actions files
+                let has_actions = discover_action_files(dir_path)
+                    .map(|f| !f.is_empty())
+                    .unwrap_or(false);
+                if has_actions {
+                    seen_names.insert(dir_name.to_lowercase());
+                    charters.push(SourcedCharter {
+                        charter: implicit_charter(dir_name),
+                        source: CharterSource::ImplicitFromDirectory(dir_path.clone()),
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort by title for consistent ordering
+    charters.sort_by(|a, b| a.charter.title.cmp(&b.charter.title));
+
+    debug!(count = charters.len(), data_dir = %data_dir.display(), "Discovered charters");
+    Ok(charters)
+}
+
+/// Load workspace charters + actions together.
+pub fn load_workspace(data_dir: &Path) -> Result<Workspace, String> {
+    let charters = discover_charters(data_dir)?;
+    let actions = load_workspace_with_sources(data_dir)?;
+    Ok(Workspace { charters, actions })
+}
+
+/// Resolve a charter by UUID prefix, alias, or name.
+///
+/// Resolution order:
+/// 1. Full UUID match
+/// 2. Short UUID prefix match
+/// 3. Alias match (case-insensitive)
+/// 4. Title match (case-insensitive, partial)
+pub fn resolve_charter<'a>(
+    charters: &'a [SourcedCharter],
+    query: &str,
+) -> Option<&'a SourcedCharter> {
+    let query_lower = query.to_lowercase();
+
+    // 1. Full UUID match
+    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
+        if let Some(sc) = charters.iter().find(|sc| sc.charter.id == uuid) {
+            return Some(sc);
+        }
+    }
+
+    // 2. Short UUID prefix
+    if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        if let Some(sc) = charters
+            .iter()
+            .find(|sc| sc.charter.id.to_string().starts_with(query))
+        {
+            return Some(sc);
+        }
+    }
+
+    // 3. Alias match (case-insensitive, exact)
+    if let Some(sc) = charters.iter().find(|sc| {
+        sc.charter
+            .alias
+            .as_ref()
+            .is_some_and(|a| a.to_lowercase() == query_lower)
+    }) {
+        return Some(sc);
+    }
+
+    // 4. Title match (case-insensitive, partial)
+    charters
+        .iter()
+        .find(|sc| sc.charter.title.to_lowercase().contains(&query_lower))
+}
+
+/// Load an explicit charter from a markdown file.
+fn load_explicit_charter(path: &Path) -> Result<Charter, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
+    parse_charter(&content)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,5 +630,95 @@ mod tests {
 
         // Should have at least the valid task
         assert!(actions.len() >= 1);
+    }
+
+    #[test]
+    fn test_discover_charters_implicit_from_actions() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        fs::write(root.join("health.actions"), "[ ] Exercise").unwrap();
+        fs::write(root.join("inbox.actions"), "[ ] Random").unwrap();
+
+        let charters = discover_charters(root).unwrap();
+
+        assert_eq!(charters.len(), 1);
+        assert_eq!(charters[0].charter.title, "health");
+        assert!(!charters[0].is_explicit());
+    }
+
+    #[test]
+    fn test_discover_charters_explicit_wins() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        fs::write(root.join("health.actions"), "[ ] Exercise").unwrap();
+        fs::write(root.join("health.md"), "# Health & Fitness\n\nStay fit.\n").unwrap();
+
+        let charters = discover_charters(root).unwrap();
+
+        // Should be just one charter, the explicit one
+        assert_eq!(charters.len(), 1);
+        assert_eq!(charters[0].charter.title, "Health & Fitness");
+        assert!(charters[0].is_explicit());
+    }
+
+    #[test]
+    fn test_discover_charters_directory() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        let project_dir = root.join("build_clearhead");
+        fs::create_dir(&project_dir).unwrap();
+        fs::write(project_dir.join("next.actions"), "[ ] Build").unwrap();
+
+        let charters = discover_charters(root).unwrap();
+
+        assert_eq!(charters.len(), 1);
+        assert_eq!(charters[0].charter.title, "build_clearhead");
+        assert!(!charters[0].is_explicit());
+    }
+
+    #[test]
+    fn test_resolve_charter_by_alias() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        fs::write(
+            root.join("health.md"),
+            "---\nalias: health\n---\n# Health & Fitness\n",
+        )
+        .unwrap();
+
+        let charters = discover_charters(root).unwrap();
+        let found = resolve_charter(&charters, "health");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().charter.title, "Health & Fitness");
+    }
+
+    #[test]
+    fn test_resolve_charter_by_name() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        fs::write(root.join("work.actions"), "[ ] Task").unwrap();
+
+        let charters = discover_charters(root).unwrap();
+        let found = resolve_charter(&charters, "work");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().charter.title, "work");
+    }
+
+    #[test]
+    fn test_load_workspace_combines_charters_and_actions() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        fs::write(root.join("health.actions"), "[ ] Exercise").unwrap();
+        fs::write(root.join("work.actions"), "[ ] Task").unwrap();
+
+        let workspace = load_workspace(root).unwrap();
+        assert_eq!(workspace.charters.len(), 2);
+        assert_eq!(workspace.actions.len(), 2);
     }
 }

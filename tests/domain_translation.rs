@@ -21,6 +21,7 @@ fn test_domain_round_trip_simple() {
         alias: None,
         is_sequential: None,
         depends_on: None,
+        charter: None,
     };
 
     let act = PlannedAct {
