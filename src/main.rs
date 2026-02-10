@@ -11,10 +11,13 @@ use argparser::{Commands, parse_cli};
 mod lsp;
 
 pub mod environment_reader;
-use environment_reader::{ensure_dir_exists, get_data_dir, load_config, resolve_file_path};
+use environment_reader::{ensure_dir_exists, resolve_file_path};
+
+mod commands;
+use commands::{CommandContext, load_repo, save_repo, try_emit, write_or_print};
 
 use clearhead_cli::telemetry::{
-    emit, emit_event, event_from_field_change, TelemetryEvent, TelemetryRecord, Tool,
+    TelemetryEvent, TelemetryRecord, Tool, emit, event_from_field_change,
 };
 
 fn main() {
@@ -47,19 +50,9 @@ fn main() {
 }
 
 fn run_command(cli: &argparser::Cli) -> Result<(), String> {
-    // Load config from global config file and environment variables
-    let config =
-        load_config(cli.config.clone()).map_err(|e| format!("Failed to load config: {}", e))?;
+    let ctx = CommandContext::new(cli)?;
 
-    // Resolve directories (with shell expansion)
-    let data_dir = resolve_file_path(&config.data_dir, &get_data_dir());
-    let config_dir = resolve_file_path(&config.config_dir, &environment_reader::get_config_dir());
-
-    // Ensure directories exist
-    ensure_dir_exists(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
-    ensure_dir_exists(&config_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
-
-    debug!(data_dir = %data_dir.display(), "Data directory resolved");
+    debug!(data_dir = %ctx.data_dir.display(), "Data directory resolved");
 
     match &cli.command {
         Commands::Read {
@@ -71,15 +64,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         } => {
             use argparser::ReadSource;
 
-            // Resolve format: CLI > Env > Config > Default
             let output_format = format
                 .map(|f| f.into())
-                .or_else(|| parse_format(&config.cli_format).ok())
+                .or_else(|| parse_format(&ctx.config.cli_format).ok())
                 .unwrap_or(clearhead_cli::OutputFormat::Actions);
 
             let has_filter = sparql.is_some() || where_clause.is_some();
 
-            // SQL flags only apply to workspace reads
             if source.is_some() && has_filter {
                 return Err(
                     "SPARQL filtering (--where, --sparql) is only supported for workspace reads. \
@@ -88,9 +79,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 );
             }
 
-            // Convert CLI table options to library format if needed
             let lib_table_opts = if output_format == clearhead_cli::OutputFormat::Table {
-                // Validate column names first
                 if let Some(ref cols) = table_options.columns {
                     argparser::validate_column_names(cols)?;
                 }
@@ -103,18 +92,17 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             };
 
             let actions = match source {
-                // Workspace-wide read with optional filtering
                 None => {
-                    debug!(data_dir = %data_dir.display(), "Reading workspace");
+                    debug!(data_dir = %ctx.data_dir.display(), "Reading workspace");
 
                     if let Some(query) = sparql {
                         let workspace =
-                            clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
+                            clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
                         debug!(sparql = %query, "Filtering with SPARQL query");
                         clearhead_cli::run_workspace_sql_query(&workspace, query)?
                     } else if let Some(where_clause) = where_clause {
                         let workspace =
-                            clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
+                            clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
                         debug!(where_clause = %where_clause, "Filtering with WHERE clause");
                         clearhead_cli::run_workspace_sql_where(
                             &workspace,
@@ -123,17 +111,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                             None,
                         )?
                     } else {
-                        clearhead_cli::workspace::load_workspace_actions(&data_dir)?
+                        clearhead_cli::workspace::load_workspace_actions(&ctx.data_dir)?
                     }
                 }
-                // Parse specific file
                 Some(ReadSource::File { path }) => {
-                    let resolved = resolve_file_path(&path.to_string_lossy(), &data_dir);
+                    let resolved = resolve_file_path(&path.to_string_lossy(), &ctx.data_dir);
                     debug!(file = %resolved.display(), "Reading file");
                     let content = read_input(Some(&resolved))?;
                     clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
                 }
-                // Parse stdin
                 Some(ReadSource::Stdio) => {
                     debug!("Reading stdin");
                     let content = read_input(None)?;
@@ -157,7 +143,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 return Err("Must provide either query string or file".to_string());
             };
 
-            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&data_dir)?;
+            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
             let actions = clearhead_cli::run_workspace_sql_query(&workspace, &sparql)?;
 
             println!(
@@ -178,15 +164,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let content = read_input(input_file)?;
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
-            // Resolve indent settings: CLI > Config/Env > Default
+            let (config_indent_style, config_indent_width) = ctx.indent_config();
+
             let resolved_indent_style = indent_style
                 .clone()
                 .map(|i| i.into())
-                .unwrap_or_else(|| parse_indent_style(&config.cli_indent_style));
+                .unwrap_or(config_indent_style);
 
-            let resolved_indent_width = indent_width.unwrap_or(config.cli_indent_width);
+            let resolved_indent_width = indent_width.unwrap_or(config_indent_width);
 
-            // Format with style options, preserving existing UUIDs
             let format_config = clearhead_cli::FormatConfig {
                 style: style
                     .clone()
@@ -194,7 +180,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     .unwrap_or(clearhead_cli::FormatStyle::Compact),
                 indent_style: resolved_indent_style,
                 indent_width: resolved_indent_width,
-                include_id: true, // Preserve existing UUIDs (don't add new ones)
+                include_id: true,
             };
 
             let formatted = clearhead_cli::format(
@@ -204,17 +190,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 None,
             )?;
 
-            if *write {
-                if let Some(path) = input_file {
-                    info!(path = %path.display(), "Writing formatted output to file");
-                    fs::write(path, formatted)
-                        .map_err(|e| format!("Failed to write to file: {}", e))?;
-                } else {
-                    return Err("Cannot use --write without specifying a file".to_string());
-                }
-            } else {
-                println!("{}", formatted);
-            }
+            write_or_print(&formatted, *write, input_file)?;
             Ok(())
         }
         Commands::Normalize {
@@ -225,18 +201,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             let input_file = file.as_ref();
             debug!(input_file = ?input_file, write = *write, "Executing Normalize command");
             let content = read_input(input_file)?;
-            // Parse and ensure all actions have UUIDs (parser adds them automatically)
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
             let output = if *no_format {
-                // Just output with UUIDs, no formatting
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?
             } else {
-                // Resolve indent settings from config
-                let resolved_indent_style = parse_indent_style(&config.cli_indent_style);
-                let resolved_indent_width = config.cli_indent_width;
+                let (resolved_indent_style, resolved_indent_width) = ctx.indent_config();
 
-                // Format with default compact style and UUIDs
                 let format_config = clearhead_cli::FormatConfig {
                     style: clearhead_cli::FormatStyle::Compact,
                     indent_style: resolved_indent_style,
@@ -251,17 +222,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 )?
             };
 
-            if *write {
-                if let Some(path) = input_file {
-                    info!(path = %path.display(), "Writing normalized output to file");
-                    fs::write(path, output)
-                        .map_err(|e| format!("Failed to write to file: {}", e))?;
-                } else {
-                    return Err("Cannot use --write without specifying a file".to_string());
-                }
-            } else {
-                println!("{}", output);
-            }
+            write_or_print(&output, *write, input_file)?;
             Ok(())
         }
         Commands::Patch {
@@ -289,97 +250,28 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 None,
             )?;
 
-            if *write {
-                info!(path = %primary.display(), "Writing patched output to primary file");
-                fs::write(primary, formatted)
-                    .map_err(|e| format!("Failed to write to primary file: {}", e))?;
-            } else {
-                println!("{}", formatted);
-            }
+            write_or_print(&formatted, *write, Some(primary))?;
             Ok(())
         }
         Commands::Agenda { file, days } => {
-            use chrono::{Duration, Local};
             use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(input_file = %input_file.display(), days = *days, "Executing Agenda command");
 
             let content = read_input(Some(&input_file))?;
             let all_actions =
                 clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
 
-            let now = Local::now();
-            // Use start of today to include tasks that happened earlier today
-            let start_of_day = now
-                .date_naive()
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap();
-            let end_date = start_of_day + Duration::days(*days as i64);
-
-            debug!(range_start = %start_of_day.format("%Y-%m-%d"), range_end = %end_date.format("%Y-%m-%d"), "Agenda projection range");
-
-            // Project occurrences
-            let mut agenda_items = Vec::new();
-            let mut completed_instances = std::collections::HashSet::new();
-
-            // First pass: identify completed instances
-            for action in &all_actions {
-                if action.state == clearhead_cli::ActionState::Completed {
-                    if let Some(do_dt) = action.do_date_time {
-                        // Store (template_id, date) to skip projected occurrences
-                        // We use the ID as a proxy for the template link
-                        // In a real system, the instance ID might be {template-id}-{date}
-                        // For now, we'll match by Name and Date if the action has no recurrence but matches a template
-                        completed_instances.insert((action.name.clone(), do_dt.date_naive()));
-                    }
-                }
-            }
-
-            for action in &all_actions {
-                // Skip the actual completed log entries in the second pass
-                if action.state == clearhead_cli::ActionState::Completed
-                    && action.recurrence.is_none()
-                {
-                    continue;
-                }
-
-                if action.recurrence.is_some() {
-                    // Expand recurrence
-                    // limit to 100 to avoid infinite loops or excessive output
-                    let occurrences = action.expand_occurrences(100);
-                    for occ in occurrences {
-                        // Convert rrule Tz to chrono Local for comparison
-                        let occ_local = occ.with_timezone(&Local);
-                        if occ_local >= start_of_day && occ_local <= end_date {
-                            // Check if this specific instance was already completed
-                            if !completed_instances
-                                .contains(&(action.name.clone(), occ_local.date_naive()))
-                            {
-                                agenda_items.push((occ_local, action));
-                            }
-                        }
-                    }
-                } else if let Some(do_dt) = action.do_date_time {
-                    // Single occurrence
-                    if do_dt >= start_of_day && do_dt <= end_date {
-                        agenda_items.push((do_dt, action));
-                    }
-                }
-            }
+            let agenda_items = commands::agenda::project_agenda(&all_actions, *days);
 
             info!(item_count = agenda_items.len(), "Projected agenda items");
 
-            // Sort by date
-            agenda_items.sort_by_key(|(dt, _)| *dt);
+            if agenda_items.is_empty() {
+                println!("No actions scheduled for the next {} days.", days);
+                return Ok(());
+            }
 
-            // Display as table
             let mut table = Table::new();
             table
                 .load_preset(UTF8_FULL)
@@ -393,21 +285,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 Cell::new("Description").fg(Color::Cyan),
             ]);
 
-            if agenda_items.is_empty() {
-                println!("No actions scheduled for the next {} days.", days);
-                return Ok(());
-            }
-
-            for (dt, action) in agenda_items {
-                let date_str = dt.format("%Y-%m-%d (%a)").to_string();
-                let time_str = dt.format("%H:%M").to_string();
-                let name = action.name.clone();
-                let contexts = action
+            for item in agenda_items {
+                let date_str = item.datetime.format("%Y-%m-%d (%a)").to_string();
+                let time_str = item.datetime.format("%H:%M").to_string();
+                let name = item.action.name.clone();
+                let contexts = item
+                    .action
                     .context_list
                     .as_ref()
                     .map(|c| c.join(", "))
                     .unwrap_or_else(|| "-".to_string());
-                let desc = action
+                let desc = item
+                    .action
                     .description
                     .as_ref()
                     .map(|d| d.to_string())
@@ -432,11 +321,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             log_dir,
             dry_run,
         } => {
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(input_file = %input_file.display(), dry_run = *dry_run, "Executing Archive command");
 
             let content = fs::read_to_string(&input_file)
@@ -470,7 +355,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 if input_file.to_string_lossy().contains(".clearhead") {
                     input_file.parent().unwrap().join("logs")
                 } else {
-                    data_dir.join("logs")
+                    ctx.data_dir.join("logs")
                 }
             });
 
@@ -504,16 +389,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             open_only,
         } => {
             debug!(input_file = ?file, output = ?output, open_only = *open_only, "Executing Export command");
-            // Read input from file or stdin
             let content = read_input(file.as_ref())?;
-
-            // Parse actions
             let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-
-            // Format as iCalendar
             let icalendar = clearhead_cli::format_as_icalendar(&actions, *open_only)?;
 
-            // Write to output file or stdout
             if let Some(output_path) = output {
                 info!(output_path = %output_path.display(), "Writing iCalendar export to file");
                 fs::write(output_path, icalendar)
@@ -534,11 +413,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             Ok(())
         }
         Commands::SyncEvents { file, dry_run } => {
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(input_file = %input_file.display(), dry_run = *dry_run, "Executing SyncEvents command");
 
             let content = fs::read_to_string(&input_file)
@@ -554,7 +429,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 if *dry_run {
                     println!("Would sync: {} #{}", action.name, uuid_str);
                 } else {
-                    // Use created date if available, otherwise now
                     let timestamp = action
                         .created_date_time
                         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -601,15 +475,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             write,
         } => {
             use chrono::Local;
-            use clearhead_cli::crdt::ActionRepository;
             use clearhead_cli::{Action, ActionState};
             use uuid::Uuid;
 
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(name = %name, input_file = %input_file.display(), "Executing Add command");
 
             // If file doesn't exist, create it
@@ -622,13 +491,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
             }
 
-            // Phase 1: Load Repo (Sync In)
-            let mut repo = ActionRepository::load(input_file.clone())
-                .map_err(|e| format!("Failed to load repository: {}", e))?;
-
-            let mut actions = repo
-                .get_actions()
-                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
+            let (mut repo, mut actions) = load_repo(&input_file)?;
 
             let new_id = Uuid::now_v7();
             let new_action = Action {
@@ -663,19 +526,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
-                repo.save(&actions)
-                    .map_err(|e| format!("Failed to save repository: {}", e))?;
+                save_repo(&mut repo, &actions)?;
 
-                if let Err(e) = emit_event(
-                    Tool::Cli,
-                    Some(new_id.to_string()),
+                try_emit(
+                    &new_id,
                     TelemetryEvent::ActionCreated {
                         name: name.clone(),
                         file_path: input_file.display().to_string(),
                     },
-                ) {
-                    warn!(error = %e, "Failed to emit action_created event");
-                }
+                );
 
                 info!(name = %name, id = %new_id, "Action added successfully");
                 println!("Added action: {} #{}", name, new_id);
@@ -685,131 +544,32 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             Ok(())
         }
         Commands::Complete { file, query, write } => {
-            use chrono::Local;
-            use clearhead_cli::crdt::ActionRepository;
-            use clearhead_cli::{Action, ActionState};
-            use uuid::Uuid;
-
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(query = %query, input_file = %input_file.display(), "Executing Complete command");
 
-            // Phase 1: Load Repo (Sync In)
-            let mut repo = ActionRepository::load(input_file.clone())
-                .map_err(|e| format!("Failed to load repository: {}", e))?;
+            let (mut repo, mut actions) = load_repo(&input_file)?;
 
-            let mut actions = repo
-                .get_actions()
-                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
-
-            let mut found = false;
-            let mut action_id = Uuid::nil();
-            let mut action_name = String::new();
-            let mut is_recurring = false;
-            let mut new_instance: Option<Action> = None;
-
-            // Find the action to complete
-            let mut target_index = None;
-            for (i, action) in actions.iter().enumerate() {
-                let id_match = action.id.to_string().starts_with(query);
-                let name_match = action.name.contains(query);
-
-                if (id_match || name_match) && action.state != ActionState::Completed {
-                    target_index = Some(i);
-                    break;
-                }
-            }
-
-            if let Some(idx) = target_index {
-                let action = &mut actions[idx];
-                action_id = action.id;
-                action_name = action.name.clone();
-                found = true;
-
-                if action.recurrence.is_some() {
-                    is_recurring = true;
-                    // Handle recurring action:
-                    // 1. Create a static completed instance
-                    let mut instance = action.clone();
-                    instance.id = Uuid::now_v7(); // New ID for the log entry
-                    instance.recurrence = None; // It's a static instance
-                    instance.state = ActionState::Completed;
-                    instance.completed_date_time = Some(Local::now());
-                    new_instance = Some(instance);
-
-                    // 2. Update the template for the next occurrence
-                    // Expand occurrences to find the next one
-                    let occurrences = action.expand_occurrences(2);
-                    if occurrences.len() > 1 {
-                        // occurrences[0] is usually the current one, [1] is the next
-                        let next_dt = occurrences[1].with_timezone(&Local);
-                        action.do_date_time = Some(next_dt);
-                        debug!(next_occurrence = %next_dt.to_rfc3339(), "Updating template to next occurrence");
-                    } else {
-                        // Fallback: If rrule expansion fails or yields only one date,
-                        // we might just leave the date as is or clear it to avoid "completing" the template.
-                        warn!("Could not determine next occurrence for recurring action");
-                    }
-
-                    // Template stays NotStarted
-                    action.state = ActionState::NotStarted;
-                    action.completed_date_time = None;
-                } else {
-                    // Standard non-recurring action
-                    action.state = ActionState::Completed;
-                    action.completed_date_time = Some(Local::now());
-                }
-            }
-
-            if !found {
-                warn!(query = %query, "No matching open action found");
-                return Err(format!("No open action found matching '{}'", query));
-            }
-
-            // If we have a new instance, add it to the list
-            if let Some(instance) = new_instance {
-                actions.push(instance);
-            }
+            let result = commands::complete::complete_action(&mut actions, query)?;
 
             let formatted =
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
-                // Phase 2: Save Repo (Sync Out)
-                repo.save(&actions)
-                    .map_err(|e| format!("Failed to save repository: {}", e))?;
+                save_repo(&mut repo, &actions)?;
+                try_emit(&result.action_id, result.event);
 
-                // Emit event
-                let completed_at = chrono::Utc::now().to_rfc3339();
-                let event = if is_recurring {
-                    TelemetryEvent::InstanceCompleted {
-                        template_uuid: action_id.to_string(),
-                        scheduled_date: completed_at.clone(), // TODO: track scheduled date
-                        completed_date: completed_at,
-                    }
-                } else {
-                    TelemetryEvent::ActionCompleted {
-                        name: action_name.clone(),
-                        completed_at,
-                    }
-                };
-
-                if let Err(e) = emit_event(Tool::Cli, Some(action_id.to_string()), event) {
-                    warn!(error = %e, "Failed to emit completion event");
-                }
-
-                if is_recurring {
+                if result.is_recurring {
                     println!(
                         "Completed instance of recurring action: {} #{}",
-                        action_name, action_id
+                        result.action_name, result.action_id
                     );
                     println!("Template updated for next occurrence.");
                 } else {
-                    info!(name = %action_name, id = %action_id, "Action completed successfully");
-                    println!("Completed action: {} #{}", action_name, action_id);
+                    info!(name = %result.action_name, id = %result.action_id, "Action completed successfully");
+                    println!(
+                        "Completed action: {} #{}",
+                        result.action_name, result.action_id
+                    );
                 }
             } else {
                 println!("{}", formatted);
@@ -823,42 +583,26 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             fields,
             write,
         } => {
-            use clearhead_cli::crdt::ActionRepository;
             use clearhead_cli::{ActionUpdate, apply_updates, resolve_reference};
 
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(query = %query, input_file = %input_file.display(), "Executing Update command");
 
-            // Load repository
-            let mut repo = ActionRepository::load(input_file.clone())
-                .map_err(|e| format!("Failed to load repository: {}", e))?;
+            let (mut repo, mut actions) = load_repo(&input_file)?;
 
-            let mut actions = repo
-                .get_actions()
-                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
-
-            // Resolve the reference
             let resolved = resolve_reference(&actions, query)
                 .ok_or_else(|| format!("No action found matching '{}'", query))?;
 
             debug!(index = resolved.index, match_type = ?resolved.match_type, "Resolved action reference");
 
-            // Build the update from CLI args
             let mut updates: ActionUpdate = fields.clone().into();
             updates.name = name.clone();
 
-            // Capture old state for telemetry
             let old_action = actions[resolved.index].clone();
             let action_id = old_action.id;
 
-            // Apply updates
             apply_updates(&mut actions[resolved.index], updates);
 
-            // Capture new state for telemetry
             let new_action = actions[resolved.index].clone();
             let action_name = new_action.name.clone();
 
@@ -866,18 +610,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
 
             if *write {
-                repo.save(&actions)
-                    .map_err(|e| format!("Failed to save repository: {}", e))?;
+                save_repo(&mut repo, &actions)?;
 
-                // Emit telemetry for property changes
                 use clearhead_core::diff::diff_actions;
                 let changes = diff_actions(&vec![old_action], &vec![new_action]);
                 if let Some(action_diff) = changes.modified.first() {
                     for change in &action_diff.changes {
                         if let Some(evt) = event_from_field_change(change) {
-                            if let Err(e) = emit_event(Tool::Cli, Some(action_id.to_string()), evt) {
-                                warn!(error = %e, "Failed to emit property change event");
-                            }
+                            try_emit(&action_id, evt);
                         }
                     }
                 }
@@ -890,73 +630,49 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             Ok(())
         }
         Commands::Delete { file, query, write } => {
-            use clearhead_cli::crdt::ActionRepository;
-
-            let input_file = file
-                .as_ref()
-                .map(|p| p.clone())
-                .unwrap_or_else(|| resolve_file_path(&config.default_file, &data_dir));
-
+            let input_file = ctx.resolve_action_file(file.as_ref());
             debug!(query = %query, input_file = %input_file.display(), "Executing Delete command");
 
-            // Phase 1: Load Repo
-            let mut repo = ActionRepository::load(input_file.clone())
-                .map_err(|e| format!("Failed to load repository: {}", e))?;
+            let (mut repo, mut actions) = load_repo(&input_file)?;
 
-            let mut actions = repo
-                .get_actions()
-                .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
+            let target_index = actions
+                .iter()
+                .position(|action| {
+                    let id_match = action.id.to_string().starts_with(query);
+                    let name_match = action.name.contains(query);
+                    id_match || name_match
+                })
+                .ok_or_else(|| format!("No action found matching '{}'", query))?;
 
-            let mut target_index = None;
-            for (i, action) in actions.iter().enumerate() {
-                let id_match = action.id.to_string().starts_with(query);
-                let name_match = action.name.contains(query);
+            let action = actions.remove(target_index);
 
-                if id_match || name_match {
-                    target_index = Some(i);
-                    break;
-                }
-            }
+            if *write {
+                save_repo(&mut repo, &actions)?;
 
-            if let Some(idx) = target_index {
-                let action = actions.remove(idx);
+                try_emit(
+                    &action.id,
+                    TelemetryEvent::ActionDeleted {
+                        name: action.name.clone(),
+                    },
+                );
 
-                if *write {
-                    // Phase 2: Save Repo
-                    repo.save(&actions)
-                        .map_err(|e| format!("Failed to save repository: {}", e))?;
-
-                    // Emit event
-                    if let Err(e) = emit_event(
-                        Tool::Cli,
-                        Some(action.id.to_string()),
-                        TelemetryEvent::ActionDeleted {
-                            name: action.name.clone(),
-                        },
-                    ) {
-                        warn!(error = %e, "Failed to emit action_deleted event");
-                    }
-
-                    info!(name = %action.name, id = %action.id, "Action deleted successfully");
-                    println!("Deleted action: {} #{}", action.name, action.id);
-                } else {
-                    let formatted = clearhead_cli::format(
-                        &actions,
-                        clearhead_cli::OutputFormat::Actions,
-                        None,
-                        None,
-                    )?;
-                    println!("{}", formatted);
-                }
+                info!(name = %action.name, id = %action.id, "Action deleted successfully");
+                println!("Deleted action: {} #{}", action.name, action.id);
             } else {
-                return Err(format!("No action found matching '{}'", query));
+                let formatted = clearhead_cli::format(
+                    &actions,
+                    clearhead_cli::OutputFormat::Actions,
+                    None,
+                    None,
+                )?;
+                println!("{}", formatted);
             }
             Ok(())
         }
         Commands::Charter { action } => {
             use argparser::CharterAction;
             use clearhead_cli::workspace::{
-                discover_charters, load_workspace, resolve_charter, CharterSource,
+                CharterSource, discover_charters, load_workspace, resolve_charter,
             };
             use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
@@ -965,7 +681,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     format,
                     explicit_only,
                 } => {
-                    let mut charters = discover_charters(&data_dir)?;
+                    let mut charters = discover_charters(&ctx.data_dir)?;
 
                     if *explicit_only {
                         charters.retain(|sc| sc.is_explicit());
@@ -979,10 +695,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     let use_json = matches!(format, Some(argparser::Format::Json));
 
                     if use_json {
-                        let json_charters: Vec<_> = charters
-                            .iter()
-                            .map(|sc| &sc.charter)
-                            .collect();
+                        let json_charters: Vec<_> = charters.iter().map(|sc| &sc.charter).collect();
                         let json = serde_json::to_string_pretty(&json_charters)
                             .map_err(|e| format!("Failed to serialize charters: {}", e))?;
                         println!("{}", json);
@@ -1005,11 +718,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                             } else {
                                 "implicit"
                             };
-                            let alias = sc
-                                .charter
-                                .alias
-                                .as_deref()
-                                .unwrap_or("-");
+                            let alias = sc.charter.alias.as_deref().unwrap_or("-");
                             let source_str = match &sc.source {
                                 CharterSource::ExplicitFile(p) => p.display().to_string(),
                                 CharterSource::ImplicitFromFile(p) => {
@@ -1033,15 +742,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     Ok(())
                 }
                 CharterAction::Show { query } => {
-                    let charters = discover_charters(&data_dir)?;
+                    let charters = discover_charters(&ctx.data_dir)?;
                     let found = resolve_charter(&charters, query)
                         .ok_or_else(|| format!("No charter found matching '{}'", query))?;
 
                     let formatted = clearhead_core::format_charter(&found.charter);
                     println!("{}", formatted);
 
-                    // Show associated plan count
-                    let workspace = load_workspace(&data_dir)?;
+                    let workspace = load_workspace(&ctx.data_dir)?;
                     let charter_title = found.charter.title.to_lowercase();
                     let plan_count = workspace
                         .actions
@@ -1088,18 +796,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                             .to_lowercase()
                             .replace(' ', "-")
                             .replace('&', "and");
-                        let file_path = data_dir.join(format!("{}.md", filename));
+                        let file_path = ctx.data_dir.join(format!("{}.md", filename));
 
                         if file_path.exists() {
-                            return Err(format!(
-                                "File already exists: {}",
-                                file_path.display()
-                            ));
+                            return Err(format!("File already exists: {}", file_path.display()));
                         }
 
-                        fs::write(&file_path, &formatted).map_err(|e| {
-                            format!("Failed to write charter file: {}", e)
-                        })?;
+                        fs::write(&file_path, &formatted)
+                            .map_err(|e| format!("Failed to write charter file: {}", e))?;
                         info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
                         println!(
                             "Created charter: {} #{}\nWritten to: {}",
@@ -1119,7 +823,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             debug!(input_file = ?input_file, "Executing Lint command");
             let content = read_input(input_file)?;
 
-            // We need the parsed document with source map for linting
             let parsed = clearhead_cli::get_parsed_document(&content)
                 .map_err(|e| format!("Failed to parse document: {}", e))?;
 
@@ -1127,7 +830,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
             if results.errors.is_empty() && results.warnings.is_empty() && results.info.is_empty() {
                 info!("No linting errors found");
-                // No output on success, standard unix philosophy
                 return Ok(());
             }
 
@@ -1139,7 +841,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                     clearhead_cli::LintSeverity::Info => "INFO",
                 };
 
-                // Simple format: file:line:col: severity: message [code]
                 let file_str = input_file
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "<stdin>".to_string());
@@ -1186,12 +887,5 @@ fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
                 .map_err(|e| format!("Failed to read from stdin: {}", e))?;
             Ok(buffer)
         }
-    }
-}
-
-fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {
-    match s.to_lowercase().as_str() {
-        "tabs" => clearhead_cli::IndentStyle::Tabs,
-        _ => clearhead_cli::IndentStyle::Spaces,
     }
 }
