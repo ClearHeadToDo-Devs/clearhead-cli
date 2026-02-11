@@ -11,6 +11,10 @@ use std::path::{Path, PathBuf};
 /// Name of the CRDT file within a workspace
 const CRDT_FILENAME: &str = "workspace.crdt";
 
+/// Bump this constant any time the Hydrate/Reconcile-derived shape of
+/// WorkspaceState, DomainModel, Plan, PlannedAct, or Recurrence changes.
+const CRDT_SCHEMA_VERSION: u32 = clearhead_core::crdt::CRDT_SCHEMA_VERSION;
+
 /// Directory for shadow files (used in 3-way merge)
 const SHADOW_DIR: &str = "/tmp/clearhead-shadow";
 
@@ -21,6 +25,8 @@ const SHADOW_DIR: &str = "/tmp/clearhead-shadow";
 /// - Spokes: Each entry in `files` corresponds to an "Anchored View" (a .actions file).
 #[derive(Debug, Clone, Reconcile, Hydrate)]
 struct WorkspaceState {
+    /// Schema version — used to detect stale CRDT files after struct changes
+    version: u32,
     /// Map of file path (relative to workspace root) -> Domain Model
     files: HashMap<String, DomainModel>,
 }
@@ -157,6 +163,25 @@ impl CrdtStorage {
         let doc = AutoCommit::load(bytes.as_slice())
             .map_err(|e| format!("Failed to load AutoCommit document: {}", e))?;
 
+        // Check whether the stored schema version matches the current one.
+        // If hydration fails entirely or the version doesn't match, the CRDT
+        // was written by an older (or newer) struct layout — rebuild from disk.
+        let hydrate_result: Result<WorkspaceState, _> = hydrate(&doc);
+        let needs_rebuild = match hydrate_result {
+            Ok(state) => state.version != CRDT_SCHEMA_VERSION,
+            Err(_) => true,
+        };
+
+        if needs_rebuild {
+            eprintln!(
+                "CRDT schema version mismatch — rebuilding from .actions files on next access"
+            );
+            // Remove the stale file; ActionRepository::load() will bootstrap a
+            // fresh doc and re-import from disk for each file it touches.
+            let _ = std::fs::remove_file(&crdt_path);
+            return WorkspaceDoc::new(self.workspace.clone());
+        }
+
         Ok(WorkspaceDoc {
             doc,
             workspace: self.workspace.clone(),
@@ -201,6 +226,7 @@ impl WorkspaceDoc {
     pub fn new(workspace: Workspace) -> Result<Self, String> {
         let mut doc = AutoCommit::new();
         let empty_state = WorkspaceState {
+            version: CRDT_SCHEMA_VERSION,
             files: HashMap::new(),
         };
         reconcile(&mut doc, &empty_state).map_err(|e| format!("Failed to init CRDT: {}", e))?;
