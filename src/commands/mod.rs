@@ -1,7 +1,12 @@
 pub mod agenda;
+pub mod charter;
 pub mod complete;
+pub mod file;
+pub mod plan;
+pub mod service;
 
 use std::fs;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use tracing::warn;
 use uuid::Uuid;
@@ -34,7 +39,6 @@ impl CommandContext {
     }
 
     /// Resolve an optional file arg against the default file from config.
-    /// Used by 7+ commands: Agenda, Archive, SyncEvents, Add, Complete, Update, Delete.
     pub fn resolve_action_file(&self, file: Option<&PathBuf>) -> PathBuf {
         file.cloned()
             .unwrap_or_else(|| resolve_file_path(&self.config.default_file, &self.data_dir))
@@ -64,7 +68,6 @@ pub fn save_repo(repo: &mut ActionRepository, actions: &ActionList) -> Result<()
 }
 
 /// Write content to a file if `write` is true, otherwise print to stdout.
-/// Returns an error if `write` is true but no file path was provided.
 pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> Result<(), String> {
     if write {
         let path = file.ok_or("Cannot use --write without specifying a file")?;
@@ -80,6 +83,32 @@ pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> Res
 pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
     if let Err(e) = emit_event(Tool::Cli, Some(action_id.to_string()), event) {
         warn!(error = %e, "Failed to emit telemetry event");
+    }
+}
+
+/// Parse format string to OutputFormat
+pub fn parse_format(s: &str) -> Result<clearhead_cli::OutputFormat, String> {
+    match s.to_lowercase().as_str() {
+        "actions" => Ok(clearhead_cli::OutputFormat::Actions),
+        "json" => Ok(clearhead_cli::OutputFormat::Json),
+        "xml" => Ok(clearhead_cli::OutputFormat::Xml),
+        "table" => Ok(clearhead_cli::OutputFormat::Table),
+        _ => Err(format!("Unknown format: {}", s)),
+    }
+}
+
+/// Read input from a file or stdin
+pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
+    match file {
+        Some(path) => fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e)),
+        None => {
+            let mut buffer = String::new();
+            io::stdin()
+                .read_to_string(&mut buffer)
+                .map_err(|e| format!("Failed to read from stdin: {}", e))?;
+            Ok(buffer)
+        }
     }
 }
 

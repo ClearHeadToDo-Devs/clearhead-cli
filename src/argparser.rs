@@ -146,18 +146,109 @@ pub struct Cli {
     pub debug: u8,
 
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Verb,
 }
 
 #[derive(Subcommand)]
-pub enum Commands {
-    /// Read and display actions (workspace-wide by default)
+pub enum Verb {
+    /// Read and list items (plans, charters, agenda)
     Read {
+        #[command(subcommand)]
+        target: ReadTarget,
+    },
+
+    /// Show details of a single item
+    Show {
+        #[command(subcommand)]
+        target: ShowTarget,
+    },
+
+    /// Add a new item
+    Add {
+        #[command(subcommand)]
+        target: AddTarget,
+    },
+
+    /// Update an existing item
+    Update {
+        #[command(subcommand)]
+        target: UpdateTarget,
+    },
+
+    /// Mark an item as completed
+    Complete {
+        #[command(subcommand)]
+        target: CompleteTarget,
+    },
+
+    /// Delete an item
+    Delete {
+        #[command(subcommand)]
+        target: DeleteTarget,
+    },
+
+    /// Format a file
+    Format {
+        #[command(subcommand)]
+        target: FormatTarget,
+    },
+
+    /// Lint a file for errors and warnings
+    Lint {
+        #[command(subcommand)]
+        target: LintTarget,
+    },
+
+    /// Normalize a file (ensure UUIDs, format)
+    Normalize {
+        #[command(subcommand)]
+        target: NormalizeTarget,
+    },
+
+    /// Apply changes from a patch file
+    Patch {
+        #[command(subcommand)]
+        target: PatchTarget,
+    },
+
+    /// Archive completed items
+    Archive {
+        #[command(subcommand)]
+        target: ArchiveTarget,
+    },
+
+    /// Export items to external formats
+    Export {
+        #[command(subcommand)]
+        target: ExportTarget,
+    },
+
+    /// Start a service
+    Start {
+        #[command(subcommand)]
+        target: StartTarget,
+    },
+
+    /// Synchronize data with external systems
+    Sync {
+        #[command(subcommand)]
+        target: SyncTarget,
+    },
+}
+
+// =============================================================================
+// Read targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum ReadTarget {
+    /// Read and display plans (workspace-wide by default)
+    Plans {
         /// Output format
         #[arg(short, long, value_enum)]
         format: Option<Format>,
 
-        /// SPARQL WHERE clause to filter actions (e.g., "?s actions:hasPriority 1")
+        /// SPARQL WHERE clause to filter plans (e.g., "?s actions:hasPriority 1")
         #[arg(short = 'w', long = "where")]
         where_clause: Option<String>,
 
@@ -165,29 +256,192 @@ pub enum Commands {
         #[arg(long, conflicts_with = "where_clause")]
         sparql: Option<String>,
 
+        /// Read SPARQL query from a file
+        #[arg(long, conflicts_with_all = ["sparql", "where_clause"])]
+        sparql_file: Option<PathBuf>,
+
+        /// Read from a specific file instead of workspace
+        #[arg(long, conflicts_with_all = ["where_clause", "sparql", "sparql_file"])]
+        file: Option<PathBuf>,
+
+        /// Read from standard input instead of workspace
+        #[arg(long, conflicts_with_all = ["file", "where_clause", "sparql", "sparql_file"])]
+        stdio: bool,
+
         /// Table column filtering options
         #[command(flatten)]
         table_options: CliTableOptions,
-
-        /// Input source (defaults to workspace-wide read)
-        #[command(subcommand)]
-        source: Option<ReadSource>,
     },
 
-    /// Execute a SPARQL query against the actions database
-    Query {
-        /// The SPARQL query string
-        query: Option<String>,
+    /// List all discovered charters
+    Charters {
+        /// Output format
+        #[arg(short, long, value_enum)]
+        format: Option<Format>,
 
-        /// Read query from file
+        /// Show only explicit (file-backed) charters
+        #[arg(long)]
+        explicit_only: bool,
+    },
+
+    /// Show an agenda of upcoming actions
+    Agenda {
+        /// File to read (.actions format). If not provided, uses the default file
+        file: Option<PathBuf>,
+
+        /// Number of days to project forward
+        #[arg(short, long, default_value = "7")]
+        days: u32,
+    },
+}
+
+// =============================================================================
+// Show targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum ShowTarget {
+    /// Show details of a specific plan
+    Plan {
+        /// UUID, short UUID, alias, or name of the plan
+        query: String,
+
+        /// File containing the plan. If not provided, uses the default file
         #[arg(short, long)]
         file: Option<PathBuf>,
+
+        /// Output format
+        #[arg(short = 'F', long, value_enum)]
+        format: Option<Format>,
+
+        /// Table column filtering options
+        #[command(flatten)]
+        table_options: CliTableOptions,
     },
 
-    /// Format actions file with proper spacing and layout
-    Format {
-        /// File to format. If not provided, reads from stdin
+    /// Show details of a specific charter
+    Charter {
+        /// UUID, alias, or name of the charter
+        query: String,
+    },
+}
+
+// =============================================================================
+// Add targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum AddTarget {
+    /// Add a new plan
+    Plan {
+        /// Name of the plan
+        name: String,
+
+        /// File to add to. If not provided, uses the default file
+        #[arg(short, long)]
         file: Option<PathBuf>,
+
+        /// Action fields (priority, context, description, alias, state)
+        #[command(flatten)]
+        fields: ActionFields,
+
+        /// Overwrite the input file with the added plan
+        #[arg(short, long)]
+        write: bool,
+    },
+
+    /// Create a new charter
+    Charter {
+        /// Title of the charter
+        title: String,
+
+        /// Short alias for the charter
+        #[arg(short, long)]
+        alias: Option<String>,
+
+        /// Parent charter reference
+        #[arg(short, long)]
+        parent: Option<String>,
+
+        /// Write the charter to a file in the data directory
+        #[arg(short, long)]
+        write: bool,
+    },
+}
+
+// =============================================================================
+// Update / Complete / Delete targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum UpdateTarget {
+    /// Update an existing plan
+    Plan {
+        /// UUID, short UUID, alias, or name of the plan to update
+        query: String,
+
+        /// File containing the plan. If not provided, uses the default file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// New name for the plan
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// Action fields to update (priority, context, description, alias, state)
+        #[command(flatten)]
+        fields: ActionFields,
+
+        /// Overwrite the input file with the updates
+        #[arg(short, long)]
+        write: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CompleteTarget {
+    /// Mark a plan as completed
+    Plan {
+        /// UUID or name of the plan to complete
+        query: String,
+
+        /// File containing the plan. If not provided, uses the default file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Overwrite the input file with the completed plan
+        #[arg(short, long)]
+        write: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DeleteTarget {
+    /// Delete a plan
+    Plan {
+        /// UUID or name of the plan to delete
+        query: String,
+
+        /// File containing the plan. If not provided, uses the default file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Overwrite the input file with the deletion
+        #[arg(short, long)]
+        write: bool,
+    },
+}
+
+// =============================================================================
+// File operation targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum FormatTarget {
+    /// Format an actions file with proper spacing and layout
+    File {
+        /// File to format. If not provided, reads from stdin
+        path: Option<PathBuf>,
 
         /// Overwrite the input file with the formatted version
         #[arg(short, long)]
@@ -205,11 +459,23 @@ pub enum Commands {
         #[arg(short, long)]
         indent_width: Option<usize>,
     },
+}
 
+#[derive(Subcommand)]
+pub enum LintTarget {
+    /// Lint an actions file for errors and warnings
+    File {
+        /// File to lint. If not provided, reads from stdin
+        path: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum NormalizeTarget {
     /// Ensure all actions in a file have UUIDs (formats by default)
-    Normalize {
+    File {
         /// File to normalize. If not provided, reads from stdin
-        file: Option<PathBuf>,
+        path: Option<PathBuf>,
 
         /// Overwrite the input file with the normalized version
         #[arg(short, long)]
@@ -219,9 +485,12 @@ pub enum Commands {
         #[arg(long)]
         no_format: bool,
     },
+}
 
+#[derive(Subcommand)]
+pub enum PatchTarget {
     /// Apply changes from a secondary patch file to a primary source file
-    Patch {
+    File {
         /// The primary source file (source of truth)
         #[arg(short, long)]
         primary: PathBuf,
@@ -234,19 +503,16 @@ pub enum Commands {
         #[arg(short, long)]
         write: bool,
     },
+}
 
-    /// Show an agenda of upcoming actions, including expanded recurring instances
-    Agenda {
-        /// File to read (.actions format). If not provided, reads from stdin
-        file: Option<PathBuf>,
+// =============================================================================
+// Collection operation targets
+// =============================================================================
 
-        /// Number of days to project forward
-        #[arg(short, long, default_value = "7")]
-        days: u32,
-    },
-
-    /// Move completed actions to a log file
-    Archive {
+#[derive(Subcommand)]
+pub enum ArchiveTarget {
+    /// Move completed plans to a log file
+    Plans {
         /// File to archive from. If not provided, uses the default file
         file: Option<PathBuf>,
 
@@ -258,98 +524,12 @@ pub enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+}
 
-    /// Start the Language Server Protocol (LSP) server
-    Lsp,
-
-    /// Add a new action to a file
-    Add {
-        /// Name of the action
-        name: String,
-
-        /// File to add to. If not provided, uses the default file
-        file: Option<PathBuf>,
-
-        /// Action fields (priority, context, description, alias, state)
-        #[command(flatten)]
-        fields: ActionFields,
-
-        /// Overwrite the input file with the added action
-        #[arg(short, long)]
-        write: bool,
-    },
-
-    /// Update an existing action
-    Update {
-        /// UUID, short UUID, alias, or name of the action to update
-        query: String,
-
-        /// File containing the action. If not provided, uses the default file
-        file: Option<PathBuf>,
-
-        /// New name for the action
-        #[arg(short, long)]
-        name: Option<String>,
-
-        /// Action fields to update (priority, context, description, alias, state)
-        #[command(flatten)]
-        fields: ActionFields,
-
-        /// Overwrite the input file with the updates
-        #[arg(short, long)]
-        write: bool,
-    },
-
-    /// Mark an action as completed
-    Complete {
-        /// UUID or name of the action to complete
-        query: String,
-
-        /// File containing the action. If not provided, uses the default file
-        file: Option<PathBuf>,
-
-        /// Overwrite the input file with the completed action
-        #[arg(short, long)]
-        write: bool,
-    },
-
-    /// Delete an action
-    Delete {
-        /// UUID or name of the action to delete
-        query: String,
-
-        /// File containing the action. If not provided, uses the default file
-        file: Option<PathBuf>,
-
-        /// Overwrite the input file with the deletion
-        #[arg(short, long)]
-        write: bool,
-    },
-
-    /// Synchronize existing actions with the events database (backfill missing events)
-    SyncEvents {
-        /// File to sync. If not provided, uses the default file
-        file: Option<PathBuf>,
-
-        /// Dry run: show what would be synced without writing to DB
-        #[arg(long)]
-        dry_run: bool,
-    },
-
-    /// Lint an actions file for errors and warnings
-    Lint {
-        /// File to lint. If not provided, reads from stdin
-        file: Option<PathBuf>,
-    },
-
-    /// Manage charters (high-level directives that organize plans)
-    Charter {
-        #[command(subcommand)]
-        action: CharterAction,
-    },
-
-    /// Export actions to calendar format (iCalendar)
-    Export {
+#[derive(Subcommand)]
+pub enum ExportTarget {
+    /// Export plans to calendar format (iCalendar)
+    Plans {
         /// File to export (.actions format). If not provided, reads from stdin
         file: Option<PathBuf>,
 
@@ -357,62 +537,38 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Only export open actions (pending, in-progress, blocked)
+        /// Only export open plans (pending, in-progress, blocked)
         #[arg(long)]
         open_only: bool,
     },
 }
 
-/// Input source for the read command
+// =============================================================================
+// Service targets
+// =============================================================================
+
 #[derive(Subcommand)]
-pub enum ReadSource {
-    /// Read from a specific file
-    File {
-        /// Path to the .actions file
-        path: PathBuf,
-    },
-    /// Read from standard input
-    Stdio,
+pub enum StartTarget {
+    /// Start the Language Server Protocol (LSP) server
+    Lsp,
 }
 
-/// Actions for the `charter` subcommand
 #[derive(Subcommand)]
-pub enum CharterAction {
-    /// List all discovered charters
-    List {
-        /// Output format
-        #[arg(short, long, value_enum)]
-        format: Option<Format>,
+pub enum SyncTarget {
+    /// Synchronize existing actions with the events database
+    Events {
+        /// File to sync. If not provided, uses the default file
+        file: Option<PathBuf>,
 
-        /// Show only explicit (file-backed) charters
+        /// Dry run: show what would be synced without writing to DB
         #[arg(long)]
-        explicit_only: bool,
-    },
-
-    /// Show details of a specific charter
-    Show {
-        /// UUID, alias, or name of the charter
-        query: String,
-    },
-
-    /// Create a new charter
-    Add {
-        /// Title of the charter
-        title: String,
-
-        /// Short alias for the charter
-        #[arg(short, long)]
-        alias: Option<String>,
-
-        /// Parent charter reference
-        #[arg(short, long)]
-        parent: Option<String>,
-
-        /// Write the charter to a file in the data directory
-        #[arg(short, long)]
-        write: bool,
+        dry_run: bool,
     },
 }
+
+// =============================================================================
+// Shared value enums
+// =============================================================================
 
 /// CLI-specific format enum that maps to library's OutputFormat
 #[derive(Clone, Copy, ValueEnum)]

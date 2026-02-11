@@ -10,7 +10,6 @@ fn get_cmd() -> Command {
 #[test]
 fn test_lint_cli_info_diagnostics() -> Result<(), Box<dyn std::error::Error>> {
     // Test with info-level diagnostic: completed action missing completion date (I001)
-    // Per specification, this is now Info severity, so it should succeed but show diagnostic
     let file_content = "[x] Completed action with no completion date #01942d99-4c27-77f6-9316-107024843939";
     let file_path = "test_lint_info.actions";
 
@@ -19,6 +18,7 @@ fn test_lint_cli_info_diagnostics() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = get_cmd();
 
     cmd.arg("lint")
+        .arg("file")
         .arg(file_path);
 
     cmd.assert()
@@ -35,13 +35,14 @@ fn test_lint_cli_info_diagnostics() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lint_cli_success() -> Result<(), Box<dyn std::error::Error>> {
     let file_content = "[ ] Valid Action ^2025-01-01T12:00 #01942d99-4c27-77f6-9316-107024843939";
     let file_path = "test_lint_success.actions";
-    
+
     fs::write(file_path, file_content)?;
 
     let mut cmd = get_cmd();
 
     cmd.arg("lint")
-        .arg(file_path); // Positional argument
+        .arg("file")
+        .arg(file_path);
 
     cmd.assert()
         .success()
