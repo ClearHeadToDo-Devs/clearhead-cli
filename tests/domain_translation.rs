@@ -20,6 +20,7 @@ fn test_domain_round_trip_simple() {
         objective: None,
         alias: None,
         is_sequential: None,
+        duration: None,
         depends_on: None,
         charter: None,
     };

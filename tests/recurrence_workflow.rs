@@ -1,6 +1,6 @@
 use chrono::{Local, TimeZone};
 use clearhead_cli::{Action, ActionState};
-use clearhead_core::entities::Recurrence;
+use clearhead_core::Recurrence;
 use uuid::Uuid;
 
 #[test]

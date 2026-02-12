@@ -22,7 +22,7 @@
 
 // Import core types
 use clearhead_core::{
-    ActPhase, Action, ActionList, ActionState, DomainModel, Plan, PlannedAct, entities::Recurrence,
+    ActPhase, Action, ActionList, ActionState, DomainModel, Plan, PlannedAct, Recurrence,
 };
 
 // CLI-specific imports

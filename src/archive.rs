@@ -1,4 +1,5 @@
-use clearhead_core::{format, ActionList, ActionState, OutputFormat};
+use clearhead_core::{format, ActionList, ActionState, OutputFormat, DomainModel};
+use clearhead_core::graph::{serialize_open_acts_to_turtle, serialize_closed_acts_to_turtle};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -136,6 +137,35 @@ pub fn archive_actions(
             log_path,
         },
     ))
+}
+
+/// Synchronizes the workspace actions to TTL files according to naming conventions.
+///
+/// - inbox.open.ttl: planned acts for open plans (including expanded recurring)
+/// - inbox.closed.ttl: closed plans and their acts
+pub fn sync_to_ttl(
+    workspace_actions: &ActionList,
+    data_dir: &PathBuf,
+    future_days: u32,
+) -> Result<(), String> {
+    let mut model = DomainModel::from_actions(workspace_actions);
+
+    // Expand recurring plans to generate future instances
+    model.expand_recurring_plans(future_days);
+
+    // 1. Sync open acts to inbox.open.ttl
+    let open_ttl = serialize_open_acts_to_turtle(&model)?;
+    let open_path = data_dir.join("inbox.open.ttl");
+    fs::write(&open_path, open_ttl)
+        .map_err(|e| format!("Failed to write {}: {}", open_path.display(), e))?;
+
+    // 2. Sync closed acts/plans to inbox.closed.ttl
+    let closed_ttl = serialize_closed_acts_to_turtle(&model)?;
+    let closed_path = data_dir.join("inbox.closed.ttl");
+    fs::write(&closed_path, closed_ttl)
+        .map_err(|e| format!("Failed to write {}: {}", closed_path.display(), e))?;
+
+    Ok(())
 }
 
 #[cfg(test)]

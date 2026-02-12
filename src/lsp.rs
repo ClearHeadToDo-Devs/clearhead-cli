@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 use clearhead_cli::get_parsed_document;
 use clearhead_cli::{lint_document, LintDiagnostic, LintSeverity, ParsedDocument};
-use clearhead_core::{diff::{FieldChange, diff_actions}, treesitter::{SourceRange, get_node_text}};
+use clearhead_core::{diff::{FieldChange, diff_actions}, actions::{SourceRange, get_node_text}};
 use dashmap::DashMap;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;

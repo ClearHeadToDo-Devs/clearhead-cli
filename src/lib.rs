@@ -53,8 +53,9 @@ pub use clearhead_core::{
     // Sync types
     sync as core_sync,
 
-    // Source metadata (from treesitter)
-    treesitter::{SourceMetadata, SourceRange},
+    // Source metadata
+    SourceMetadata,
+    SourceRange,
 };
 
 // CLI-specific modules with environment integration
