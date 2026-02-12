@@ -33,29 +33,28 @@ pub use clearhead_core::{
     Plan,
     PlannedAct,
 
-    // Charter functions
-    format_charter,
-    implicit_charter,
-    parse_charter,
+    // Source metadata
+    SourceMetadata,
+    SourceRange,
     // Diff types
     diff as core_diff,
 
     // Format types and functions
     format,
+    // Charter functions
+    format_charter,
+    implicit_charter,
     // Lint types and functions
     lint_document,
     // Parsing types and functions
     parse_actions,
+    parse_charter,
     parse_document,
     parse_tree,
     // Patch function
     patch_action_list,
     // Sync types
     sync as core_sync,
-
-    // Source metadata
-    SourceMetadata,
-    SourceRange,
 };
 
 // CLI-specific modules with environment integration

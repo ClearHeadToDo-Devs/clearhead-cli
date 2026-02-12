@@ -1,5 +1,5 @@
-use clearhead_core::{format, ActionList, ActionState, OutputFormat, DomainModel};
-use clearhead_core::graph::{serialize_open_acts_to_turtle, serialize_closed_acts_to_turtle};
+use clearhead_core::graph::{serialize_closed_acts_to_turtle, serialize_open_acts_to_turtle};
+use clearhead_core::{ActionList, ActionState, DomainModel, OutputFormat, format};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;

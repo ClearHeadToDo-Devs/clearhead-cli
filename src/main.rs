@@ -58,7 +58,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 stdio,
                 table_options,
             } => commands::plan::read_plans(
-                &ctx, format, where_clause, sparql, sparql_file, file, *stdio, table_options,
+                &ctx,
+                format,
+                where_clause,
+                sparql,
+                sparql_file,
+                file,
+                *stdio,
+                table_options,
             ),
             argparser::ReadTarget::Charters {
                 format,
@@ -103,18 +110,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::update_plan(&ctx, query, file, name, fields, *write),
         },
         Verb::Complete { target } => match target {
-            argparser::CompleteTarget::Plan {
-                query,
-                file,
-                write,
-            } => commands::plan::complete_plan(&ctx, query, file, *write),
+            argparser::CompleteTarget::Plan { query, file, write } => {
+                commands::plan::complete_plan(&ctx, query, file, *write)
+            }
         },
         Verb::Delete { target } => match target {
-            argparser::DeleteTarget::Plan {
-                query,
-                file,
-                write,
-            } => commands::plan::delete_plan(&ctx, query, file, *write),
+            argparser::DeleteTarget::Plan { query, file, write } => {
+                commands::plan::delete_plan(&ctx, query, file, *write)
+            }
         },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {

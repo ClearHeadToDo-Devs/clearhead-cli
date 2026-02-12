@@ -2,7 +2,7 @@ use std::fs;
 use tracing::{debug, info};
 
 use crate::argparser;
-use crate::commands::{CommandContext, load_repo, read_input, parse_format, save_repo, try_emit};
+use crate::commands::{CommandContext, load_repo, parse_format, read_input, save_repo, try_emit};
 use clearhead_cli::telemetry::{TelemetryEvent, event_from_field_change};
 
 pub fn read_plans(
@@ -48,20 +48,20 @@ pub fn read_plans(
 
         // Handle SPARQL from file
         let sparql_query = if let Some(sparql_path) = sparql_file {
-            Some(fs::read_to_string(sparql_path)
-                .map_err(|e| format!("Failed to read SPARQL file: {}", e))?)
+            Some(
+                fs::read_to_string(sparql_path)
+                    .map_err(|e| format!("Failed to read SPARQL file: {}", e))?,
+            )
         } else {
             sparql.clone()
         };
 
         if let Some(query) = &sparql_query {
-            let workspace =
-                clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
+            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
             debug!(sparql = %query, "Filtering with SPARQL query");
             clearhead_cli::run_workspace_sql_query(&workspace, query)?
         } else if let Some(where_clause) = where_clause {
-            let workspace =
-                clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
+            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
             debug!(where_clause = %where_clause, "Filtering with WHERE clause");
             clearhead_cli::run_workspace_sql_where(&workspace, where_clause, None, None)?
         } else {
@@ -135,8 +135,7 @@ pub fn add_plan(
     if !input_file.exists() {
         info!(input_file = %input_file.display(), "Creating new actions file");
         if let Some(parent) = input_file.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
         fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
     }
@@ -323,12 +322,8 @@ pub fn delete_plan(
         info!(name = %action.name, id = %action.id, "Action deleted successfully");
         println!("Deleted action: {} #{}", action.name, action.id);
     } else {
-        let formatted = clearhead_cli::format(
-            &actions,
-            clearhead_cli::OutputFormat::Actions,
-            None,
-            None,
-        )?;
+        let formatted =
+            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
         println!("{}", formatted);
     }
     Ok(())
@@ -349,8 +344,7 @@ pub fn archive_plans(
         .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
 
     if dry_run {
-        let all_actions =
-            clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+        let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
         let (_, archived_actions) =
             clearhead_cli::archive::partition_actions_for_archive(&all_actions);
 
@@ -418,8 +412,7 @@ pub fn export_plans(
 
     if let Some(output_path) = output {
         info!(output_path = %output_path.display(), "Writing iCalendar export to file");
-        fs::write(output_path, icalendar)
-            .map_err(|e| format!("Failed to write to file: {}", e))?;
+        fs::write(output_path, icalendar).map_err(|e| format!("Failed to write to file: {}", e))?;
     } else {
         println!("{}", icalendar);
     }
