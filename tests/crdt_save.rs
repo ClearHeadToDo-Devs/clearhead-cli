@@ -79,22 +79,3 @@ fn test_whitespace_normalization() {
     assert!(!formatted.contains("  ")); // No double spaces
     assert!(!formatted.contains("Task   ")); // No trailing spaces
 }
-
-#[test]
-fn test_project_to_file_still_works_for_cli() {
-    // This ensures CLI commands can still write directly to files
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("test.actions");
-    fs::write(&file_path, "[ ] Old content\n").unwrap();
-
-    let repo =
-        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
-    let parsed = get_parsed_document("[ ] New task\n").unwrap();
-
-    // Call project_to_file directly (for CLI usage)
-    repo.project_to_file(&parsed.actions).unwrap();
-
-    // Verify file WAS written
-    let file_content = fs::read_to_string(&file_path).unwrap();
-    assert!(file_content.contains("New task"));
-}

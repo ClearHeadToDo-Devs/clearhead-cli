@@ -1,21 +1,21 @@
-use std::fs;
 use tracing::info;
 
 use crate::argparser;
 use crate::commands::CommandContext;
+use clearhead_core::store::{FsWorkspaceStore, WorkspaceStore, ObjectiveRef};
 
 pub fn read_charters(
     ctx: &CommandContext,
     format: &Option<argparser::Format>,
     explicit_only: bool,
 ) -> Result<(), String> {
-    use clearhead_cli::workspace::{CharterSource, discover_charters};
     use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
-    let mut charters = discover_charters(&ctx.data_dir)?;
+    let store = FsWorkspaceStore::new(&ctx.data_dir);
+    let mut charters = store.discover_charters().map_err(|e| e.to_string())?;
 
     if explicit_only {
-        charters.retain(|sc| sc.is_explicit());
+        charters.retain(|dc| dc.is_explicit);
     }
 
     if charters.is_empty() {
@@ -26,7 +26,7 @@ pub fn read_charters(
     let use_json = matches!(format, Some(argparser::Format::Json));
 
     if use_json {
-        let json_charters: Vec<_> = charters.iter().map(|sc| &sc.charter).collect();
+        let json_charters: Vec<_> = charters.iter().map(|dc| &dc.charter).collect();
         let json = serde_json::to_string_pretty(&json_charters)
             .map_err(|e| format!("Failed to serialize charters: {}", e))?;
         println!("{}", json);
@@ -43,25 +43,21 @@ pub fn read_charters(
             Cell::new("Source").fg(Color::Cyan),
         ]);
 
-        for sc in &charters {
-            let type_str = if sc.is_explicit() {
+        for dc in &charters {
+            let type_str = if dc.is_explicit {
                 "explicit"
             } else {
                 "implicit"
             };
-            let alias = sc.charter.alias.as_deref().unwrap_or("-");
-            let source_str = match &sc.source {
-                CharterSource::ExplicitFile(p) => p.display().to_string(),
-                CharterSource::ImplicitFromFile(p) => {
-                    format!("{} (inferred)", p.display())
-                }
-                CharterSource::ImplicitFromDirectory(p) => {
-                    format!("{} (inferred)", p.display())
-                }
+            let alias = dc.charter.alias.as_deref().unwrap_or("-");
+            let source_str = if dc.is_explicit {
+                dc.source_key.clone()
+            } else {
+                format!("{} (inferred)", dc.source_key)
             };
 
             table.add_row(vec![
-                Cell::new(&sc.charter.title),
+                Cell::new(&dc.charter.title),
                 Cell::new(type_str),
                 Cell::new(alias),
                 Cell::new(source_str),
@@ -74,10 +70,12 @@ pub fn read_charters(
 }
 
 pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
-    use clearhead_cli::workspace::{discover_charters, load_workspace, resolve_charter};
+    use clearhead_cli::workspace::load_workspace;
 
-    let charters = discover_charters(&ctx.data_dir)?;
-    let found = resolve_charter(&charters, query)
+    let store = FsWorkspaceStore::new(&ctx.data_dir);
+    let charters = store.discover_charters().map_err(|e| e.to_string())?;
+
+    let found = resolve_discovered_charter(&charters, query)
         .ok_or_else(|| format!("No charter found matching '{}'", query))?;
 
     let formatted = clearhead_core::format_charter(&found.charter);
@@ -102,6 +100,46 @@ pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Resolve a charter by UUID prefix, alias, or name from DiscoveredCharter list.
+fn resolve_discovered_charter<'a>(
+    charters: &'a [clearhead_core::store::DiscoveredCharter],
+    query: &str,
+) -> Option<&'a clearhead_core::store::DiscoveredCharter> {
+    let query_lower = query.to_lowercase();
+
+    // 1. Full UUID match
+    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
+        if let Some(dc) = charters.iter().find(|dc| dc.charter.id == uuid) {
+            return Some(dc);
+        }
+    }
+
+    // 2. Short UUID prefix
+    if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        if let Some(dc) = charters
+            .iter()
+            .find(|dc| dc.charter.id.to_string().starts_with(query))
+        {
+            return Some(dc);
+        }
+    }
+
+    // 3. Alias match (case-insensitive, exact)
+    if let Some(dc) = charters.iter().find(|dc| {
+        dc.charter
+            .alias
+            .as_ref()
+            .is_some_and(|a| a.to_lowercase() == query_lower)
+    }) {
+        return Some(dc);
+    }
+
+    // 4. Title match (case-insensitive, partial)
+    charters
+        .iter()
+        .find(|dc| dc.charter.title.to_lowercase().contains(&query_lower))
 }
 
 pub fn add_charter(
@@ -138,8 +176,10 @@ pub fn add_charter(
             return Err(format!("File already exists: {}", file_path.display()));
         }
 
-        fs::write(&file_path, &formatted)
-            .map_err(|e| format!("Failed to write charter file: {}", e))?;
+        let mut store = FsWorkspaceStore::new(&ctx.data_dir);
+        let objective = ObjectiveRef::new(&filename);
+        store.save_charter(&objective, &charter).map_err(|e| e.to_string())?;
+
         info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
         println!(
             "Created charter: {} #{}\nWritten to: {}",

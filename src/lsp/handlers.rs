@@ -455,8 +455,8 @@ impl LanguageServer for Backend {
                             .to_file_path()
                             .ok_or_else(|| Error::invalid_params("Invalid URI"))?;
 
-                        use clearhead_cli::crdt::ActionRepository;
-                        match ActionRepository::load(source_path.to_path_buf()) {
+                        use clearhead_cli::crdt::load_action_repo;
+                        match load_action_repo(&source_path) {
                             Ok(repo) => match repo.get_actions() {
                                 Ok(actions) => {
                                     use clearhead_cli::{OutputFormat, format};

@@ -12,7 +12,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::environment_reader::{Config, ensure_dir_exists, get_data_dir, load_config, resolve_file_path};
-use clearhead_cli::crdt::ActionRepository;
+use clearhead_cli::crdt::{ActionRepository, load_action_repo};
 use clearhead_cli::telemetry::{Tool, TelemetryEvent, emit_event};
 use clearhead_cli::ActionList;
 
@@ -51,12 +51,27 @@ impl CommandContext {
 }
 
 /// Load an ActionRepository and hydrate its ActionList.
+///
+/// If the CRDT has no actions for this file but the file exists on disk,
+/// seeds the returned ActionList from the file content. The CRDT will be
+/// updated when the caller calls `save_repo`.
 pub fn load_repo(path: &Path) -> Result<(ActionRepository, ActionList), String> {
-    let repo = ActionRepository::load(path.to_path_buf())
+    let repo = load_action_repo(path)
         .map_err(|e| format!("Failed to load repository: {}", e))?;
     let actions = repo
         .get_actions()
         .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
+
+    // Seed from file if CRDT is empty (first access for this file)
+    if actions.is_empty() && path.exists() {
+        let content = fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
+        if !content.trim().is_empty() {
+            let file_actions = clearhead_cli::parse_actions(&content)?;
+            return Ok((repo, file_actions));
+        }
+    }
+
     Ok((repo, actions))
 }
 

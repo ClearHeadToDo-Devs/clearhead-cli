@@ -146,12 +146,12 @@ impl Backend {
     }
 
     async fn sync_to_crdt_and_apply_edit(&self, uri: &Uri, file_path: &str, current_buffer: &str) {
-        use clearhead_cli::crdt::ActionRepository;
+        use clearhead_cli::crdt::load_action_repo;
         use clearhead_cli::document::{SaveResult, process_save};
 
         let path = std::path::Path::new(file_path);
 
-        match ActionRepository::load(path.to_path_buf()) {
+        match load_action_repo(path) {
             Ok(mut repo) => match process_save(current_buffer, file_path, &mut repo) {
                 Ok(SaveResult::NoChange) => {
                     debug!(uri = ?uri, "No semantic changes, preserving user formatting");
