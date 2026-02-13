@@ -1,6 +1,5 @@
 use chrono::Local;
-use clearhead_cli::{ActPhase, Action, ActionState, DomainModel, Plan, PlannedAct};
-use std::collections::HashMap;
+use clearhead_cli::{ActPhase, Action, ActionState, Charter, DomainModel, Plan, PlannedAct};
 use uuid::Uuid;
 
 #[test]
@@ -22,29 +21,33 @@ fn test_domain_round_trip_simple() {
         is_sequential: None,
         duration: None,
         depends_on: None,
-        charter: None,
+        acts: vec![PlannedAct {
+            id: act_id,
+            plan_id,
+            phase: ActPhase::NotStarted,
+            scheduled_at: Some(Local::now()),
+            duration: Some(30),
+            completed_at: None,
+            created_at: Some(Local::now()),
+        }],
     };
 
-    let act = PlannedAct {
-        id: act_id,
-        plan_id,
-        phase: ActPhase::NotStarted,
-        scheduled_at: Some(Local::now()),
-        duration: Some(30),
-        completed_at: None,
-        created_at: Some(Local::now()),
+    let charter = Charter {
+        id: Uuid::new_v4(),
+        title: "inbox".to_string(),
+        description: None,
+        alias: None,
+        parent: None,
+        objectives: None,
+        plans: vec![plan],
     };
 
-    let mut plans = HashMap::new();
-    plans.insert(plan_id.to_string(), plan.clone());
-    let mut acts = HashMap::new();
-    acts.insert(act_id.to_string(), act.clone());
+    let domain = DomainModel {
+        objectives: vec![],
+        charters: vec![charter],
+    };
 
-    let domain = DomainModel { plans, acts };
-
-    // 2. Convert to ActionList (The missing function we need to implement)
-    // For now, this won't compile until we add the method.
-    // This test drives the implementation.
+    // 2. Convert to ActionList
     let actions = domain.to_action_list();
 
     assert_eq!(actions.len(), 1);
@@ -74,11 +77,11 @@ fn test_from_actions_preserves_data() {
 
     let domain = DomainModel::from_actions(&vec![action.clone()]);
 
-    assert_eq!(domain.plans.len(), 1);
-    assert_eq!(domain.acts.len(), 1);
+    assert_eq!(domain.all_plans().len(), 1);
+    assert_eq!(domain.all_acts().len(), 1);
 
-    let p = domain.plans.values().next().unwrap();
-    let a = domain.acts.values().next().unwrap();
+    let p = domain.all_plans()[0];
+    let a = domain.all_acts()[0];
 
     assert_eq!(p.name, "Source Action");
     assert_eq!(p.priority, Some(2));

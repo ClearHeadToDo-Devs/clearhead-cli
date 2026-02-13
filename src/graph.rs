@@ -611,10 +611,10 @@ fn phase_node(phase: &ActPhase) -> NamedNode {
 /// This inserts Plans and PlannedActs as separate entities with proper
 /// CCO-aligned types and relationships.
 pub fn load_domain_model(store: &Store, model: &DomainModel) -> Result<(), String> {
-    for (_id, plan) in &model.plans {
+    for plan in model.all_plans() {
         insert_plan(store, plan)?;
     }
-    for (_id, act) in &model.acts {
+    for act in model.all_acts() {
         insert_planned_act(store, act)?;
     }
     Ok(())
@@ -874,7 +874,7 @@ mod v4_tests {
 
         let actions = vec![Action::new("Linked task")];
         let model = DomainModel::from_actions(&actions);
-        let plan_id = model.plans.values().next().unwrap().id;
+        let plan_id = model.all_plans()[0].id;
 
         load_domain_model(&store, &model).unwrap();
 

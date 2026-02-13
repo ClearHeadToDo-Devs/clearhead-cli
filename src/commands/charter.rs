@@ -159,6 +159,7 @@ pub fn add_charter(
         alias: alias.clone(),
         parent: parent.clone(),
         objectives: None,
+        plans: vec![],
     };
 
     let formatted = clearhead_core::format_charter(&charter);
