@@ -4,6 +4,9 @@
 
 A fast, flexible task manager that uses plain text `.actions` files - edit them with any text editor, manage them with `clearhead_cli`.
 
+This is the Command Line Interface (CLI) as well as Language Server Protocol (LSP) server for the ClearHead intention management framework. It provides powerful tools to read, write, query, and manipulate your plan data stored in plain text files.
+
+Importantly, this tools attempts to adhere to the [ClearHead Process](https://github.com/ClearHeadToDo-Devs/specifications/blob/master/process.md) so be sure to review that for the larger "what" behind the structure
 
 ### Installation
 
@@ -11,20 +14,45 @@ A fast, flexible task manager that uses plain text `.actions` files - edit them 
 cargo install clearhead_cli
 ```
 
-### Your First Task List
+### Your First Plan List
 
 Create a file called `inbox.actions` (this is created for you in the default location otherwise):
 
+```actions
+[ ] Buy groceries !2 +errands
+[ ] Finish project report @2026-01-25T17:00 D120 !1 +work
+[ ] Call Alice @2026-01-21T15:00 D30 !3 +personal
 ```
-[ ] Welcome to clearhead_cli $Your personal task manager
-> [ ] Try different output formats $Run: clearhead_cli read --format table
-> [x] Get started $You're already using it!
+
+Maybe you have some work that you want to break down so you make a `work.md` charter file with the following content:
+
+```markdown
+---
+id: 123e4567-e89b-12d3-a456-426614174000
+objectives: [launch_v1]
+alias: work
+---
+# Work projects charter
+all the things i need to capture for work go in this charter
 ```
+
+And an objective file to capture that objective:
+
+```markdown
+---
+id: 123e4567-e89b-12d3-a456-426614
+target date: 2026-02-01
+---
+# Launch v1 of our new app
+This objective captures the high-level goal of launching version 1 of our app by February 1st, 2026. The associated charter (`work.md`) will contain all the related tasks and projects that contribute to this objective.
+```
+
+unless otherwise specified, the filename of the charter/objective also serve as the alias from a reference standpoint
 
 View it in different formats:
 
 ```bash
-# Read entire workspace (all .actions files)
+# Read entire workspace (all .actions, charter, and objectives files)
 clearhead_cli read
 
 # Table view (great for browsing)
@@ -41,7 +69,7 @@ clearhead_cli read file inbox.actions
 
 - **CRDT-Based Sync**: CRDTs allow for us to merge changes from multiple devices/editors without conflicts
 - **Calendar export**: Export actions with due dates to iCalendar (`.ics`) format with full recurrence support
-- **SQL queries**: Filter actions with WHERE clauses or full SQL (JOINs, CTEs, aggregations)
+- **SPARQL queries**: Filter actions with WHERE clauses or full SPARQL queries for powerful all-graph filtering
 - **Multiple output formats**: actions, json, xml, table
 - **Zero lock-in**: Plain text files, use any editor
 
@@ -87,7 +115,7 @@ For more details see [The Specification](https://github.com/ClearHeadToDo-Devs/t
 - `[_]` Cancelled
 
 **Metadata:**
-- `$description` - Task description
+- `$description$` - Plan description
 - `!N` - Priority (1-4, where 1 is highest)
 - `+tag,tag` - Context tags
 - `@YYYY-MM-DDTHH:MM` - Do date/time (when task should be done)
@@ -100,12 +128,14 @@ For more details see [The Specification](https://github.com/ClearHeadToDo-Devs/t
 
 ## Commands
 
+Commands follow a verb-noun structure, such that you can operate on different entities (plans, planned acts, charters, objectives) with the same command. here we will cover the nouns in general, and you may assume that this can be used for any entities in the system unless otherwise specified
+
 ### Read
 
 The `read` command operates in three modes:
 
 ```bash
-# Workspace-wide read (default) - reads ALL .actions files from data directory
+# Workspace-wide read (default) - reads ALL .actions,charter, objectives files from data directory
 clearhead_cli read
 
 # Read specific file
@@ -118,43 +148,12 @@ cat tasks.actions | clearhead_cli read stdio
 **Output formats:**
 
 ```bash
-clearhead_cli read --format json    # JSON (great for scripting)
 clearhead_cli read --format table   # Table view (great for browsing)
-clearhead_cli read --format xml     # XML format
 clearhead_cli read --format actions # Original format (default)
+clearhead_cli read --format json    # JSON (great for scripting)
+clearhead_cli read --format xml     # XML format
+clearhead_cli read --format calendar # iCalendar format (for actions with due dates)
 ```
-
-**Filtering with SQL queries (workspace mode only):**
-
-SQL filtering is available for workspace-wide reads, enabling cross-file queries:
-
-```bash
-# Simple WHERE clause
-clearhead_cli read --where "priority = 1"
-clearhead_cli read --where "state = 'completed'"
-
-# Filter by project (inferred from directory structure)
-clearhead_cli read --where "project = 'work'"
-
-# Filter by source file
-clearhead_cli read --where "file_path LIKE '%inbox%'"
-
-# Query by context (requires JOIN)
-clearhead_cli read --sql "SELECT a.id FROM actions a \
-  JOIN action_contexts c ON a.id = c.action_id \
-  WHERE c.context = 'work'"
-
-# Complex queries with recursive CTEs
-clearhead_cli read --sql "WITH RECURSIVE descendants AS (
-    SELECT * FROM actions WHERE story = 'Sprint 1'
-    UNION ALL
-    SELECT a.* FROM actions a JOIN descendants d ON a.parent_id = d.id
-  ) SELECT id FROM descendants"
-```
-
-The SQL schema includes `file_path` and `project` columns for cross-file filtering. Project names are inferred from directory structure (e.g., `work/next.actions` → project "work").
-
-See [docs/SQL_QUERIES.md](docs/SQL_QUERIES.md) for the complete guide to SQL queries.
 
 ### Add
 
@@ -162,10 +161,10 @@ Add a new action to a file. If the file doesn't exist, it will be created.
 
 ```bash
 # Add a simple task
-clearhead_cli add "Buy groceries" --write
+clearhead_cli add plan "Buy groceries" --write
 
 # Add with metadata
-clearhead_cli add "Fix critical bug" --priority 1 --context work --description "Check logs" --write
+clearhead_cli add plan "Fix critical bug" --priority 1 --context work --description "Check logs" --write
 ```
 
 ### Complete
@@ -186,69 +185,8 @@ When you complete a recurring action (e.g., "Laundry R:FREQ=WEEKLY"), ClearHead 
 2. Advance the template's due date to the next occurrence.
 3. Keep the template open for the future.
 
-### Agenda
 
-View your upcoming schedule, including projected recurring events.
-
-```bash
-# Show agenda for the next 7 days (default)
-clearhead_cli agenda
-
-# Show agenda for the next 30 days
-clearhead_cli agenda --days 30
-```
-
-The agenda view projects future occurrences of recurring tasks without creating clutter in your file, giving you a clear view of your upcoming workload.
-
-### Export to Calendar
-
-Export actions with due dates to iCalendar (`.ics`) format for import into Google Calendar, Apple Calendar, Outlook, or any calendar app.
-
-```bash
-# Export to stdout
-clearhead_cli export inbox.actions
-
-# Export to a file
-clearhead_cli export inbox.actions -o calendar.ics
-
-# Export only open actions (skip completed/cancelled)
-clearhead_cli export inbox.actions --open-only -o calendar.ics
-
-# Export from stdin
-cat work.actions | clearhead_cli export > work.ics
-```
-
-**Supported features:**
-- **Recurring events** - RRULE patterns (daily, weekly, monthly, yearly) are preserved
-- **Event duration** - Uses `do_duration` or defaults to 15 minutes
-- **Descriptions** - Action descriptions become event descriptions
-- **Priority** - Mapped from ClearHead priority (1-4) to iCalendar (1-9)
-- **Categories** - Context tags become event categories
-- **Status** - Action states map to event statuses (tentative, confirmed, cancelled)
-
-**Example:**
-```actions
-[ ] Daily standup @2026-01-20T09:00 D15 R:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR
-    $ Check in with team
-    !2
-    +Work,Meeting
-```
-
-Exports to:
-```ical
-BEGIN:VEVENT
-SUMMARY:Daily standup
-DESCRIPTION:Check in with team
-DTSTART:20260120T170000Z
-DTEND:20260120T171500Z
-RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR
-PRIORITY:3
-CATEGORIES:Work,Meeting
-STATUS:TENTATIVE
-END:VEVENT
-```
-
-### Advanced Workflows
+### Format
 
 **Formatting**
 Format `.actions` files with proper spacing (preserves existing UUIDs).
@@ -264,7 +202,7 @@ clearhead_cli format ~/work.actions
 clearhead_cli format ~/work.actions --style compact --write
 ```
 
-**Normalization**
+### Normalize
 Ensure all actions have UUIDs (formats by default for clean output).
 ```bash
 # Add UUIDs and format
@@ -275,7 +213,7 @@ clearhead_cli normalize ~/work.actions --no-format --write
 ```
 
 
-**Linting**
+### Lint
 Check your files for syntax errors, missing IDs, or convention violations.
 ```bash
 # Lint a specific file
