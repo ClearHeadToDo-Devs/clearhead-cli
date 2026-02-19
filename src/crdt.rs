@@ -10,9 +10,7 @@ use crate::environment_reader::get_data_dir;
 use std::path::{Path, PathBuf};
 
 // Re-export core CRDT types so existing `clearhead_cli::crdt::*` imports keep working
-pub use clearhead_core::crdt::{
-    ActionRepository, CrdtStorage, Workspace, WorkspaceDoc, CRDT_SCHEMA_VERSION,
-};
+pub use clearhead_core::crdt::{CrdtStorage, SyncRepo, Workspace, WorkspaceDoc, CRDT_SCHEMA_VERSION};
 
 /// Detect the global workspace from XDG paths and validate a file is within it.
 ///
@@ -31,13 +29,13 @@ pub fn global_workspace() -> Result<Workspace, String> {
     Ok(Workspace::new(state_dir, data_dir))
 }
 
-/// Load an ActionRepository for a file, with XDG workspace detection.
+/// Load a SyncRepo for a file, with XDG workspace detection.
 ///
 /// This is the CLI convenience wrapper: detects workspace from XDG paths,
 /// validates the file is within it, and loads the CRDT.
-pub fn load_action_repo(file_path: &Path) -> Result<ActionRepository, String> {
+pub fn load_action_repo(file_path: &Path) -> Result<SyncRepo, String> {
     let workspace = detect_workspace(file_path)?;
-    ActionRepository::load(workspace, file_path.to_path_buf())
+    SyncRepo::load(workspace, file_path.to_path_buf())
 }
 
 fn get_xdg_state_home() -> Result<PathBuf, String> {

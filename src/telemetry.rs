@@ -69,7 +69,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use tracing::info;
 
-use clearhead_core::diff::FieldChange;
+use clearhead_core::workspace::actions::FieldChange;
 use clearhead_core::ActionState;
 
 /// Tool identifier indicating the source of an event.

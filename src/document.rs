@@ -5,12 +5,14 @@
 
 // Import core types
 use clearhead_core::{
-    diff::Diff,
+    Diff,
+    format, OutputFormat,
     sync::{should_sync, SyncDecision},
+    workspace::actions::convert,
 };
 
 // CLI-specific imports
-use crate::crdt::ActionRepository;
+use crate::crdt::SyncRepo;
 use crate::get_parsed_document;
 
 /// Result of processing a document save
@@ -47,15 +49,16 @@ pub enum SaveResult {
 pub fn process_save(
     current_content: &str,
     _file_path: &str,
-    crdt_repo: &mut ActionRepository,
+    crdt_repo: &mut SyncRepo,
 ) -> Result<SaveResult, String> {
     // 1. Parse current content
     let parsed = get_parsed_document(current_content)?;
 
-    // 2. Get CRDT state
-    let crdt_state = crdt_repo
-        .get_actions()
+    // 2. Get CRDT state as ActionList
+    let crdt_model = crdt_repo
+        .get_model()
         .map_err(|e| format!("Failed to get CRDT state: {}", e))?;
+    let crdt_state = convert::to_action_list(&crdt_model);
 
     // 3. Check if sync is needed (semantic comparison)
     match should_sync(&parsed.actions, &crdt_state) {
@@ -64,10 +67,15 @@ pub fn process_save(
             Ok(SaveResult::NoChange)
         }
         SyncDecision::SyncNeeded { changes } => {
-            // 4. Sync to CRDT (returns canonical formatted content)
-            let canonical = crdt_repo
-                .save(&parsed.actions)
+            // 4. Sync to CRDT
+            let new_model = convert::from_actions(&parsed.actions);
+            crdt_repo
+                .save_model(&new_model)
                 .map_err(|e| format!("Failed to save to CRDT: {}", e))?;
+
+            // 5. Format the canonical content
+            let canonical = format(&parsed.actions, OutputFormat::Actions, None, None)
+                .map_err(|e| format!("Failed to format actions: {}", e))?;
 
             Ok(SaveResult::Changed {
                 new_content: canonical,
@@ -80,9 +88,10 @@ pub fn process_save(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crdt::SyncRepo;
     use tempfile::TempDir;
 
-    fn setup_test_repo() -> (TempDir, ActionRepository) {
+    fn setup_test_repo() -> (TempDir, SyncRepo) {
         let temp_dir = TempDir::new().unwrap();
         let workspace_dir = temp_dir.path().to_path_buf();
         let file_path = workspace_dir.join("test.actions");
@@ -90,7 +99,7 @@ mod tests {
         // Create the file so it exists
         std::fs::write(&file_path, "").unwrap();
 
-        let repo = ActionRepository::test_repo(file_path, workspace_dir).unwrap();
+        let repo = SyncRepo::test_repo(file_path, workspace_dir).unwrap();
         (temp_dir, repo)
     }
 

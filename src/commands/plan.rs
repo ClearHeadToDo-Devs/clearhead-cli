@@ -230,7 +230,7 @@ pub fn update_plan(
     if write {
         save_repo(&mut repo, &actions)?;
 
-        use clearhead_core::diff::diff_actions;
+        use clearhead_core::diff_actions;
         let changes = diff_actions(&vec![old_action], &vec![new_action]);
         if let Some(action_diff) = changes.modified.first() {
             for change in &action_diff.changes {

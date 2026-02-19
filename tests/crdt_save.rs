@@ -1,6 +1,8 @@
-use clearhead_cli::crdt::ActionRepository;
+use clearhead_cli::crdt::SyncRepo;
 use clearhead_cli::get_parsed_document;
 use clearhead_cli::Action;
+use clearhead_core::workspace::actions::convert;
+use clearhead_core::{OutputFormat, format};
 use std::fs;
 use tempfile::TempDir;
 
@@ -15,15 +17,17 @@ fn test_save_returns_formatted_content_without_writing_file() {
 
     // Load repository using test constructor
     let mut repo =
-        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
+        SyncRepo::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
 
     // Create new action
     let mut action = Action::new("Buy milk");
     action.id = uuid::Uuid::now_v7();
     let actions = vec![action];
 
-    // Save to CRDT (should return formatted content)
-    let formatted = repo.save(&actions).unwrap();
+    // Save to CRDT and format separately
+    let model = convert::from_actions(&actions);
+    repo.save_model(&model).unwrap();
+    let formatted = format(&actions, OutputFormat::Actions, None, None).unwrap();
 
     // Verify formatted content contains UUID
     assert!(formatted.contains("#"));
@@ -42,11 +46,13 @@ fn test_uuid_stability_across_parses() {
     let file_path = temp_dir.path().join("test.actions");
     fs::write(&file_path, "[ ] Task\n").unwrap();
 
-    // First save: assign UUID
+    // First save: assign UUID via format
     let mut repo =
-        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
+        SyncRepo::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
     let parsed1 = get_parsed_document("[ ] Task\n").unwrap();
-    let formatted1 = repo.save(&parsed1.actions).unwrap();
+    let model1 = convert::from_actions(&parsed1.actions);
+    repo.save_model(&model1).unwrap();
+    let formatted1 = format(&parsed1.actions, OutputFormat::Actions, None, None).unwrap();
 
     // Extract UUID from formatted output
     let uuid_start = formatted1.find('#').unwrap();
@@ -54,7 +60,9 @@ fn test_uuid_stability_across_parses() {
 
     // Parse the formatted output and save again
     let parsed2 = get_parsed_document(&formatted1).unwrap();
-    let formatted2 = repo.save(&parsed2.actions).unwrap();
+    let model2 = convert::from_actions(&parsed2.actions);
+    repo.save_model(&model2).unwrap();
+    let formatted2 = format(&parsed2.actions, OutputFormat::Actions, None, None).unwrap();
 
     // Extract UUID again
     let uuid_start2 = formatted2.find('#').unwrap();
@@ -71,9 +79,11 @@ fn test_whitespace_normalization() {
     fs::write(&file_path, "[ ]  Task   \n").unwrap();
 
     let mut repo =
-        ActionRepository::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
+        SyncRepo::test_repo(file_path.clone(), temp_dir.path().to_path_buf()).unwrap();
     let parsed = get_parsed_document("[ ]  Task   \n").unwrap();
-    let formatted = repo.save(&parsed.actions).unwrap();
+    let model = convert::from_actions(&parsed.actions);
+    repo.save_model(&model).unwrap();
+    let formatted = format(&parsed.actions, OutputFormat::Actions, None, None).unwrap();
 
     // Verify normalized (no double spaces, no trailing spaces)
     assert!(!formatted.contains("  ")); // No double spaces

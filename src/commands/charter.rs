@@ -2,7 +2,7 @@ use tracing::info;
 
 use crate::argparser;
 use crate::commands::CommandContext;
-use clearhead_core::store::{FsWorkspaceStore, WorkspaceStore, ObjectiveRef};
+use clearhead_core::{FsWorkspaceStore, WorkspaceStore, ObjectiveRef};
 
 pub fn read_charters(
     ctx: &CommandContext,
@@ -104,9 +104,9 @@ pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
 
 /// Resolve a charter by UUID prefix, alias, or name from DiscoveredCharter list.
 fn resolve_discovered_charter<'a>(
-    charters: &'a [clearhead_core::store::DiscoveredCharter],
+    charters: &'a [clearhead_core::DiscoveredCharter],
     query: &str,
-) -> Option<&'a clearhead_core::store::DiscoveredCharter> {
+) -> Option<&'a clearhead_core::DiscoveredCharter> {
     let query_lower = query.to_lowercase();
 
     // 1. Full UUID match
@@ -131,7 +131,7 @@ fn resolve_discovered_charter<'a>(
         dc.charter
             .alias
             .as_ref()
-            .is_some_and(|a| a.to_lowercase() == query_lower)
+            .is_some_and(|a: &String| a.to_lowercase() == query_lower)
     }) {
         return Some(dc);
     }

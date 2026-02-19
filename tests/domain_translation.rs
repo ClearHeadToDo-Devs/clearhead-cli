@@ -1,5 +1,6 @@
 use chrono::Local;
 use clearhead_cli::{ActPhase, Action, ActionState, Charter, DomainModel, Plan, PlannedAct};
+use clearhead_core::workspace::actions::convert;
 use uuid::Uuid;
 
 #[test]
@@ -48,7 +49,7 @@ fn test_domain_round_trip_simple() {
     };
 
     // 2. Convert to ActionList
-    let actions = domain.to_action_list();
+    let actions = convert::to_action_list(&domain);
 
     assert_eq!(actions.len(), 1);
     let action = &actions[0];
@@ -75,7 +76,7 @@ fn test_from_actions_preserves_data() {
         ..Default::default()
     };
 
-    let domain = DomainModel::from_actions(&vec![action.clone()]);
+    let domain = convert::from_actions(&vec![action.clone()]);
 
     assert_eq!(domain.all_plans().len(), 1);
     assert_eq!(domain.all_acts().len(), 1);

@@ -4,8 +4,7 @@ use clearhead_cli::telemetry::{
     TelemetryEvent, Tool, emit_event, event_from_field_change, event_from_state_change,
 };
 use clearhead_cli::{FormatConfig, OutputFormat, format};
-use clearhead_core::actions::get_node_text;
-use clearhead_core::diff::{FieldChange, diff_actions};
+use clearhead_core::workspace::actions::{FieldChange, diff_actions, get_node_text};
 use serde_json::Value;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::jsonrpc::{Error, Result};
@@ -456,8 +455,9 @@ impl LanguageServer for Backend {
                             .ok_or_else(|| Error::invalid_params("Invalid URI"))?;
 
                         use clearhead_cli::crdt::load_action_repo;
+                        use clearhead_core::workspace::actions::convert;
                         match load_action_repo(&source_path) {
-                            Ok(repo) => match repo.get_actions() {
+                            Ok(repo) => match repo.get_model().map(|m| convert::to_action_list(&m)) {
                                 Ok(actions) => {
                                     use clearhead_cli::{OutputFormat, format};
                                     match format(&actions, OutputFormat::Actions, None, None) {

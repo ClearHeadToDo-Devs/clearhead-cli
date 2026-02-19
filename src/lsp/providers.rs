@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local};
 use clearhead_cli::{LintDiagnostic, LintSeverity, ParsedDocument, lint_document};
-use clearhead_core::actions::SourceRange;
+use clearhead_core::SourceRange;
 use tower_lsp_server::ls_types::*;
 use tree_sitter::Tree;
 use uuid::Uuid;

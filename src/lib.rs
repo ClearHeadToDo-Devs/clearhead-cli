@@ -19,12 +19,6 @@ pub use clearhead_core::{
     Charter,
 
     DomainModel,
-    FormatConfig,
-    FormatStyle,
-    IndentStyle,
-    LintDiagnostic,
-    LintResults,
-    LintSeverity,
 
     OutputFormat,
 
@@ -44,8 +38,6 @@ pub use clearhead_core::{
     // Charter functions
     format_charter,
     implicit_charter,
-    // Lint types and functions
-    lint_document,
     // Parsing types and functions
     parse_actions,
     parse_charter,
@@ -56,6 +48,10 @@ pub use clearhead_core::{
     // Sync types
     sync as core_sync,
 };
+
+pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
+
+pub use clearhead_core::workspace::actions::{LintDiagnostic, LintResults, LintSeverity, lint_document};
 
 // CLI-specific modules with environment integration
 pub mod crdt;

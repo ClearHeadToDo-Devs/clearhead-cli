@@ -1,5 +1,6 @@
 use clearhead_core::graph::{serialize_closed_acts_to_turtle, serialize_open_acts_to_turtle};
-use clearhead_core::{ActionList, ActionState, DomainModel, OutputFormat, format};
+use clearhead_core::workspace::actions::convert;
+use clearhead_core::{ActionList, ActionState, OutputFormat, format};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -148,7 +149,7 @@ pub fn sync_to_ttl(
     data_dir: &PathBuf,
     future_days: u32,
 ) -> Result<(), String> {
-    let mut model = DomainModel::from_actions(workspace_actions);
+    let mut model = convert::from_actions(workspace_actions);
 
     // Expand recurring plans to generate future instances
     model.expand_recurring_plans(future_days);

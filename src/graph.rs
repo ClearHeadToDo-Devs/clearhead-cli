@@ -837,13 +837,14 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
 mod v4_tests {
     use super::*;
     use clearhead_core::Action;
+    use clearhead_core::workspace::actions::convert;
 
     #[test]
     fn test_load_domain_model() {
         let store = create_store().unwrap();
 
         let actions = vec![Action::new("Test task")];
-        let model = DomainModel::from_actions(&actions);
+        let model = convert::from_actions(&actions);
 
         load_domain_model(&store, &model).unwrap();
 
@@ -873,7 +874,7 @@ mod v4_tests {
         let store = create_store().unwrap();
 
         let actions = vec![Action::new("Linked task")];
-        let model = DomainModel::from_actions(&actions);
+        let model = convert::from_actions(&actions);
         let plan_id = model.all_plans()[0].id;
 
         load_domain_model(&store, &model).unwrap();
