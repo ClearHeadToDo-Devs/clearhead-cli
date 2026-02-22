@@ -115,81 +115,20 @@ impl Backend {
         }
     }
 
-    async fn show_crdt_sync_error(&self, uri: &Uri, error: String, has_actions: bool) {
-        let diagnostic_range = if has_actions {
-            Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 10),
-            }
-        } else {
-            Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 0),
-            }
-        };
-
-        let diagnostic = Diagnostic {
-            range: diagnostic_range,
-            severity: Some(DiagnosticSeverity::ERROR),
-            code: None,
-            code_description: None,
-            source: Some("clearhead-lsp".to_string()),
-            message: format!("CRDT sync failed: {}", error),
-            related_information: None,
-            tags: None,
-            data: None,
-        };
-
-        self.client
-            .publish_diagnostics(uri.clone(), vec![diagnostic], None)
-            .await;
-    }
-
-    async fn sync_to_crdt_and_apply_edit(&self, uri: &Uri, file_path: &str, current_buffer: &str) {
-        use clearhead_cli::crdt::load_action_repo;
+    async fn format_and_apply_edit(&self, uri: &Uri, current_buffer: &str) {
         use clearhead_cli::document::{SaveResult, process_save};
 
-        let path = std::path::Path::new(file_path);
-
-        match load_action_repo(path) {
-            Ok(mut repo) => match process_save(current_buffer, file_path, &mut repo) {
-                Ok(SaveResult::NoChange) => {
-                    debug!(uri = ?uri, "No semantic changes, preserving user formatting");
-                }
-                Ok(SaveResult::Changed { new_content, .. }) => {
-                    debug!(uri = ?uri, "Semantic changes detected, syncing to CRDT");
-                    self.apply_workspace_edit_if_different(uri, current_buffer, new_content)
-                        .await;
-                }
-                Err(e) => {
-                    warn!(error = %e, "Failed to process save");
-                    self.show_crdt_sync_error(uri, e, true).await;
-                }
-            },
-            Err(e) if e.contains("outside managed workspace") => {
-                debug!(uri = ?uri, reason = %e, "Skipping CRDT sync for non-workspace file");
+        match process_save(current_buffer) {
+            Ok(SaveResult::NoChange) => {
+                debug!(uri = ?uri, "Content already canonical, no edit needed");
+            }
+            Ok(SaveResult::Changed { new_content }) => {
+                debug!(uri = ?uri, "Formatting produced changes, applying edit");
+                self.apply_workspace_edit_if_different(uri, current_buffer, new_content)
+                    .await;
             }
             Err(e) => {
-                warn!(error = %e, "Failed to load CRDT repository");
-
-                let diagnostic = Diagnostic {
-                    range: Range {
-                        start: Position::new(0, 0),
-                        end: Position::new(0, 0),
-                    },
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    code: None,
-                    code_description: None,
-                    source: Some("clearhead-lsp".to_string()),
-                    message: format!("Failed to load CRDT: {}", e),
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                };
-
-                self.client
-                    .publish_diagnostics(uri.clone(), vec![diagnostic], None)
-                    .await;
+                warn!(error = %e, "Failed to format document on save");
             }
         }
     }

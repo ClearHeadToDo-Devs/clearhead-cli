@@ -54,8 +54,6 @@ pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
 pub use clearhead_core::workspace::actions::{LintDiagnostic, LintResults, LintSeverity, lint_document};
 
 // CLI-specific modules with environment integration
-pub mod crdt;
-
 pub mod document;
 
 pub mod graph;

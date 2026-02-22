@@ -12,8 +12,6 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::environment_reader::{Config, ensure_dir_exists, get_data_dir, load_config, resolve_file_path};
-use clearhead_cli::crdt::{SyncRepo, load_action_repo};
-use clearhead_core::workspace::actions::convert;
 use clearhead_cli::telemetry::{Tool, TelemetryEvent, emit_event};
 use clearhead_cli::ActionList;
 
@@ -51,37 +49,22 @@ impl CommandContext {
     }
 }
 
-/// Load a SyncRepo and hydrate its ActionList.
-///
-/// If the CRDT has no actions for this file but the file exists on disk,
-/// seeds the returned ActionList from the file content. The CRDT will be
-/// updated when the caller calls `save_repo`.
-pub fn load_repo(path: &Path) -> Result<(SyncRepo, ActionList), String> {
-    let repo = load_action_repo(path)
-        .map_err(|e| format!("Failed to load repository: {}", e))?;
-    let model = repo
-        .get_model()
-        .map_err(|e| format!("Failed to hydrate actions: {}", e))?;
-    let actions = convert::to_action_list(&model);
-
-    // Seed from file if CRDT is empty (first access for this file)
-    if actions.is_empty() && path.exists() {
+/// Load actions from a .actions file on disk.
+pub fn load_file(path: &Path) -> Result<ActionList, String> {
+    if path.exists() {
         let content = fs::read_to_string(path)
             .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
-        if !content.trim().is_empty() {
-            let file_actions = clearhead_cli::parse_actions(&content)?;
-            return Ok((repo, file_actions));
-        }
+        clearhead_cli::parse_actions(&content)
+    } else {
+        Ok(ActionList::new())
     }
-
-    Ok((repo, actions))
 }
 
-/// Save actions through the repository (CRDT persist).
-pub fn save_repo(repo: &mut SyncRepo, actions: &ActionList) -> Result<(), String> {
-    let model = convert::from_actions(actions);
-    repo.save_model(&model)
-        .map_err(|e| format!("Failed to save repository: {}", e))
+/// Format actions and write to a .actions file on disk.
+pub fn save_file(path: &Path, actions: &ActionList) -> Result<(), String> {
+    let content = clearhead_cli::format(actions, clearhead_cli::OutputFormat::Actions, None, None)?;
+    fs::write(path, content)
+        .map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))
 }
 
 /// Write content to a file if `write` is true, otherwise print to stdout.

@@ -66,7 +66,6 @@ impl LanguageServer for Backend {
                 execute_command_provider: Some(ExecuteCommandOptions {
                     commands: vec![
                         "clearhead/archive".to_string(),
-                        "clearhead/forceSync".to_string(),
                     ],
                     ..Default::default()
                 }),
@@ -171,11 +170,8 @@ impl LanguageServer for Backend {
                 }
             }
 
-            // Sync to CRDT (source of truth) - only for managed workspace files
-            if let Some(path_str) = &file_path {
-                self.sync_to_crdt_and_apply_edit(&uri, path_str, &doc.text)
-                    .await;
-            }
+            // Format and apply canonical edit if content changed
+            self.format_and_apply_edit(&uri, &doc.text).await;
 
             // Update last_saved_parsed to current
             doc.last_saved_parsed = doc.parsed.clone();
@@ -441,100 +437,6 @@ impl LanguageServer for Backend {
                                         )
                                         .await;
                                 }
-                            }
-                        }
-                    }
-                }
-                Ok(None)
-            }
-            "clearhead/forceSync" => {
-                if let Some(uri_val) = params.arguments.first() {
-                    if let Ok(uri) = serde_json::from_value::<Uri>(uri_val.clone()) {
-                        let source_path = uri
-                            .to_file_path()
-                            .ok_or_else(|| Error::invalid_params("Invalid URI"))?;
-
-                        use clearhead_cli::crdt::load_action_repo;
-                        use clearhead_core::workspace::actions::convert;
-                        match load_action_repo(&source_path) {
-                            Ok(repo) => match repo.get_model().map(|m| convert::to_action_list(&m)) {
-                                Ok(actions) => {
-                                    use clearhead_cli::{OutputFormat, format};
-                                    match format(&actions, OutputFormat::Actions, None, None) {
-                                        Ok(formatted_content) => {
-                                            let edit = WorkspaceEdit {
-                                                changes: Some({
-                                                    let mut map = std::collections::HashMap::new();
-                                                    map.insert(
-                                                        uri.clone(),
-                                                        vec![TextEdit {
-                                                            range: Range::new(
-                                                                Position::new(0, 0),
-                                                                Position::new(u32::MAX, 0),
-                                                            ),
-                                                            new_text: formatted_content,
-                                                        }],
-                                                    );
-                                                    map
-                                                }),
-                                                ..Default::default()
-                                            };
-
-                                            self.client.apply_edit(edit).await.map_err(|e| {
-                                                    let err = format!("Failed to apply edit: {}", e);
-                                                    Error {
-                                                        code: tower_lsp_server::jsonrpc::ErrorCode::InternalError,
-                                                        message: err.into(),
-                                                        data: None,
-                                                    }
-                                                })?;
-
-                                            self.client
-                                                .show_message(
-                                                    MessageType::INFO,
-                                                    "Buffer synced with CRDT state".to_string(),
-                                                )
-                                                .await;
-                                        }
-                                        Err(e) => {
-                                            self.client
-                                                .show_message(
-                                                    MessageType::ERROR,
-                                                    format!("Format failed: {}", e),
-                                                )
-                                                .await;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    self.client
-                                        .show_message(
-                                            MessageType::ERROR,
-                                            format!("Failed to get actions from CRDT: {}", e),
-                                        )
-                                        .await;
-                                }
-                            },
-                            Err(e) if e.contains("outside managed workspace") => {
-                                use clearhead_cli::environment_reader::get_data_dir;
-                                self.client
-                                    .show_message(
-                                        MessageType::WARNING,
-                                        format!(
-                                            "File is outside managed workspace.\n\
-                                         CRDT sync only available for files in: {}",
-                                            get_data_dir().display()
-                                        ),
-                                    )
-                                    .await;
-                            }
-                            Err(e) => {
-                                self.client
-                                    .show_message(
-                                        MessageType::ERROR,
-                                        format!("Failed to load CRDT: {}", e),
-                                    )
-                                    .await;
                             }
                         }
                     }

@@ -459,8 +459,6 @@ name = "clearhead_cli"
 version = "0.2.1"
 dependencies = [
  "assert_cmd",
- "automerge",
- "autosurgeon",
  "chrono",
  "clap",
  "clearhead_core",

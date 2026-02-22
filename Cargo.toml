@@ -25,10 +25,6 @@ tower-lsp-server = "0.23.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
-# Note: The following are re-exported from clearhead_core but kept here
-# for CLI-specific features or to ensure version compatibility
-automerge = "0.7.2"
-autosurgeon = { version = "0.10.1", features = ["uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 oxigraph = "0.5.3"
 serde = { version = "1.0", features = ["derive"] }

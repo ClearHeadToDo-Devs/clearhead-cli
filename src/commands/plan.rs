@@ -2,7 +2,7 @@ use std::fs;
 use tracing::{debug, info};
 
 use crate::argparser;
-use crate::commands::{CommandContext, load_repo, parse_format, read_input, save_repo, try_emit};
+use crate::commands::{CommandContext, load_file, parse_format, read_input, save_file, try_emit};
 use clearhead_cli::telemetry::{TelemetryEvent, event_from_field_change};
 
 pub fn read_plans(
@@ -84,10 +84,16 @@ pub fn show_plan(
     format: &Option<argparser::Format>,
     table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
-    let input_file = ctx.resolve_action_file(file.as_ref());
-    debug!(query = %query, input_file = %input_file.display(), "Executing Show Plan");
+    debug!(query = %query, "Executing Show Plan");
 
-    let (_, actions) = load_repo(&input_file)?;
+    let actions = if let Some(path) = file {
+        let input_file = ctx.resolve_action_file(Some(path));
+        debug!(input_file = %input_file.display(), "Searching file");
+        load_file(&input_file)?
+    } else {
+        debug!(data_dir = %ctx.data_dir.display(), "Searching workspace");
+        clearhead_cli::workspace::load_workspace_actions(&ctx.data_dir)?
+    };
 
     let resolved = clearhead_cli::resolve_reference(&actions, query)
         .ok_or_else(|| format!("No plan found matching '{}'", query))?;
@@ -140,7 +146,7 @@ pub fn add_plan(
         fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
     }
 
-    let (mut repo, mut actions) = load_repo(&input_file)?;
+    let mut actions = load_file(&input_file)?;
 
     let new_id = Uuid::now_v7();
     let new_action = Action {
@@ -171,11 +177,8 @@ pub fn add_plan(
 
     actions.push(new_action.clone());
 
-    let formatted =
-        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-
     if write {
-        save_repo(&mut repo, &actions)?;
+        save_file(&input_file, &actions)?;
 
         try_emit(
             &new_id,
@@ -188,6 +191,8 @@ pub fn add_plan(
         info!(name = %name, id = %new_id, "Action added successfully");
         println!("Added action: {} #{}", name, new_id);
     } else {
+        let formatted =
+            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
         println!("{}", formatted);
     }
     Ok(())
@@ -206,7 +211,7 @@ pub fn update_plan(
     let input_file = ctx.resolve_action_file(file.as_ref());
     debug!(query = %query, input_file = %input_file.display(), "Executing Update Plan");
 
-    let (mut repo, mut actions) = load_repo(&input_file)?;
+    let mut actions = load_file(&input_file)?;
 
     let resolved = resolve_reference(&actions, query)
         .ok_or_else(|| format!("No action found matching '{}'", query))?;
@@ -224,11 +229,8 @@ pub fn update_plan(
     let new_action = actions[resolved.index].clone();
     let action_name = new_action.name.clone();
 
-    let formatted =
-        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-
     if write {
-        save_repo(&mut repo, &actions)?;
+        save_file(&input_file, &actions)?;
 
         use clearhead_core::diff_actions;
         let changes = diff_actions(&vec![old_action], &vec![new_action]);
@@ -243,6 +245,8 @@ pub fn update_plan(
         info!(name = %action_name, id = %action_id, "Action updated successfully");
         println!("Updated action: {} #{}", action_name, action_id);
     } else {
+        let formatted =
+            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
         println!("{}", formatted);
     }
     Ok(())
@@ -257,15 +261,12 @@ pub fn complete_plan(
     let input_file = ctx.resolve_action_file(file.as_ref());
     debug!(query = %query, input_file = %input_file.display(), "Executing Complete Plan");
 
-    let (mut repo, mut actions) = load_repo(&input_file)?;
+    let mut actions = load_file(&input_file)?;
 
     let result = crate::commands::complete::complete_action(&mut actions, query)?;
 
-    let formatted =
-        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-
     if write {
-        save_repo(&mut repo, &actions)?;
+        save_file(&input_file, &actions)?;
         try_emit(&result.action_id, result.event);
 
         if result.is_recurring {
@@ -282,6 +283,8 @@ pub fn complete_plan(
             );
         }
     } else {
+        let formatted =
+            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
         println!("{}", formatted);
     }
     Ok(())
@@ -296,21 +299,15 @@ pub fn delete_plan(
     let input_file = ctx.resolve_action_file(file.as_ref());
     debug!(query = %query, input_file = %input_file.display(), "Executing Delete Plan");
 
-    let (mut repo, mut actions) = load_repo(&input_file)?;
+    let mut actions = load_file(&input_file)?;
 
-    let target_index = actions
-        .iter()
-        .position(|action| {
-            let id_match = action.id.to_string().starts_with(query);
-            let name_match = action.name.contains(query);
-            id_match || name_match
-        })
-        .ok_or_else(|| format!("No action found matching '{}'", query))?;
+    let resolved = clearhead_cli::resolve_reference(&actions, query)
+        .ok_or_else(|| format!("No plan found matching '{}'", query))?;
 
-    let action = actions.remove(target_index);
+    let action = actions.remove(resolved.index);
 
     if write {
-        save_repo(&mut repo, &actions)?;
+        save_file(&input_file, &actions)?;
 
         try_emit(
             &action.id,

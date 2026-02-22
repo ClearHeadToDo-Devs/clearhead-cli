@@ -1,150 +1,83 @@
 //! Document processing and save orchestration
 //!
-//! This module coordinates the parse → sync → format pipeline for document saves.
-//! It delegates to specialized modules for parsing, CRDT operations, and formatting.
+//! This module coordinates the parse → format pipeline for document saves.
+//! It produces a canonical formatted version of the document and indicates
+//! whether the content changed, allowing the LSP to apply edits only when needed.
 
-// Import core types
-use clearhead_core::{
-    Diff,
-    format, OutputFormat,
-    sync::{should_sync, SyncDecision},
-    workspace::actions::convert,
-};
-
-// CLI-specific imports
-use crate::crdt::SyncRepo;
+use clearhead_core::{format, OutputFormat};
 use crate::get_parsed_document;
 
 /// Result of processing a document save
 #[derive(Debug)]
 pub enum SaveResult {
-    /// No semantic changes detected - preserve user's formatting
+    /// Content is already in canonical form — preserve user's formatting
     NoChange,
-    /// Semantic changes detected and synced - new content available
+    /// Content differs from canonical — new formatted content available
     Changed {
-        /// The new formatted content from CRDT
+        /// The canonical formatted content
         new_content: String,
-        /// Detailed changes that were made
-        changes: Diff,
     },
 }
 
 /// Process a document save event
 ///
-/// This function orchestrates the complete save pipeline:
-/// 1. Parse current buffer content
-/// 2. Compare with CRDT state semantically
-/// 3. If no semantic changes, return NoChange to preserve formatting
-/// 4. If semantic changes detected, sync to CRDT and return new content
+/// Parses the current buffer, formats it canonically, and compares with the
+/// input. Returns `NoChange` if the buffer is already canonical, or `Changed`
+/// with the new content if formatting would alter it.
 ///
-/// # Arguments
-/// * `current_content` - The current buffer content as a string
-/// * `file_path` - Path to the file (for CRDT repository)
-/// * `crdt_repo` - Mutable reference to the CRDT repository
-///
-/// # Returns
-/// * `Ok(SaveResult::NoChange)` - No semantic changes, preserve user formatting
-/// * `Ok(SaveResult::Changed)` - Semantic changes synced, new content available
-/// * `Err(String)` - Error during processing
-pub fn process_save(
-    current_content: &str,
-    _file_path: &str,
-    crdt_repo: &mut SyncRepo,
-) -> Result<SaveResult, String> {
-    // 1. Parse current content
+/// The formatter is idempotent: calling `process_save` on already-formatted
+/// content always returns `NoChange`.
+pub fn process_save(current_content: &str) -> Result<SaveResult, String> {
     let parsed = get_parsed_document(current_content)?;
 
-    // 2. Get CRDT state as ActionList
-    let crdt_model = crdt_repo
-        .get_model()
-        .map_err(|e| format!("Failed to get CRDT state: {}", e))?;
-    let crdt_state = convert::to_action_list(&crdt_model);
+    let canonical = format(&parsed.actions, OutputFormat::Actions, None, None)
+        .map_err(|e| format!("Failed to format actions: {}", e))?;
 
-    // 3. Check if sync is needed (semantic comparison)
-    match should_sync(&parsed.actions, &crdt_state) {
-        SyncDecision::NoChange => {
-            // No semantic changes - preserve user's formatting
-            Ok(SaveResult::NoChange)
-        }
-        SyncDecision::SyncNeeded { changes } => {
-            // 4. Sync to CRDT
-            let new_model = convert::from_actions(&parsed.actions);
-            crdt_repo
-                .save_model(&new_model)
-                .map_err(|e| format!("Failed to save to CRDT: {}", e))?;
-
-            // 5. Format the canonical content
-            let canonical = format(&parsed.actions, OutputFormat::Actions, None, None)
-                .map_err(|e| format!("Failed to format actions: {}", e))?;
-
-            Ok(SaveResult::Changed {
-                new_content: canonical,
-                changes,
-            })
-        }
+    if canonical == current_content {
+        Ok(SaveResult::NoChange)
+    } else {
+        Ok(SaveResult::Changed { new_content: canonical })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crdt::SyncRepo;
-    use tempfile::TempDir;
-
-    fn setup_test_repo() -> (TempDir, SyncRepo) {
-        let temp_dir = TempDir::new().unwrap();
-        let workspace_dir = temp_dir.path().to_path_buf();
-        let file_path = workspace_dir.join("test.actions");
-
-        // Create the file so it exists
-        std::fs::write(&file_path, "").unwrap();
-
-        let repo = SyncRepo::test_repo(file_path, workspace_dir).unwrap();
-        (temp_dir, repo)
-    }
 
     #[test]
-    fn test_process_save_initial_save() {
-        let (_temp, mut repo) = setup_test_repo();
-        let content = "[ ] Task 1\n[ ] Task 2\n";
+    fn test_process_save_adds_id() {
+        let content = "[ ] Task without ID\n";
 
-        let result = process_save(content, "test.actions", &mut repo).unwrap();
+        let result = process_save(content).unwrap();
 
-        // First save should sync (CRDT starts empty)
         match result {
-            SaveResult::Changed { new_content, .. } => {
-                assert!(!new_content.is_empty());
+            SaveResult::Changed { new_content } => {
+                assert!(new_content.contains("#"), "Expected an ID to be added");
+                assert!(new_content.contains("Task without ID"));
             }
             SaveResult::NoChange => {
-                panic!("Expected Changed on initial save");
+                panic!("Expected Changed when action is missing an ID");
             }
         }
     }
 
     #[test]
-    fn test_process_save_no_semantic_change() {
-        let (_temp, mut repo) = setup_test_repo();
-        let content = "[ ] Task 1\n";
+    fn test_process_save_idempotent() {
+        let content = "[ ] Task without ID\n";
 
-        // Initial save - creates ID
-        let first_result = process_save(content, "test.actions", &mut repo).unwrap();
-
-        // Get the formatted content with ID
-        let content_with_id = match first_result {
-            SaveResult::Changed { new_content, .. } => new_content,
-            _ => panic!("Expected Changed on first save"),
+        // First pass: get canonical form with ID
+        let first = process_save(content).unwrap();
+        let canonical = match first {
+            SaveResult::Changed { new_content } => new_content,
+            SaveResult::NoChange => panic!("Expected Changed on first pass"),
         };
 
-        // Save again with same semantic content but maybe different formatting
-        // (simulating user running `=` which preserves IDs but changes whitespace)
-        let result = process_save(&content_with_id, "test.actions", &mut repo).unwrap();
-
-        match result {
-            SaveResult::NoChange => {
-                // Expected - no semantic changes
-            }
+        // Second pass: already canonical — should be NoChange
+        let second = process_save(&canonical).unwrap();
+        match second {
+            SaveResult::NoChange => {}
             SaveResult::Changed { .. } => {
-                panic!("Should not sync when no semantic changes");
+                panic!("Formatter should be idempotent: second pass should not change content");
             }
         }
     }
