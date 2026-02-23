@@ -78,60 +78,7 @@ impl Backend {
         }
     }
 
-    async fn apply_workspace_edit_if_different(
-        &self,
-        uri: &Uri,
-        current_buffer: &str,
-        formatted: String,
-    ) {
-        if &formatted == current_buffer {
-            debug!(uri = ?uri, "Buffer matches formatted output, no edit needed");
-            return;
-        }
 
-        debug!(uri = ?uri, "Buffer differs from formatted output, sending workspace/applyEdit");
-
-        let line_count = current_buffer.lines().count();
-        let last_line = current_buffer.lines().last().unwrap_or("");
-        let edit = TextEdit {
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(line_count as u32, last_line.len() as u32),
-            },
-            new_text: formatted,
-        };
-
-        let mut changes = std::collections::HashMap::new();
-        changes.insert(uri.clone(), vec![edit]);
-
-        let workspace_edit = WorkspaceEdit {
-            changes: Some(changes),
-            document_changes: None,
-            change_annotations: None,
-        };
-
-        if let Err(e) = self.client.apply_edit(workspace_edit).await {
-            warn!(error = ?e, "Failed to apply workspace edit");
-        }
-    }
-
-    async fn format_and_apply_edit(&self, uri: &Uri, current_buffer: &str) {
-        use clearhead_cli::document::{SaveResult, process_save};
-
-        match process_save(current_buffer) {
-            Ok(SaveResult::NoChange) => {
-                debug!(uri = ?uri, "Content already canonical, no edit needed");
-            }
-            Ok(SaveResult::Changed { new_content }) => {
-                debug!(uri = ?uri, "Formatting produced changes, applying edit");
-                self.apply_workspace_edit_if_different(uri, current_buffer, new_content)
-                    .await;
-            }
-            Err(e) => {
-                warn!(error = %e, "Failed to format document on save");
-            }
-        }
-    }
 }
 
 pub async fn start_lsp() {

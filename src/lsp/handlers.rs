@@ -170,9 +170,6 @@ impl LanguageServer for Backend {
                 }
             }
 
-            // Format and apply canonical edit if content changed
-            self.format_and_apply_edit(&uri, &doc.text).await;
-
             // Update last_saved_parsed to current
             doc.last_saved_parsed = doc.parsed.clone();
         }
