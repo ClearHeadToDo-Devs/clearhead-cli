@@ -28,11 +28,58 @@ As things get closed, we move them to a final `archive.ttl` file that serves as 
 
 With this, we are able to start doing SPARQL queries against the whole history of the domain despite only capturing workin plaintext files
 
+#### File Conversions
+
+What needs to be known is that converting between different file formats is a core part of the architecture and we are intending to participate in delivering functionality by supporting the following conversions:
+- Plan DSL (Action files)
+- Mardown (Objectives and Charters)
+- TTL (Planned Acts)
+- JSON
+- VEVENT (For calendar integrations)
+
+By getting these structures in place we can easily deliver functionality by simply making different structures available in different formats
+
 ## User Interface 
 
 The other major Concern of the tool is building the proper user interface for both tools and users. 
 
-As mentioned in the README, we adhere to a 
+As mentioned in the README, we adhere to a verb-noun interface where different commands are structured as `clearhead <verb> <noun> [options]`. This allows us to have a consistent and intuitive command structure that can be easily extended as we add more functionality.
+
+### Nouns 
+
+The nouns are mostly standard CRUD operations:
+- Create
+- Read
+- Update
+- Delete
+- Start 
+- Stop
+- Config
+
+the point is to keep the interface as simple and intuitive as possiible so that users can easily see and compose interactions together
+
+### Verbs
+
+We use the above file formats as our primary nouns so that each verb can operate on the noun in a consistent way. For example, we can have commands like:
+
+- Objectives
+- Charters
+- Plans
+- Planned Acts
+- LSP
+
+## Relationship to Library
+
+This is primarily using clearhead-core as the library that outputs all the functions needed to do our work in the commands themselves. while the library is mostly concerned with the domain model and translating work from one format to another, the CLI is responsible for system-level interactions such as:
+- Reading and writing files
+- Handling user input and output
+- Managing the workspace and its structure
+- Orchestrating the various commands and their interactions with the core library
+- Starting and managing the LSP server for editor integrations
+- Config management for runtime configuration
+
+
+
 
 # Reference
 [Process Specification]: https://github.com/ClearHeadToDo-Devs/specifications/blob/master/process.md
