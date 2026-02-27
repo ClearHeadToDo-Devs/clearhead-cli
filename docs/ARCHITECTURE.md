@@ -6,6 +6,27 @@ We do this by making many of the _core_ functionalities availabile through the `
 
 This means the cli is largely left to own the UI layer for the terminal, as well as wiring up to the core library in such a way that it can be easily run from either the command line or the LSP server.
 
+## Conceptual Model
+
+The **Rust struct (IR) is the canonical representation**. Everything else is a view or persistence mechanism. The IR aligns with the [Actions Ontology](../ontology/README.md), specifically the ActionPlan/ActionProcess distinction from BFO/CCO.
+
+```
+                         IR (Rust Structs)
+                    (canonical in-memory type)
+                    Objectives, Charters, Plans, Acts
+                              │
+           ┌──────────────────┼──────────────────┐
+           │                  │                  │
+           ▼                  ▼                  ▼
+         CRDT           Workspace           Oxigraph
+     (durable with      (text view        (query cache
+      sync/merge)       for editors)       for SPARQL)
+```
+
+- **CRDT** is durable sync with merge semantics (via autosurgeon). Stores both Domain Model
+- Workspace is all the plaintext files that users interact with directly. These are the source of truth for the domain model and are parsed into the IR. Changes to these files are detected and merged into the CRDT, which then updates the IR. This allows for a seamless editing experience while maintaining a consistent in-memory representation.
+- **Oxigraph** is an ephemeral query cache materialized from the IR. Enables SPARQL queries and SHACL validation. 
+
 ## Workspace Architecture
 
 Per the [Process Specification][Process Specification], cli leverages our [Naming Conventions][Naming Conventions] to actually discover and build the proper domain model.
@@ -39,34 +60,6 @@ What needs to be known is that converting between different file formats is a co
 
 By getting these structures in place we can easily deliver functionality by simply making different structures available in different formats
 
-## User Interface 
-
-The other major Concern of the tool is building the proper user interface for both tools and users. 
-
-As mentioned in the README, we adhere to a verb-noun interface where different commands are structured as `clearhead <verb> <noun> [options]`. This allows us to have a consistent and intuitive command structure that can be easily extended as we add more functionality.
-
-### Nouns 
-
-The nouns are mostly standard CRUD operations:
-- Create
-- Read
-- Update
-- Delete
-- Start 
-- Stop
-- Config
-
-the point is to keep the interface as simple and intuitive as possiible so that users can easily see and compose interactions together
-
-### Verbs
-
-We use the above file formats as our primary nouns so that each verb can operate on the noun in a consistent way. For example, we can have commands like:
-
-- Objectives
-- Charters
-- Plans
-- Planned Acts
-- LSP
 
 ## Relationship to Library
 
@@ -77,8 +70,6 @@ This is primarily using clearhead-core as the library that outputs all the funct
 - Orchestrating the various commands and their interactions with the core library
 - Starting and managing the LSP server for editor integrations
 - Config management for runtime configuration
-
-
 
 
 # Reference
