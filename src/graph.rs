@@ -21,28 +21,27 @@
 //! ```
 
 // Import core types
-use clearhead_core::{
-    ActPhase, Action, ActionList, ActionState, DomainModel, Plan, PlannedAct, Recurrence,
-};
+use clearhead_core::{ActPhase, DomainModel, Plan, PlannedAct};
 
 // CLI-specific imports
 use crate::environment_reader::Config;
-use chrono::DateTime;
 use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
-use uuid::Uuid;
 
-// Namespace constants (v3 - legacy)
-const ACTIONS_NS: &str = "https://clearhead.us/vocab/actions/v3#";
+// Namespace constants
+const ACTIONS_NS: &str = "https://clearhead.us/vocab/actions/v4#";
+const CCO_NS: &str = "https://www.commoncoreontologies.org/";
 const SCHEMA_NS: &str = "http://schema.org/";
 const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
 const SKOS_NS: &str = "http://www.w3.org/2004/02/skos/core#";
 
-// Namespace constants (v4 - CCO-aligned)
-const ACTIONS_V4_NS: &str = "https://clearhead.us/vocab/actions/v4#";
-const CCO_NS: &str = "http://www.ontologyrepository.com/CommonCoreOntologies/";
+// CCO class and property identifiers (opaque OBO IDs from the CCO ontology)
+const CCO_PLAN: &str = "ont00000974";
+const CCO_PLANNED_ACT: &str = "ont00000228";
+const CCO_PRESCRIBES: &str = "ont00001942";
+const CCO_STATUS_PROP: &str = "ont00001868"; // is_measured_by_nominal
 
 /// Create an in-memory Oxigraph store
 pub fn create_store() -> Result<Store, String> {
@@ -58,8 +57,12 @@ fn ns(base: &str, name: &str) -> NamedNode {
     NamedNode::new(format!("{}{}", base, name)).unwrap()
 }
 
-fn action_pred(name: &str) -> NamedNode {
+fn actions_pred(name: &str) -> NamedNode {
     ns(ACTIONS_NS, name)
+}
+
+fn cco_node(id: &str) -> NamedNode {
+    ns(CCO_NS, id)
 }
 
 fn schema_pred(name: &str) -> NamedNode {
@@ -68,219 +71,6 @@ fn schema_pred(name: &str) -> NamedNode {
 
 fn rdf_type() -> NamedNode {
     ns(RDF_NS, "type")
-}
-
-fn action_class() -> NamedNode {
-    action_pred("Action")
-}
-
-fn state_node(state: &ActionState) -> NamedNode {
-    let name = match state {
-        ActionState::NotStarted => "NotStarted",
-        ActionState::Completed => "Completed",
-        ActionState::InProgress => "InProgress",
-        ActionState::BlockedorAwaiting => "Blocked",
-        ActionState::Cancelled => "Cancelled",
-    };
-    action_pred(name)
-}
-
-/// Load an ActionList into the store
-pub fn load_actions(store: &Store, actions: &ActionList) -> Result<(), String> {
-    load_actions_with_source(store, actions, None, None)
-}
-
-/// Load an ActionList into the store with source metadata
-pub fn load_actions_with_source(
-    store: &Store,
-    actions: &ActionList,
-    file_path: Option<&str>,
-    project: Option<&str>,
-) -> Result<(), String> {
-    for action in actions {
-        insert_action(store, action, file_path, project)?;
-    }
-    Ok(())
-}
-
-fn insert_action(
-    store: &Store,
-    action: &Action,
-    file_path: Option<&str>,
-    project: Option<&str>,
-) -> Result<(), String> {
-    let subject =
-        NamedOrBlankNode::NamedNode(NamedNode::new(format!("urn:uuid:{}", action.id)).unwrap());
-    let graph = GraphName::DefaultGraph;
-
-    // Helper to add triple
-    let add = |pred: NamedNode, term: Term| {
-        store
-            .insert(&Quad::new(subject.clone(), pred, term, graph.clone()))
-            .map_err(|e| e.to_string())
-    };
-
-    // rdf:type actions:Action
-    add(rdf_type(), Term::NamedNode(action_class()))?;
-
-    // Add specific type based on hierarchy (heuristic until depth is explicitly stored)
-    let specific_type = if action.parent_id.is_none() {
-        action_pred("RootActionPlan")
-    } else {
-        action_pred("ChildActionPlan")
-    };
-    add(rdf_type(), Term::NamedNode(specific_type))?;
-
-    // actions:id (as string)
-    add(
-        action_pred("id"),
-        Term::Literal(Literal::new_simple_literal(action.id.to_string())),
-    )?;
-
-    // schema:name
-    add(
-        schema_pred("name"),
-        Term::Literal(Literal::new_simple_literal(&action.name)),
-    )?;
-
-    // actions:hasState
-    add(
-        action_pred("hasState"),
-        Term::NamedNode(state_node(&action.state)),
-    )?;
-
-    // schema:description
-    if let Some(desc) = &action.description {
-        add(
-            schema_pred("description"),
-            Term::Literal(Literal::new_simple_literal(desc)),
-        )?;
-    }
-
-    // actions:parentAction
-    if let Some(parent_id) = action.parent_id {
-        let parent_uri = NamedNode::new(format!("urn:uuid:{}", parent_id)).unwrap();
-        add(action_pred("parentAction"), Term::NamedNode(parent_uri))?;
-    }
-
-    // actions:hasPriority
-    if let Some(priority) = action.priority {
-        add(
-            action_pred("hasPriority"),
-            Term::Literal(Literal::new_typed_literal(
-                priority.to_string(),
-                ns(XSD_NS, "integer"),
-            )),
-        )?;
-    }
-
-    // actions:hasProject (story)
-    if let Some(story) = &action.story {
-        add(
-            action_pred("hasProject"),
-            Term::Literal(Literal::new_simple_literal(story)),
-        )?;
-    }
-
-    // actions:requiresContext
-    if let Some(contexts) = &action.context_list {
-        for context in contexts {
-            add(
-                action_pred("requiresContext"),
-                Term::Literal(Literal::new_simple_literal(context)),
-            )?;
-        }
-    }
-
-    // actions:hasDoDateTime
-    if let Some(dt) = &action.do_date_time {
-        add(
-            action_pred("hasDoDateTime"),
-            Term::Literal(Literal::new_typed_literal(
-                dt.to_rfc3339(),
-                ns(XSD_NS, "dateTime"),
-            )),
-        )?;
-    }
-
-    // actions:hasDoDuration
-    if let Some(duration) = action.do_duration {
-        add(
-            action_pred("hasDoDuration"),
-            Term::Literal(Literal::new_typed_literal(
-                duration.to_string(),
-                ns(XSD_NS, "integer"),
-            )),
-        )?;
-    }
-
-    // actions:completedDateTime
-    if let Some(dt) = &action.completed_date_time {
-        add(
-            action_pred("completedDateTime"),
-            Term::Literal(Literal::new_typed_literal(
-                dt.to_rfc3339(),
-                ns(XSD_NS, "dateTime"),
-            )),
-        )?;
-    }
-
-    // File path and project from source
-    if let Some(fp) = file_path {
-        add(
-            action_pred("filePath"),
-            Term::Literal(Literal::new_simple_literal(fp)),
-        )?;
-    }
-
-    if let Some(p) = project {
-        add(
-            action_pred("inferredProject"),
-            Term::Literal(Literal::new_simple_literal(p)),
-        )?;
-    }
-
-    // Recurrence
-    if let Some(recurrence) = &action.recurrence {
-        // Create a blank node for recurrence
-        let bnode = BlankNode::default();
-        add(action_pred("hasRecurrence"), Term::BlankNode(bnode.clone()))?;
-
-        let r_subj = NamedOrBlankNode::BlankNode(bnode);
-        let add_r = |pred: NamedNode, term: Term| {
-            store
-                .insert(&Quad::new(r_subj.clone(), pred, term, graph.clone()))
-                .map_err(|e| e.to_string())
-        };
-
-        add_r(
-            action_pred("recurrenceFrequency"),
-            Term::Literal(Literal::new_simple_literal(&recurrence.frequency)),
-        )?;
-
-        if let Some(val) = recurrence.interval {
-            add_r(
-                action_pred("recurrenceInterval"),
-                Term::Literal(Literal::new_typed_literal(
-                    val.to_string(),
-                    ns(XSD_NS, "integer"),
-                )),
-            )?;
-        }
-
-        if let Some(val) = &recurrence.by_day {
-            for day in val {
-                add_r(
-                    action_pred("recurrenceByDay"),
-                    Term::Literal(Literal::new_simple_literal(day)),
-                )?;
-            }
-        }
-
-        // Add other recurrence fields as needed...
-    }
-
-    Ok(())
 }
 
 /// Execute a SPARQL query and return matching action IDs
@@ -310,197 +100,13 @@ pub fn query_actions(store: &Store, sparql: &str) -> Result<Vec<String>, String>
     Ok(ids)
 }
 
-/// Get full Action structs from a SPARQL query
-///
-/// The query should return ?id (as string). The function will then fetch full details for those IDs.
-/// Alternatively, the query could be "SELECT ?s WHERE { ... }" returning URIs, but this function
-/// currently assumes we first get IDs or URIs and then reconstruct the object.
-///
-/// Note: To fully reconstruct Actions from SPARQL is complex.
-/// A simpler approach is:
-/// 1. Run the user's SPARQL query to get a list of matching Action URIs or IDs.
-/// 2. For each matching Action, query its properties from the Store to rebuild the struct.
-pub fn get_actions_from_query(store: &Store, sparql: &str) -> Result<ActionList, String> {
-    let ids = query_actions(store, sparql)?;
-    let mut actions = ActionList::new();
-
-    for id_str in ids {
-        if let Ok(uuid) = Uuid::parse_str(&id_str)
-            && let Ok(action) = get_action_by_id(store, uuid)
-        {
-            actions.push(action);
-        }
-    }
-
-    Ok(actions)
-}
-
-// Alias for compatibility
-pub fn get_actions_from_sql(store: &Store, sql: &str) -> Result<ActionList, String> {
-    get_actions_from_query(store, sql)
-}
-
-fn get_action_by_id(store: &Store, id: Uuid) -> Result<Action, String> {
-    let subject = NamedOrBlankNode::NamedNode(NamedNode::new(format!("urn:uuid:{}", id)).unwrap());
-    let graph = GraphName::DefaultGraph;
-
-    // Helper to find one object
-    let find_one = |pred: NamedNode| -> Option<Term> {
-        store
-            .quads_for_pattern(
-                Some(subject.as_ref()),
-                Some(pred.as_ref()),
-                None,
-                Some(graph.as_ref()),
-            )
-            .next()
-            .map(|q| q.unwrap().object)
-    };
-
-    // Helper to find multiple objects
-    let find_many = |pred: NamedNode| -> Vec<Term> {
-        store
-            .quads_for_pattern(
-                Some(subject.as_ref()),
-                Some(pred.as_ref()),
-                None,
-                Some(graph.as_ref()),
-            )
-            .map(|q| q.unwrap().object)
-            .collect()
-    };
-
-    let name = match find_one(schema_pred("name")) {
-        Some(Term::Literal(l)) => l.value().to_string(),
-        _ => return Err(format!("Action {} missing name", id)),
-    };
-
-    let state_term = find_one(action_pred("hasState"));
-    let state = if let Some(Term::NamedNode(nn)) = state_term {
-        match nn.as_str().split('#').last() {
-            Some("Completed") => ActionState::Completed,
-            Some("InProgress") => ActionState::InProgress,
-            Some("Blocked") => ActionState::BlockedorAwaiting,
-            Some("Cancelled") => ActionState::Cancelled,
-            _ => ActionState::NotStarted,
-        }
-    } else {
-        ActionState::NotStarted
-    };
-
-    let description = find_one(schema_pred("description")).map(|t| match t {
-        Term::Literal(l) => l.value().to_string(),
-        _ => String::new(),
-    });
-
-    let priority = find_one(action_pred("hasPriority")).and_then(|t| match t {
-        Term::Literal(l) => l.value().parse::<u32>().ok(),
-        _ => None,
-    });
-
-    let story = find_one(action_pred("hasProject")).map(|t| match t {
-        Term::Literal(l) => l.value().to_string(),
-        _ => String::new(),
-    });
-
-    let contexts: Vec<String> = find_many(action_pred("requiresContext"))
-        .into_iter()
-        .map(|t| match t {
-            Term::Literal(l) => l.value().to_string(),
-            _ => String::new(),
-        })
-        .collect();
-    let context_list = if contexts.is_empty() {
-        None
-    } else {
-        Some(contexts)
-    };
-
-    let do_date_time = find_one(action_pred("hasDoDateTime")).and_then(|t| match t {
-        Term::Literal(l) => DateTime::parse_from_rfc3339(l.value())
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Local)),
-        _ => None,
-    });
-
-    let do_duration = find_one(action_pred("hasDoDuration")).and_then(|t| match t {
-        Term::Literal(l) => l.value().parse::<u32>().ok(),
-        _ => None,
-    });
-
-    let completed_date_time = find_one(action_pred("completedDateTime")).and_then(|t| match t {
-        Term::Literal(l) => DateTime::parse_from_rfc3339(l.value())
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Local)),
-        _ => None,
-    });
-
-    let parent_id = find_one(action_pred("parentAction")).and_then(|t| match t {
-        Term::NamedNode(nn) => {
-            let s = nn.as_str();
-            if s.starts_with("urn:uuid:") {
-                Uuid::parse_str(&s[9..]).ok()
-            } else {
-                None
-            }
-        }
-        _ => None,
-    });
-
-    // Recurrence (Basic implementation)
-    let recurrence = find_one(action_pred("hasRecurrence")).map(|_t| {
-        // In a real implementation we would traverse the blank node.
-        // For now, returning None or basic if needed.
-        // We'll skip deep recurrence hydration for this iteration
-        // unless explicitly requested, as it requires querying the blank node.
-        Recurrence {
-            frequency: "daily".to_string(), // Placeholder/Default
-            interval: None,
-            count: None,
-            until: None,
-            by_second: None,
-            by_minute: None,
-            by_hour: None,
-            by_day: None,
-            by_month_day: None,
-            by_year_day: None,
-            by_week_no: None,
-            by_month: None,
-            by_set_pos: None,
-            week_start: None,
-        }
-    });
-
-    Ok(Action {
-        id,
-        parent_id,
-        state,
-        name,
-        description,
-        priority,
-        context_list,
-        do_date_time,
-        do_duration,
-        recurrence, // TODO: Full recurrence hydration
-        completed_date_time,
-        created_date_time: None, // Not in basic schema yet
-        predecessors: None,
-        story,
-        alias: None,
-        is_sequential: None,
-    })
-}
-
 /// Build a SPARQL query from a WHERE clause
 ///
-/// Wraps the where_clause in `SELECT ?id WHERE { ... }`.
-/// This assumes the user provides a valid SPARQL Graph Pattern.
-/// It also injects `?s <https://clearhead.us/vocab/actions/v3#id> ?id` to ensure ?id is bound.
+/// Wraps the where_clause in `SELECT ?id WHERE { ... }` and injects standard prefixes.
 pub fn build_where_query(where_clause: &str, _select: Option<&str>, _from: Option<&str>) -> String {
-    // We assume the user wants ?id back.
-    // We bind ?s (subject) to ?id (string id)
     format!(
         "PREFIX actions: <{actions_ns}>\n\
+         PREFIX cco: <{cco_ns}>\n\
          PREFIX schema: <{schema_ns}>\n\
          PREFIX rdf: <{rdf_ns}>\n\
          PREFIX xsd: <{xsd_ns}>\n\
@@ -508,6 +114,7 @@ pub fn build_where_query(where_clause: &str, _select: Option<&str>, _from: Optio
          SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{ {where_clause} }}
 }}",
         actions_ns = ACTIONS_NS,
+        cco_ns = CCO_NS,
         schema_ns = SCHEMA_NS,
         rdf_ns = RDF_NS,
         xsd_ns = XSD_NS,
@@ -542,23 +149,12 @@ pub fn load_tag_hierarchies(store: &Store, config: &Config) -> Result<(), String
     Ok(())
 }
 
-/// Query actions by context with hierarchy expansion
+/// Query plans by context with hierarchy expansion
 pub fn query_actions_by_context(store: &Store, context: &str) -> Result<Vec<String>, String> {
     let context_tag = context.to_lowercase();
 
-    // SPARQL Property Path:
-    // ?action actions:requiresContext ?tagLiteral .
-    // ?tagURI skos:broader* ?contextURI .
-    // FILTER (str(?tagURI) = concat("urn:tag:", ?tagLiteral))
-    //
-    // Simplified:
-    // We want actions that have a context C, where C is a subclass/narrower of `context`.
-    // In our `load_tag_hierarchies`, we stored `urn:tag:child skos:broader urn:tag:parent`.
-    // So if we search for "computer", we want "neovim" because neovim -> broader -> terminal -> broader -> computer.
-    // So we want ?child skos:broader* <urn:tag:computer>.
-
     let sparql = format!(
-        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    ?s <{actions_ns}requiresContext> ?tagLiteral .    BIND(IRI(concat(\"urn:tag:\", lcase(?tagLiteral))) AS ?tagURI)    ?tagURI <{skos_ns}broader>* <urn:tag:{target}> .
+        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    ?s <{actions_ns}hasContext> ?tagLiteral .    BIND(IRI(concat(\"urn:tag:\", lcase(?tagLiteral))) AS ?tagURI)    ?tagURI <{skos_ns}broader>* <urn:tag:{target}> .
 }}",
         actions_ns = ACTIONS_NS,
         skos_ns = SKOS_NS,
@@ -568,13 +164,10 @@ pub fn query_actions_by_context(store: &Store, context: &str) -> Result<Vec<Stri
     query_actions(store, &sparql)
 }
 
-/// Query actions by project
+/// Query plans by objective (project)
 pub fn query_actions_by_project(store: &Store, project: &str) -> Result<Vec<String>, String> {
-    // Search for explicit project OR inferred project
     let sparql = format!(
-        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    {{ ?s <{actions_ns}hasProject> \"{project}\" }}    UNION    {{ ?s <{actions_ns}inferredProject> \"{project}\" .
-               FILTER NOT EXISTS {{ ?s <{actions_ns}hasProject> ?any }}
-            }}
+        "SELECT ?id WHERE {{    ?s <{actions_ns}id> ?id .    ?s <{actions_ns}hasObjective> \"{project}\" .
         }}",
         actions_ns = ACTIONS_NS,
         project = project
@@ -584,16 +177,8 @@ pub fn query_actions_by_project(store: &Store, project: &str) -> Result<Vec<Stri
 }
 
 // ============================================================================
-// V4 Domain Model (CCO-aligned)
+// Domain Model (CCO-aligned)
 // ============================================================================
-
-fn v4_pred(name: &str) -> NamedNode {
-    ns(ACTIONS_V4_NS, name)
-}
-
-fn cco_class(name: &str) -> NamedNode {
-    ns(CCO_NS, name)
-}
 
 fn phase_node(phase: &ActPhase) -> NamedNode {
     let name = match phase {
@@ -603,7 +188,7 @@ fn phase_node(phase: &ActPhase) -> NamedNode {
         ActPhase::Blocked => "Blocked",
         ActPhase::Cancelled => "Cancelled",
     };
-    v4_pred(name)
+    actions_pred(name)
 }
 
 /// Load a DomainModel into the store using v4 ontology
@@ -634,12 +219,12 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
             .map_err(|e| e.to_string())
     };
 
-    // rdf:type cco:Plan
-    add(rdf_type(), Term::NamedNode(cco_class("Plan")))?;
+    // rdf:type cco:Plan (ont00000974)
+    add(rdf_type(), Term::NamedNode(cco_node(CCO_PLAN)))?;
 
     // actions:id
     add(
-        v4_pred("id"),
+        actions_pred("id"),
         Term::Literal(Literal::new_simple_literal(plan.id.to_string())),
     )?;
 
@@ -660,7 +245,7 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
     // actions:hasPriority
     if let Some(priority) = plan.priority {
         add(
-            v4_pred("hasPriority"),
+            actions_pred("hasPriority"),
             Term::Literal(Literal::new_typed_literal(
                 priority.to_string(),
                 ns(XSD_NS, "integer"),
@@ -672,7 +257,7 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
     if let Some(contexts) = &plan.contexts {
         for context in contexts {
             add(
-                v4_pred("hasContext"),
+                actions_pred("hasContext"),
                 Term::Literal(Literal::new_simple_literal(context)),
             )?;
         }
@@ -681,7 +266,7 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
     // actions:hasObjective (story/project)
     if let Some(objective) = &plan.objective {
         add(
-            v4_pred("hasObjective"),
+            actions_pred("hasObjective"),
             Term::Literal(Literal::new_simple_literal(objective)),
         )?;
     }
@@ -689,21 +274,21 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
     // actions:partOf (parent plan)
     if let Some(parent_id) = plan.parent {
         let parent_uri = NamedNode::new(format!("urn:uuid:{}", parent_id)).unwrap();
-        add(v4_pred("partOf"), Term::NamedNode(parent_uri))?;
+        add(actions_pred("partOf"), Term::NamedNode(parent_uri))?;
     }
 
     // actions:dependsOn (predecessor plans)
     if let Some(deps) = &plan.depends_on {
         for dep_id in deps {
             let dep_uri = NamedNode::new(format!("urn:uuid:{}", dep_id)).unwrap();
-            add(v4_pred("dependsOn"), Term::NamedNode(dep_uri))?;
+            add(actions_pred("dependsOn"), Term::NamedNode(dep_uri))?;
         }
     }
 
     // actions:alias
     if let Some(alias) = &plan.alias {
         add(
-            v4_pred("alias"),
+            actions_pred("alias"),
             Term::Literal(Literal::new_simple_literal(alias)),
         )?;
     }
@@ -711,7 +296,7 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
     // actions:isSequential
     if let Some(true) = plan.is_sequential {
         add(
-            v4_pred("isSequential"),
+            actions_pred("isSequential"),
             Term::Literal(Literal::new_typed_literal("true", ns(XSD_NS, "boolean"))),
         )?;
     }
@@ -719,7 +304,7 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
     // Recurrence (as blank node)
     if let Some(recurrence) = &plan.recurrence {
         let bnode = BlankNode::default();
-        add(v4_pred("hasRecurrence"), Term::BlankNode(bnode.clone()))?;
+        add(actions_pred("hasRecurrence"), Term::BlankNode(bnode.clone()))?;
 
         let r_subj = NamedOrBlankNode::BlankNode(bnode);
         let add_r = |pred: NamedNode, term: Term| {
@@ -729,13 +314,13 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
         };
 
         add_r(
-            v4_pred("frequency"),
+            actions_pred("frequency"),
             Term::Literal(Literal::new_simple_literal(&recurrence.frequency)),
         )?;
 
         if let Some(interval) = recurrence.interval {
             add_r(
-                v4_pred("interval"),
+                actions_pred("interval"),
                 Term::Literal(Literal::new_typed_literal(
                     interval.to_string(),
                     ns(XSD_NS, "integer"),
@@ -746,11 +331,17 @@ fn insert_plan(store: &Store, plan: &Plan) -> Result<(), String> {
         if let Some(by_day) = &recurrence.by_day {
             for day in by_day {
                 add_r(
-                    v4_pred("byDay"),
+                    actions_pred("byDay"),
                     Term::Literal(Literal::new_simple_literal(day)),
                 )?;
             }
         }
+    }
+
+    // cco:prescribes (ont00001942) — forward link from Plan to each PlannedAct
+    for act in &plan.acts {
+        let act_uri = NamedNode::new(format!("urn:uuid:{}", act.id)).unwrap();
+        add(cco_node(CCO_PRESCRIBES), Term::NamedNode(act_uri))?;
     }
 
     Ok(())
@@ -770,26 +361,26 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
             .map_err(|e| e.to_string())
     };
 
-    // rdf:type cco:PlannedAct
-    add(rdf_type(), Term::NamedNode(cco_class("PlannedAct")))?;
+    // rdf:type cco:PlannedAct (ont00000228)
+    add(rdf_type(), Term::NamedNode(cco_node(CCO_PLANNED_ACT)))?;
 
     // actions:id
     add(
-        v4_pred("id"),
+        actions_pred("id"),
         Term::Literal(Literal::new_simple_literal(act.id.to_string())),
     )?;
 
-    // actions:prescribedBy (link to Plan)
+    // actions:prescribedBy (convenience inverse of cco:prescribes for efficient lookup)
     let plan_uri = NamedNode::new(format!("urn:uuid:{}", act.plan_id)).unwrap();
-    add(v4_pred("prescribedBy"), Term::NamedNode(plan_uri))?;
+    add(actions_pred("prescribedBy"), Term::NamedNode(plan_uri))?;
 
-    // actions:hasPhase
-    add(v4_pred("hasPhase"), Term::NamedNode(phase_node(&act.phase)))?;
+    // cco:is_measured_by_nominal (ont00001868) — status as Event Status Nominal ICE
+    add(cco_node(CCO_STATUS_PROP), Term::NamedNode(phase_node(&act.phase)))?;
 
     // actions:scheduledAt
     if let Some(dt) = &act.scheduled_at {
         add(
-            v4_pred("scheduledAt"),
+            actions_pred("scheduledAt"),
             Term::Literal(Literal::new_typed_literal(
                 dt.to_rfc3339(),
                 ns(XSD_NS, "dateTime"),
@@ -800,7 +391,7 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
     // actions:duration
     if let Some(duration) = act.duration {
         add(
-            v4_pred("duration"),
+            actions_pred("duration"),
             Term::Literal(Literal::new_typed_literal(
                 duration.to_string(),
                 ns(XSD_NS, "integer"),
@@ -811,7 +402,7 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
     // actions:completedAt
     if let Some(dt) = &act.completed_at {
         add(
-            v4_pred("completedAt"),
+            actions_pred("completedAt"),
             Term::Literal(Literal::new_typed_literal(
                 dt.to_rfc3339(),
                 ns(XSD_NS, "dateTime"),
@@ -822,7 +413,7 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
     // actions:createdAt
     if let Some(dt) = &act.created_at {
         add(
-            v4_pred("createdAt"),
+            actions_pred("createdAt"),
             Term::Literal(Literal::new_typed_literal(
                 dt.to_rfc3339(),
                 ns(XSD_NS, "dateTime"),
@@ -834,7 +425,7 @@ fn insert_planned_act(store: &Store, act: &PlannedAct) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod v4_tests {
+mod tests {
     use super::*;
     use clearhead_core::Action;
     use clearhead_core::workspace::actions::convert;
@@ -848,10 +439,10 @@ mod v4_tests {
 
         load_domain_model(&store, &model).unwrap();
 
-        // Verify Plan was inserted
+        // Verify Plan was inserted with correct CCO class URI (ont00000974)
         let plan_query = format!(
-            "SELECT ?name WHERE {{ ?s a <{}Plan> . ?s <{}name> ?name }}",
-            CCO_NS, SCHEMA_NS
+            "SELECT ?name WHERE {{ ?s a <{}{}> . ?s <{}name> ?name }}",
+            CCO_NS, CCO_PLAN, SCHEMA_NS
         );
         let results = SparqlEvaluator::new()
             .parse_query(&plan_query)
@@ -879,10 +470,10 @@ mod v4_tests {
 
         load_domain_model(&store, &model).unwrap();
 
-        // Query for PlannedAct that prescribedBy the Plan
+        // Query for PlannedAct using the convenience prescribedBy inverse
         let query = format!(
             "SELECT ?act WHERE {{ ?act <{}prescribedBy> <urn:uuid:{}> }}",
-            ACTIONS_V4_NS, plan_id
+            ACTIONS_NS, plan_id
         );
         let results = SparqlEvaluator::new()
             .parse_query(&query)

@@ -164,13 +164,15 @@ pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
 /// # Returns
 /// A filtered ActionList containing only actions that match the query
 pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionList, String> {
+    use clearhead_core::workspace::actions::convert;
     use std::collections::HashSet;
 
-    // Create in-memory store and load actions
+    // Create in-memory store and load the domain model
     let store = sql::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
 
-    sql::load_actions(&store, actions)
-        .map_err(|e| format!("Failed to load actions into store: {}", e))?;
+    let model = convert::from_actions(actions);
+    sql::load_domain_model(&store, &model)
+        .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
     // Execute query and get matching IDs
     let matching_ids = sql::query_actions(&store, sparql_query)
@@ -209,9 +211,7 @@ pub fn run_sql_where(
     run_sql_query(actions, &query)
 }
 
-/// Run a SPARQL query on workspace actions with source tracking
-///
-/// This enables cross-file queries using the file_path and project properties.
+/// Run a SPARQL query on workspace actions
 ///
 /// # Arguments
 /// * `workspace` - Workspace actions with source metadata
@@ -223,22 +223,20 @@ pub fn run_workspace_sql_query(
     workspace: &workspace::WorkspaceActions,
     sparql_query: &str,
 ) -> Result<ActionList, String> {
+    use clearhead_core::workspace::actions::convert;
     use std::collections::HashSet;
 
-    // Create in-memory store
+    // Create in-memory store and load the full domain model
     let store = sql::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
 
-    // Load each file's actions with source metadata
-    for sourced in &workspace.sourced_actions {
-        let file_path_str = sourced.source.file_path.to_string_lossy();
-        sql::load_actions_with_source(
-            &store,
-            &vec![sourced.action.clone()],
-            Some(&file_path_str),
-            sourced.source.project.as_deref(),
-        )
-        .map_err(|e| format!("Failed to load action into store: {}", e))?;
-    }
+    let all_actions: ActionList = workspace
+        .sourced_actions
+        .iter()
+        .map(|sa| sa.action.clone())
+        .collect();
+    let model = convert::from_actions(&all_actions);
+    sql::load_domain_model(&store, &model)
+        .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
     // Execute query and get matching IDs
     let matching_ids = sql::query_actions(&store, sparql_query)
