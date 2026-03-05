@@ -404,8 +404,9 @@ pub fn export_plans(
 ) -> Result<(), String> {
     debug!(input_file = ?file, output = ?output, open_only = open_only, "Executing Export Plans");
     let content = read_input(file.as_ref())?;
-    let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-    let icalendar = clearhead_cli::format_as_icalendar(&actions, open_only)?;
+    let actions = clearhead_cli::parse_actions(&content)?;
+    let model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+    let icalendar = clearhead_cli::format_as_icalendar(&model, open_only)?;
 
     if let Some(output_path) = output {
         info!(output_path = %output_path.display(), "Writing iCalendar export to file");

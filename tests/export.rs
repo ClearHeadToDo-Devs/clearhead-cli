@@ -43,6 +43,7 @@ fn test_export_basic_action_with_date() {
 
     env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -63,6 +64,7 @@ fn test_export_with_recurrence() {
 
     env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -74,13 +76,14 @@ fn test_export_with_recurrence() {
 fn test_export_with_description_and_priority() {
     let env = TestEnv::new();
     let actions = r#"[ ] Important meeting
-    $ Discuss project roadmap
+    $ Discuss project roadmap $
     !1
     @2026-01-20T14:00"#;
     let file = env.write_actions("test.actions", actions);
 
     env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -97,6 +100,7 @@ fn test_export_with_categories() {
 
     env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -117,6 +121,7 @@ fn test_export_status_mapping() {
 
     let output = env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -126,14 +131,12 @@ fn test_export_status_mapping() {
 
     let output_str = String::from_utf8_lossy(&output);
 
-    // Check that all events are exported
     assert!(output_str.contains("SUMMARY:Not started"));
     assert!(output_str.contains("SUMMARY:In progress"));
     assert!(output_str.contains("SUMMARY:Blocked"));
     assert!(output_str.contains("SUMMARY:Completed"));
     assert!(output_str.contains("SUMMARY:Cancelled"));
 
-    // Count VEVENTs - should be 5
     let event_count = output_str.matches("BEGIN:VEVENT").count();
     assert_eq!(event_count, 5);
 }
@@ -152,6 +155,7 @@ fn test_export_open_only_filter() {
 
     let output = env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .arg("--open-only")
         .assert()
@@ -162,16 +166,13 @@ fn test_export_open_only_filter() {
 
     let output_str = String::from_utf8_lossy(&output);
 
-    // Should include open tasks
     assert!(output_str.contains("SUMMARY:Open task"));
     assert!(output_str.contains("SUMMARY:In progress task"));
     assert!(output_str.contains("SUMMARY:Blocked task"));
 
-    // Should NOT include completed or cancelled
     assert!(!output_str.contains("SUMMARY:Completed task"));
     assert!(!output_str.contains("SUMMARY:Cancelled task"));
 
-    // Count VEVENTs - should be 3
     let event_count = output_str.matches("BEGIN:VEVENT").count();
     assert_eq!(event_count, 3);
 }
@@ -188,6 +189,7 @@ fn test_export_skips_actions_without_dates() {
 
     let output = env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -197,12 +199,10 @@ fn test_export_skips_actions_without_dates() {
 
     let output_str = String::from_utf8_lossy(&output);
 
-    // Should only export tasks with dates
     assert!(output_str.contains("SUMMARY:Task with date"));
     assert!(output_str.contains("SUMMARY:Another task with date"));
     assert!(!output_str.contains("SUMMARY:Task without date"));
 
-    // Count VEVENTs - should be 2
     let event_count = output_str.matches("BEGIN:VEVENT").count();
     assert_eq!(event_count, 2);
 }
@@ -216,13 +216,13 @@ fn test_export_to_file() {
 
     env.command()
         .arg("export")
+        .arg("plans")
         .arg(&input_file)
         .arg("-o")
         .arg(&output_file)
         .assert()
         .success();
 
-    // Verify output file was created and contains calendar data
     let content = fs::read_to_string(&output_file).expect("Failed to read output file");
     assert!(content.contains("BEGIN:VCALENDAR"));
     assert!(content.contains("SUMMARY:Meeting"));
@@ -236,6 +236,7 @@ fn test_export_from_stdin() {
 
     env.command()
         .arg("export")
+        .arg("plans")
         .write_stdin(actions)
         .assert()
         .success()
@@ -256,6 +257,7 @@ fn test_export_multiple_recurring_patterns() {
 
     let output = env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -279,6 +281,7 @@ fn test_export_default_duration() {
 
     let output = env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -304,6 +307,7 @@ fn test_export_empty_calendar() {
 
     let output = env.command()
         .arg("export")
+        .arg("plans")
         .arg(&file)
         .assert()
         .success()
@@ -313,7 +317,6 @@ fn test_export_empty_calendar() {
 
     let output_str = String::from_utf8_lossy(&output);
 
-    // Should still have calendar wrapper, but no events
     assert!(output_str.contains("BEGIN:VCALENDAR"));
     assert!(output_str.contains("END:VCALENDAR"));
     assert_eq!(output_str.matches("BEGIN:VEVENT").count(), 0);
