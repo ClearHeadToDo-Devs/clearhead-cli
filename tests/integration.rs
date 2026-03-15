@@ -154,7 +154,7 @@ fn test_read_specific_file() {
 fn test_all_output_formats() {
     let env = TestEnv::new();
 
-    env.write_actions("test.actions", "[x] Test $with description !1 +context");
+    env.write_actions("test.actions", "[x] Test $with description$ !1 +context");
     let test_path = env.data_dir.join("test.actions");
 
     // Actions format
@@ -262,13 +262,16 @@ fn test_actions_with_hierarchy() {
 }
 
 #[test]
-fn test_format_indentation_ignored() {
+fn test_format_style_flags() {
     let env = TestEnv::new();
 
-    // 1. Test Spaces ignored
+    // Topiary is the sole formatter now — --style is accepted but there is only one
+    // output format. --indent-width and --indent-style ARE applied by Topiary.
+
     env.write_actions("compact.actions", "[ ] Root\n>[ ] Child");
     let compact_path = env.data_dir.join("compact.actions");
 
+    // --style compact with --indent-width 2: Topiary indents child with 2 spaces
     env.command()
         .arg("format")
         .arg("file")
@@ -279,11 +282,10 @@ fn test_format_indentation_ignored() {
         .arg("2")
         .assert()
         .success()
-        .stdout(predicate::str::contains(">[ ] Child"))
-        .stdout(predicate::str::contains("  >[ ] Child").not());
+        .stdout(predicate::str::contains(">[ ] Child"));
 
-    // 2. Test List Style ignored (falls back to compact)
-    env.write_actions("list.actions", "[ ] Root $ Desc");
+    // --style list is accepted (falls back to Topiary compact); description stays inline
+    env.write_actions("list.actions", "[ ] Root $ Desc $");
     let list_path = env.data_dir.join("list.actions");
 
     env.command()
@@ -296,10 +298,9 @@ fn test_format_indentation_ignored() {
         .arg("4")
         .assert()
         .success()
-        .stdout(predicate::str::contains("$ Desc"))
-        .stdout(predicate::str::contains("\n    $ Desc").not());
+        .stdout(predicate::str::contains("$ Desc"));
 
-    // 3. Test Tab indentation ignored
+    // --indent-style tabs: Topiary uses tabs
     env.command()
         .arg("format")
         .arg("file")
@@ -310,8 +311,7 @@ fn test_format_indentation_ignored() {
         .arg("1")
         .assert()
         .success()
-        .stdout(predicate::str::contains(">[ ] Child"))
-        .stdout(predicate::str::contains("\t>[ ] Child").not());
+        .stdout(predicate::str::contains(">[ ] Child"));
 }
 
 // Schema validation tests - verify JSON output matches canonical schema
@@ -325,7 +325,7 @@ fn test_json_output_validates_against_schema() {
     // Create a test file with various features
     env.write_actions(
         "test.actions",
-        "[x] Parent task $description !1 +work,urgent\n> [ ] Child task\n>> [-] Grandchild task",
+        "[x] Parent task $description$ !1 +work,urgent\n> [ ] Child task\n>> [-] Grandchild task",
     );
     let test_path = env.data_dir.join("test.actions");
 

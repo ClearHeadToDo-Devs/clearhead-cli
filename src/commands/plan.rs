@@ -39,7 +39,23 @@ pub fn read_plans(
         let resolved = resolve_file_path(&path.to_string_lossy(), &ctx.data_dir);
         debug!(file = %resolved.display(), "Reading file");
         let content = read_input(Some(&resolved))?;
-        clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
+        let action_list = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+        if output_format == clearhead_cli::OutputFormat::Table {
+            use clearhead_core::workspace::store::infer_project_name;
+            use std::path::Path;
+            let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
+            let charter_name = infer_project_name(Path::new(relative.to_string_lossy().as_ref()));
+            let model = clearhead_core::workspace::actions::convert::from_actions_with_charter(
+                &action_list,
+                charter_name,
+            );
+            println!(
+                "{}",
+                clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
+            );
+            return Ok(());
+        }
+        action_list
     } else if stdio {
         debug!("Reading stdin");
         let content = read_input(None)?;
@@ -64,6 +80,41 @@ pub fn read_plans(
 
         // Load all objectives whose inferred project name matches the charter base.
         let objectives = store.list_objectives().map_err(|e| e.to_string())?;
+
+        // Short-circuit for Table: build a DomainModel under the *resolved* charter so
+        // the Charter column shows the real title instead of the synthetic "inbox" name
+        // that from_actions() always assigns.
+        if output_format == clearhead_cli::OutputFormat::Table {
+            let mut all_plans = Vec::new();
+            for obj in &objectives {
+                let obj_base = infer_project_name(Path::new(&obj.key))
+                    .map(|n| n.to_lowercase());
+                if obj_base.as_deref() == Some(&charter_base) {
+                    let model = store.load_domain_model(obj).map_err(|e| e.to_string())?;
+                    all_plans.extend(model.all_plans().into_iter().cloned());
+                }
+            }
+            let charter = clearhead_core::Charter {
+                id: found.charter.id,
+                title: found.charter.title.clone(),
+                description: found.charter.description.clone(),
+                alias: found.charter.alias.clone(),
+                parent: found.charter.parent.clone(),
+                objectives: found.charter.objectives.clone(),
+                plans: all_plans,
+            };
+            let combined_model = clearhead_core::DomainModel {
+                objectives: vec![],
+                charters: vec![charter],
+            };
+            info!(plan_count = combined_model.all_plans().len(), "Loaded domain model for table");
+            println!(
+                "{}",
+                clearhead_core::format_domain_as_table(&combined_model, lib_table_opts.as_ref())?
+            );
+            return Ok(());
+        }
+
         let mut combined = Vec::new();
         for obj in &objectives {
             let obj_base = infer_project_name(Path::new(&obj.key))
@@ -94,6 +145,14 @@ pub fn read_plans(
         } else if let Some(where_clause) = where_clause {
             debug!(where_clause = %where_clause, "Filtering with WHERE clause");
             clearhead_cli::run_workspace_sql_where(&ctx.data_dir, where_clause, None, None)?
+        } else if output_format == clearhead_cli::OutputFormat::Table {
+            let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
+            info!(plan_count = model.all_plans().len(), "Loaded workspace domain model for table");
+            println!(
+                "{}",
+                clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
+            );
+            return Ok(());
         } else {
             clearhead_cli::load_workspace_actions(&ctx.data_dir)?
         }
@@ -200,7 +259,7 @@ pub fn add_plan(
         completed_date_time: None,
         created_date_time: Some(Local::now()),
         predecessors: None,
-        story: None,
+        charter: None,
         alias: fields.alias.clone(),
         is_sequential: None,
     };

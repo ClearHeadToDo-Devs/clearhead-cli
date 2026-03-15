@@ -71,6 +71,7 @@ impl LanguageServer for Backend {
                 }),
                 ..Default::default()
             },
+            ..Default::default()
         })
     }
 

@@ -86,7 +86,7 @@ impl ActionBuilder {
     }
 
     pub fn story(mut self, story: &str) -> Self {
-        self.action.story = Some(story.to_string());
+        self.action.charter = Some(story.to_string());
         self
     }
 

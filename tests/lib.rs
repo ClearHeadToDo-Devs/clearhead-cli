@@ -96,7 +96,7 @@ fn parse_action_with_story_from_grammar_examples() {
     assert_eq!(actions[0].state, ActionState::Completed);
     assert_eq!(actions[0].name, "story test");
     assert_eq!(
-        actions[0].story.as_ref().map(|s| s.trim()),
+        actions[0].charter.as_ref().map(|s| s.trim()),
         Some("Parent Story")
     );
 }
@@ -150,7 +150,7 @@ fn parse_action_with_everything_from_grammar_examples() {
     assert_eq!(root.name, "Mega Action");
     assert!(root.description.is_some());
     assert_eq!(root.priority, Some(1));
-    assert!(root.story.is_some());
+    assert!(root.charter.is_some());
     assert!(root.context_list.is_some());
     assert!(root.id.to_string().starts_with("01951111"));
 }
@@ -277,6 +277,6 @@ fn roundtrip_action_with_everything() {
             a1.context_list, a2.context_list,
             "Context lists should match"
         );
-        assert_eq!(a1.story, a2.story, "Stories should match");
+        assert_eq!(a1.charter, a2.charter, "Charters should match");
     }
 }

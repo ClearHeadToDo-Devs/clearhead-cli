@@ -10,6 +10,7 @@ pub fn parse_cli() -> Cli {
 pub const VALID_COLUMNS: &[&str] = &[
     "state",
     "name",
+    "charter",
     "priority",
     "due",
     "dur",
@@ -17,6 +18,7 @@ pub const VALID_COLUMNS: &[&str] = &[
     "context",
     "description",
     "id",
+    "story", // backward-compat alias for charter
 ];
 
 /// Validate column names and return error with valid options

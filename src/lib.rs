@@ -107,6 +107,33 @@ pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     parse_tree(actions)
 }
 
+/// Load all workspace .actions files as a multi-charter DomainModel.
+///
+/// Each file becomes one Charter; title derived from file path.
+/// Use this for Table format — the ActionList path loses charter hierarchy.
+pub fn load_workspace_domain_model(
+    data_dir: &std::path::Path,
+) -> Result<clearhead_core::DomainModel, String> {
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+
+    let store = FsWorkspaceStore::new(data_dir);
+    let objectives = store
+        .list_objectives()
+        .map_err(|e| format!("Failed to list workspace objectives: {}", e))?;
+
+    let mut all_charters = Vec::new();
+    for obj in &objectives {
+        let model = store
+            .load_domain_model(obj)
+            .map_err(|e| format!("Failed to load '{}': {}", obj.key, e))?;
+        all_charters.extend(model.charters);
+    }
+    Ok(clearhead_core::DomainModel {
+        objectives: vec![],
+        charters: all_charters,
+    })
+}
+
 /// Load all actions from a workspace directory via FsWorkspaceStore.
 ///
 /// Discovers all .actions files and merges their contents into a flat ActionList.
