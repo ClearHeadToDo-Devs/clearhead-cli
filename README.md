@@ -202,7 +202,7 @@ clearhead_cli format ~/work.actions
 clearhead_cli format ~/work.actions --style compact --write
 ```
 
-### Normalize
+### Normalization**
 Ensure all actions have UUIDs (formats by default for clean output).
 ```bash
 # Add UUIDs and format
@@ -213,7 +213,7 @@ clearhead_cli normalize ~/work.actions --no-format --write
 ```
 
 
-### Lint
+**Linting**
 Check your files for syntax errors, missing IDs, or convention violations.
 ```bash
 # Lint a specific file

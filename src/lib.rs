@@ -50,13 +50,9 @@ pub use clearhead_core::{
 };
 
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
+pub use clearhead_core::workspace::actions::TableFormatOptions;
 
 pub use clearhead_core::workspace::actions::{LintDiagnostic, LintResults, LintSeverity, lint_document};
-
-// CLI-specific modules with environment integration
-pub mod graph;
-// Legacy alias for compatibility
-pub use graph as sql;
 
 pub mod export;
 pub use export::format_as_icalendar;
@@ -65,8 +61,6 @@ pub mod archive;
 
 pub mod mutations;
 pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
-
-pub mod workspace;
 
 pub mod environment_reader;
 pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
@@ -78,16 +72,6 @@ pub use telemetry::{
 };
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
-///
-/// This is a simple shallow merge utility for combining configuration
-/// or options from multiple sources.
-///
-/// # Arguments
-/// * `left` - The base hashmap
-/// * `right` - The hashmap to merge in (takes precedence)
-///
-/// # Returns
-/// A merged JSON Value object
 pub fn merge_hashmaps(
     left: &Map<String, Value>,
     right: &Map<String, Value>,
@@ -102,39 +86,16 @@ pub fn merge_hashmaps(
 // CLI wrappers for backward compatibility
 
 /// Parse a .actions file into a structured ActionList
-///
-/// # Arguments
-/// * `_opts` - Configuration options (currently unused)
-/// * `actions` - The .actions file content as a string
-///
-/// # Returns
-/// A `Vec<Action>` representing the flat list of parsed actions
 pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList, String> {
     parse_actions(actions)
 }
 
 /// Parse a .actions file into a ParsedDocument (Actions + Source Metadata)
-///
-/// # Arguments
-/// * `actions` - The .actions file content as a string
-///
-/// # Returns
-/// A ParsedDocument containing the list of actions and their source locations
 pub fn get_parsed_document(actions: &str) -> Result<ParsedDocument, String> {
     parse_document(actions)
 }
 
 /// Parse a .actions file and return as JSON Value
-///
-/// This is a convenience wrapper around get_action_list_struct that
-/// serializes the result to JSON for data-centric workflows.
-///
-/// # Arguments
-/// * `opts` - Configuration options (passed through)
-/// * `actions` - The .actions file content as a string
-///
-/// # Returns
-/// A JSON Value containing the serialized ActionList
 pub fn get_action_list(opts: &Value, actions: String) -> Result<Value, String> {
     let action_list = get_action_list_struct(opts, &actions)?;
     serde_json::to_value(&action_list)
@@ -142,46 +103,53 @@ pub fn get_action_list(opts: &Value, actions: String) -> Result<Value, String> {
 }
 
 /// Parse a .actions file into a tree-sitter Tree
-///
-/// This is a low-level function that returns the raw tree-sitter parse tree.
-/// Most users should use get_action_list_struct() instead.
-///
-/// # Arguments
-/// * `actions` - The .actions file content as a string
-///
-/// # Returns
-/// A tree-sitter Tree representing the parsed structure
 pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     parse_tree(actions)
 }
 
+/// Load all actions from a workspace directory via FsWorkspaceStore.
+///
+/// Discovers all .actions files and merges their contents into a flat ActionList.
+pub fn load_workspace_actions(data_dir: &std::path::Path) -> Result<ActionList, String> {
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+    use clearhead_core::workspace::actions::convert;
+
+    let store = FsWorkspaceStore::new(data_dir);
+    let objectives = store
+        .list_objectives()
+        .map_err(|e| format!("Failed to list workspace objectives: {}", e))?;
+
+    let all_actions = objectives
+        .iter()
+        .filter_map(|obj| {
+            store
+                .load_domain_model(obj)
+                .ok()
+                .map(|m| convert::to_action_list(&m))
+        })
+        .flatten()
+        .collect();
+
+    Ok(all_actions)
+}
+
 /// Filter actions using a SPARQL query
-///
-/// # Arguments
-/// * `actions` - The full ActionList to query
-/// * `sparql_query` - The SPARQL query to execute
-///
-/// # Returns
-/// A filtered ActionList containing only actions that match the query
 pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionList, String> {
     use clearhead_core::workspace::actions::convert;
     use std::collections::HashSet;
 
-    // Create in-memory store and load the domain model
-    let store = sql::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
+    let store = clearhead_core::graph::create_database()
+        .map_err(|e| format!("Failed to create store: {}", e))?;
 
     let model = convert::from_actions(actions);
-    sql::load_domain_model(&store, &model)
+    clearhead_core::graph::load_domain_model(&store, &model)
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
-    // Execute query and get matching IDs
-    let matching_ids = sql::query_actions(&store, sparql_query)
+    let matching_ids = clearhead_core::graph::query_actions(&store, sparql_query)
         .map_err(|e| format!("SPARQL query failed: {}", e))?;
 
-    // Convert to HashSet for fast lookup
     let id_set: HashSet<String> = matching_ids.into_iter().collect();
 
-    // Filter original actions by matching IDs
     let filtered = actions
         .iter()
         .filter(|action| id_set.contains(&action.id.to_string()))
@@ -191,78 +159,34 @@ pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionL
     Ok(filtered)
 }
 
-/// Build and execute a SPARQL query from a WHERE clause (Graph Pattern)
-///
-/// # Arguments
-/// * `actions` - The full ActionList to query
-/// * `where_clause` - The WHERE clause (Graph Pattern)
-/// * `select` - Unused (SPARQL always selects ?id in this helper)
-/// * `from` - Unused
-///
-/// # Returns
-/// A filtered ActionList containing only actions that match the WHERE clause
+/// Build and execute a SPARQL query from a WHERE clause
 pub fn run_sql_where(
     actions: &ActionList,
     where_clause: &str,
     select: Option<&str>,
     from: Option<&str>,
 ) -> Result<ActionList, String> {
-    let query = sql::build_where_query(where_clause, select, from);
+    let query = clearhead_core::graph::build_where_query(where_clause, select, from);
     run_sql_query(actions, &query)
 }
 
-/// Run a SPARQL query on workspace actions
-///
-/// # Arguments
-/// * `workspace` - Workspace actions with source metadata
-/// * `sparql_query` - The SPARQL query to execute
-///
-/// # Returns
-/// A filtered ActionList containing only actions that match the query
+/// Run a SPARQL query across all workspace actions
 pub fn run_workspace_sql_query(
-    workspace: &workspace::WorkspaceActions,
+    data_dir: &std::path::Path,
     sparql_query: &str,
 ) -> Result<ActionList, String> {
-    use clearhead_core::workspace::actions::convert;
-    use std::collections::HashSet;
-
-    // Create in-memory store and load the full domain model
-    let store = sql::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
-
-    let all_actions: ActionList = workspace
-        .sourced_actions
-        .iter()
-        .map(|sa| sa.action.clone())
-        .collect();
-    let model = convert::from_actions(&all_actions);
-    sql::load_domain_model(&store, &model)
-        .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
-
-    // Execute query and get matching IDs
-    let matching_ids = sql::query_actions(&store, sparql_query)
-        .map_err(|e| format!("SPARQL query failed: {}", e))?;
-
-    // Convert to HashSet for fast lookup
-    let id_set: HashSet<String> = matching_ids.into_iter().collect();
-
-    // Filter original actions by matching IDs
-    let filtered = workspace
-        .sourced_actions
-        .iter()
-        .filter(|sa| id_set.contains(&sa.action.id.to_string()))
-        .map(|sa| sa.action.clone())
-        .collect();
-
-    Ok(filtered)
+    let all_actions = load_workspace_actions(data_dir)?;
+    run_sql_query(&all_actions, sparql_query)
 }
 
-/// Run a SPARQL WHERE clause query on workspace actions
+/// Run a SPARQL WHERE clause query across all workspace actions
 pub fn run_workspace_sql_where(
-    workspace: &workspace::WorkspaceActions,
+    data_dir: &std::path::Path,
     where_clause: &str,
     select: Option<&str>,
     from: Option<&str>,
 ) -> Result<ActionList, String> {
-    let query = sql::build_where_query(where_clause, select, from);
-    run_workspace_sql_query(workspace, &query)
+    let query = clearhead_core::graph::build_where_query(where_clause, select, from);
+    run_workspace_sql_query(data_dir, &query)
 }
+

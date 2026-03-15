@@ -248,6 +248,10 @@ pub enum ReadTarget {
         #[arg(short, long, value_enum)]
         format: Option<Format>,
 
+        /// Filter plans by charter name, alias, or UUID
+        #[arg(long, conflicts_with_all = ["file", "stdio", "where_clause", "sparql", "sparql_file"])]
+        charter: Option<String>,
+
         /// SPARQL WHERE clause to filter plans (e.g., "?s actions:hasPriority 1")
         #[arg(short = 'w', long = "where")]
         where_clause: Option<String>,

@@ -8,6 +8,7 @@ use clearhead_cli::telemetry::{TelemetryEvent, event_from_field_change};
 pub fn read_plans(
     ctx: &CommandContext,
     format: &Option<argparser::Format>,
+    charter: &Option<String>,
     where_clause: &Option<String>,
     sparql: &Option<String>,
     sparql_file: &Option<std::path::PathBuf>,
@@ -43,6 +44,37 @@ pub fn read_plans(
         debug!("Reading stdin");
         let content = read_input(None)?;
         clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
+    } else if let Some(charter_query) = charter {
+        use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+        use clearhead_core::workspace::store::infer_project_name;
+        use std::path::Path;
+
+        debug!(charter = %charter_query, "Filtering by charter");
+        let store = FsWorkspaceStore::new(&ctx.data_dir);
+        let charters = store.discover_charters().map_err(|e| e.to_string())?;
+
+        // Resolve the charter the same way read_charters does
+        let found = crate::commands::charter::resolve_discovered_charter(&charters, charter_query)
+            .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
+
+        // The charter's project key is its title (for implicit) or file stem (for explicit).
+        // After our fix, implicit charters always have title == base name (stripped).
+        let charter_base = found.charter.title.to_lowercase();
+        debug!(charter_base = %charter_base, charter = %found.charter.title, "Resolved charter");
+
+        // Load all objectives whose inferred project name matches the charter base.
+        let objectives = store.list_objectives().map_err(|e| e.to_string())?;
+        let mut combined = Vec::new();
+        for obj in &objectives {
+            let obj_base = infer_project_name(Path::new(&obj.key))
+                .map(|n| n.to_lowercase());
+            if obj_base.as_deref() == Some(&charter_base) {
+                let model = store.load_domain_model(obj).map_err(|e| e.to_string())?;
+                let obj_actions = clearhead_core::workspace::actions::convert::to_action_list(&model);
+                combined.extend(obj_actions);
+            }
+        }
+        combined
     } else {
         debug!(data_dir = %ctx.data_dir.display(), "Reading workspace");
 
@@ -57,15 +89,13 @@ pub fn read_plans(
         };
 
         if let Some(query) = &sparql_query {
-            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
             debug!(sparql = %query, "Filtering with SPARQL query");
-            clearhead_cli::run_workspace_sql_query(&workspace, query)?
+            clearhead_cli::run_workspace_sql_query(&ctx.data_dir, query)?
         } else if let Some(where_clause) = where_clause {
-            let workspace = clearhead_cli::workspace::load_workspace_with_sources(&ctx.data_dir)?;
             debug!(where_clause = %where_clause, "Filtering with WHERE clause");
-            clearhead_cli::run_workspace_sql_where(&workspace, where_clause, None, None)?
+            clearhead_cli::run_workspace_sql_where(&ctx.data_dir, where_clause, None, None)?
         } else {
-            clearhead_cli::workspace::load_workspace_actions(&ctx.data_dir)?
+            clearhead_cli::load_workspace_actions(&ctx.data_dir)?
         }
     };
 
@@ -92,7 +122,7 @@ pub fn show_plan(
         load_file(&input_file)?
     } else {
         debug!(data_dir = %ctx.data_dir.display(), "Searching workspace");
-        clearhead_cli::workspace::load_workspace_actions(&ctx.data_dir)?
+        clearhead_cli::load_workspace_actions(&ctx.data_dir)?
     };
 
     let resolved = clearhead_cli::resolve_reference(&actions, query)

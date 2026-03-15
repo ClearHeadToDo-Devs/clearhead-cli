@@ -51,6 +51,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Verb::Read { target } => match target {
             argparser::ReadTarget::Plans {
                 format,
+                charter,
                 where_clause,
                 sparql,
                 sparql_file,
@@ -60,6 +61,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::read_plans(
                 &ctx,
                 format,
+                charter,
                 where_clause,
                 sparql,
                 sparql_file,

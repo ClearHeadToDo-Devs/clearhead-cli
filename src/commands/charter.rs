@@ -70,7 +70,8 @@ pub fn read_charters(
 }
 
 pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
-    use clearhead_cli::workspace::load_workspace;
+    use clearhead_core::workspace::store::infer_project_name;
+    use std::path::Path;
 
     let store = FsWorkspaceStore::new(&ctx.data_dir);
     let charters = store.discover_charters().map_err(|e| e.to_string())?;
@@ -81,19 +82,18 @@ pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
     let formatted = clearhead_core::format_charter(&found.charter);
     println!("{}", formatted);
 
-    let workspace = load_workspace(&ctx.data_dir)?;
-    let charter_title = found.charter.title.to_lowercase();
-    let plan_count = workspace
-        .actions
-        .sourced_actions
+    let charter_base = found.charter.title.to_lowercase();
+    let objectives = store.list_objectives().map_err(|e| e.to_string())?;
+    let plan_count: usize = objectives
         .iter()
-        .filter(|sa| {
-            sa.source
-                .project
-                .as_ref()
-                .is_some_and(|p| p.to_lowercase() == charter_title)
+        .filter(|obj| {
+            infer_project_name(Path::new(&obj.key))
+                .map(|n| n.to_lowercase() == charter_base)
+                .unwrap_or(false)
         })
-        .count();
+        .filter_map(|obj| store.load_domain_model(obj).ok())
+        .map(|model| model.all_plans().len())
+        .sum();
 
     if plan_count > 0 {
         println!("Plans: {}", plan_count);
@@ -103,7 +103,7 @@ pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
 }
 
 /// Resolve a charter by UUID prefix, alias, or name from DiscoveredCharter list.
-fn resolve_discovered_charter<'a>(
+pub fn resolve_discovered_charter<'a>(
     charters: &'a [clearhead_core::DiscoveredCharter],
     query: &str,
 ) -> Option<&'a clearhead_core::DiscoveredCharter> {
