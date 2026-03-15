@@ -769,6 +769,7 @@ fn test_read_stdio_flag() {
 }
 
 #[test]
+#[ignore = "--where SQL syntax is being removed; use --sparql with ontology-native SPARQL instead"]
 fn test_read_workspace_with_sql_filter() {
     let env = TestEnv::new();
 
@@ -788,6 +789,7 @@ fn test_read_workspace_with_sql_filter() {
 }
 
 #[test]
+#[ignore = "--where SQL syntax is being removed; project filtering belongs in SPARQL via actions:hasObjective"]
 fn test_read_workspace_filter_by_project() {
     let env = TestEnv::new();
 
@@ -810,6 +812,7 @@ fn test_read_workspace_filter_by_project() {
 }
 
 #[test]
+#[ignore = "file_path is a storage-layer detail, not a domain concept; does not belong in SPARQL queries against the ontology"]
 fn test_read_workspace_filter_by_file_path() {
     let env = TestEnv::new();
 

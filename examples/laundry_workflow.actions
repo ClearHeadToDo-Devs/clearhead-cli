@@ -1,8 +1,10 @@
 [ ] Complete laundry
-* Household Chores
-+Home,Cleaning
-> [ ] Put clothes in hamper
-> [ ] Wash clothes < Put clothes in hamper
-> [ ] Dry clothes < Wash clothes
-> [ ] Fold clothes < Dry clothes
-> [ ] Put away clothes < Fold clothes
+    ^2026-01-24T17:45
+    ~
+    *Household Chores +Home,Cleaning
+    #019bf2d3-eb7d-7051-9194-fb2673e9c279
+        >[ ] Put clothes in hamper ^2026-01-24T17:45 #019bf2d3-eb7d-7051-9194-fb3d3c250fe8
+        >[ ] Wash clothes ^2026-01-24T17:45 #019bf2d3-eb7d-7051-9194-fb4aafc29fc5
+        >[ ] Dry clothes ^2026-01-24T17:45 #019bf2d3-eb7d-7051-9194-fb5769fffa05
+        >[ ] Fold clothes ^2026-01-24T17:45 #019bf2d3-eb7d-7051-9194-fb65f0634872
+        >[ ] Put away clothes ^2026-01-24T17:45 #019bf2d3-eb7d-7051-9194-fb7d3ed70077

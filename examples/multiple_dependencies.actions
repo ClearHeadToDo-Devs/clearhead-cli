@@ -1,0 +1,19 @@
+[ ] Deploy to production
+    $ Monitor logs after deployment
+    $
+    !1 *Release Management +Work,DevOps,Critical @2025-02-15T14:00 D30 ^2026-01-24T17:48 <tests <code review #019bf2d6-bbb0-7551-94ee-2f28f2c9302c
+
+[ ] Tests passing =tests
+    $ This task verifies deployment readiness
+    $
+    !1 *Release Management +Work,Testing @2025-02-15T10:00 D90 ^2026-01-24T17:48 <All PR checks completed #019bf2d6-bbb0-7551-94ee-2f35a31cf5c0
+
+[ ] Code review complete =code_review
+    $ Review coding standards and security
+    $
+    !2 *Release Management +Work,CodeReview @2025-02-15T11:00 D60 ^2026-01-24T17:48 <PR submitted #019bf2d6-bbb1-7943-bf67-8fb59b9af855
+
+[ ] PR submitted
+    $ Merge to production after tests pass
+    $
+    !3 *Release Management +Work @2025-02-14T17:00 ^2026-01-24T17:48 #019bf2d6-bbb1-7943-bf67-8fc66a2412c9

@@ -33,7 +33,7 @@ expression: diagnostics
             start_row: 2,
             start_col: 0,
             end_row: 2,
-            end_col: 101,
+            end_col: 103,
         },
     },
 ]

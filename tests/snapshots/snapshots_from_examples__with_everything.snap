@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots_from_examples.rs
-assertion_line: 19
 expression: actions
 ---
 [
@@ -54,5 +53,16 @@ expression: actions
     state: not_started,
     name: "Leaf action",
     createdDate: "[timestamp]",
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Action with predecessor",
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
   ),
 ]

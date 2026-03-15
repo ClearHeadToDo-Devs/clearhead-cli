@@ -1,0 +1,5 @@
+[ ] Task with empty context +
+[ ] Task with empty in middle +work,,home
+[ ] Multiple empties +work,,,+errands
+[ ] Task with whitespace context +   
+[ ] Task with trailing comma +work,

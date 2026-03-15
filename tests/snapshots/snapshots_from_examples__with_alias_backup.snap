@@ -1,0 +1,90 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Get the project documentation completed",
+    description: Some("This is a long-running task to create comprehensive documentation"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+      "Writing",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("Documentation"),
+    alias: Some("docs"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Review the API documentation",
+    description: Some("Check for accuracy and completeness"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+      "Review",
+    ]),
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Documentation"),
+    alias: Some("api-review"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Set up the staging environment",
+    description: Some("Configure servers and deploy"),
+    priority: Some(1),
+    contexts: Some([
+      "DevOps",
+    ]),
+    createdDate: "[timestamp]",
+    story: Some("Infrastructure"),
+    alias: Some("staging"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Run integration tests against staging",
+    priority: Some(2),
+    contexts: Some([
+      "DevOps",
+      "QA",
+    ]),
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Testing"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Final documentation review",
+    description: Some("Last pass before release"),
+    priority: Some(3),
+    contexts: Some([
+      "Work",
+    ]),
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+    story: Some("Documentation"),
+    alias: Some("final-docs-review"),
+  ),
+]

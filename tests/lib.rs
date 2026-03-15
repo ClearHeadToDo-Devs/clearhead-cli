@@ -141,8 +141,8 @@ fn parse_action_with_everything_from_grammar_examples() {
 
     let actions = get_action_list_struct(&test_config, &test_action).unwrap();
 
-    // Should have root + 5 nested children = 6 total
-    assert_eq!(actions.len(), 6);
+    // Should have root + 5 nested children + 1 predecessor action = 7 total
+    assert_eq!(actions.len(), 7);
 
     // Check root has all metadata
     let root = &actions[0];

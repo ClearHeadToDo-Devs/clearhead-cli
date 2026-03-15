@@ -1,0 +1,17 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Task name",
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+  ),
+]

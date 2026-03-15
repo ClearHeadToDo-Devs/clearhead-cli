@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots_from_examples.rs
-assertion_line: 19
 expression: actions
 ---
 [
@@ -18,6 +17,7 @@ expression: actions
     doDateTime: Some("2025-01-19T08:30:00-08:00"),
     doDuration: Some(30),
     completedDate: Some("2025-01-19T10:30:00-08:00"),
+    createdDate: "[timestamp]",
     story: Some("Run Errands"),
   ),
   Action(

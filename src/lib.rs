@@ -198,12 +198,32 @@ pub fn run_sql_where(
 }
 
 /// Run a SPARQL query across all workspace actions
+///
+/// Loads the workspace as a full DomainModel (preserving Charter → Plan hierarchy)
+/// so that charter-based SPARQL patterns (bfo:has_part) resolve correctly.
 pub fn run_workspace_sql_query(
     data_dir: &std::path::Path,
     sparql_query: &str,
 ) -> Result<ActionList, String> {
-    let all_actions = load_workspace_actions(data_dir)?;
-    run_sql_query(&all_actions, sparql_query)
+    use clearhead_core::graph;
+    use clearhead_core::workspace::actions::convert;
+    use std::collections::HashSet;
+
+    let model = load_workspace_domain_model(data_dir)?;
+    let store = graph::create_database()
+        .map_err(|e| format!("Failed to create store: {}", e))?;
+    graph::load_domain_model(&store, &model)
+        .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
+
+    let matching_ids = graph::query_actions(&store, sparql_query)
+        .map_err(|e| format!("SPARQL query failed: {}", e))?;
+    let id_set: HashSet<String> = matching_ids.into_iter().collect();
+
+    let all_actions = convert::to_action_list(&model);
+    Ok(all_actions
+        .into_iter()
+        .filter(|a| id_set.contains(&a.id.to_string()))
+        .collect())
 }
 
 /// Run a SPARQL WHERE clause query across all workspace actions

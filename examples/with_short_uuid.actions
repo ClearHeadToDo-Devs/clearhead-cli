@@ -1,12 +1,12 @@
 [ ] First task in workflow
-$ This task has a full UUID that can be referenced by short form
+$ This task has a full UUID that can be referenced by short form $
 !2
 *Workflow
 +Work
 #01951111-cfa6-718d-b303-d7107f4005b3
 
 [ ] Second task depends on first via short UUID
-$ Using 8-character short UUID reference
+$ Using 8-character short UUID reference $
 !2
 *Workflow
 +Work
@@ -14,7 +14,7 @@ $ Using 8-character short UUID reference
 #02961222-cfa6-718d-b303-d7107f4005b3
 
 [ ] Third task with full UUID reference
-$ Demonstrating full UUID still works
+$ Demonstrating full UUID still works $
 !2
 *Workflow
 +Work
@@ -22,7 +22,7 @@ $ Demonstrating full UUID still works
 #03971333-cfa6-718d-b303-d7107f4005b3
 
 [ ] Task referencing by name
-$ Name-based references still work
+$ Name-based references still work $
 !3
 *Workflow
 +Work
@@ -30,7 +30,7 @@ $ Name-based references still work
 #04981444-cfa6-718d-b303-d7107f4005b3
 
 [ ] Task with multiple reference styles
-$ Combining short UUID and name references
+$ Combining short UUID and name references $
 !2
 *Workflow
 +Work

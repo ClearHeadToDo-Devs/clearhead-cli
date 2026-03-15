@@ -1,59 +1,59 @@
 [ ] Set up CLI project structure
-$ Initialize the Rust project with proper layout
+$ Initialize the Rust project with proper layout $
 !2
 *work/clearhead/cli
 +DevOps,Coding
 
 [ ] Implement tree-sitter bindings
-$ Wrap the parser for Rust use
+$ Wrap the parser for Rust use $
 !2
 *work/clearhead/parser
 +Coding
 
 [ ] Write parser tests
-$ Comprehensive test coverage
+$ Comprehensive test coverage $
 !3
 *work/clearhead/parser
 +Testing
 
 [ ] Design neovim plugin architecture
-$ Plan the Lua module structure
+$ Plan the Lua module structure $
 !2
 *work/clearhead/neovim
 +Design
 
 [ ] Set up LSP server
-$ Configure language server protocol
+$ Configure language server protocol $
 !1
 *work/clearhead/cli
 +DevOps
 
 [ ] Update personal website
-$ New portfolio section
+$ New portfolio section $
 !3
 *personal/website
 +Coding,Creative
 
 [ ] Plan vacation
-$ Research destinations
+$ Research destinations $
 !4
 *personal/travel
 +Planning
 
 [ ] Fix shopping cart bug
-$ Critical production issue
+$ Critical production issue $
 !1
 *work/other-project
 +Bugfix,Critical
 
 [ ] Refactor authentication
-$ Improve security patterns
+$ Improve security patterns $
 !2
 *work/other-project
 +Coding,Security
 
 [ ] Read programming book
-$ Finish chapter 5
+$ Finish chapter 5 $
 !4
 *personal/learning
 +Reading

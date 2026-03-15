@@ -1,5 +1,5 @@
 [ ] Clearhead Platform Release v2.0 =release-v2 ~
-$ Comprehensive release combining all new features
+$ Comprehensive release combining all new features $
 !1
 *work/clearhead
 +DevOps,Release
@@ -11,7 +11,7 @@ $ Comprehensive release combining all new features
 > [ ] Write documentation =docs-update !2 *work/clearhead/docs +Writing #01951000-0004-7000-8000-000000000005
 
 [ ] Integration testing =integration-tests
-$ Test all new features work together
+$ Test all new features work together $
 !1
 *work/clearhead/testing
 +Testing,QA
@@ -19,7 +19,7 @@ $ Test all new features work together
 #01951000-0005-7000-8000-000000000006
 
 [ ] Review by stakeholders
-$ Get approval before release
+$ Get approval before release $
 !2
 *work/clearhead
 +Review
@@ -28,7 +28,7 @@ $ Get approval before release
 #01951000-0006-7000-8000-000000000007
 
 [ ] Deploy to production =deploy-prod
-$ Final deployment
+$ Final deployment $
 !1
 *work/clearhead/infrastructure
 +DevOps,Critical

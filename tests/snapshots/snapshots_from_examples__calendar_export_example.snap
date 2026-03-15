@@ -1,0 +1,186 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Daily standup",
+    description: Some("Check in with team, discuss blockers"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+      "Meeting",
+    ]),
+    doDateTime: Some("2026-01-20T09:00:00-08:00"),
+    doDuration: Some(15),
+    recurrence: Some(Recurrence(
+      frequency: "daily",
+      by_day: Some([
+        "MO",
+        "TU",
+        "WE",
+        "TH",
+        "FR",
+      ]),
+    )),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Weekly team retrospective",
+    description: Some("Review sprint progress and identify improvements"),
+    priority: Some(1),
+    contexts: Some([
+      "Work",
+      "Meeting",
+      "Agile",
+    ]),
+    doDateTime: Some("2026-01-20T16:00:00-08:00"),
+    doDuration: Some(60),
+    recurrence: Some(Recurrence(
+      frequency: "weekly",
+      by_day: Some([
+        "MO",
+      ]),
+    )),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Monthly report submission",
+    description: Some("Submit monthly status report to management"),
+    priority: Some(1),
+    contexts: Some([
+      "Work",
+      "Reports",
+      "Admin",
+    ]),
+    doDateTime: Some("2026-02-01T10:00:00-08:00"),
+    doDuration: Some(30),
+    recurrence: Some(Recurrence(
+      frequency: "monthly",
+      by_month_day: Some([
+        1,
+      ]),
+    )),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Quarterly planning",
+    description: Some("Strategic planning session for next quarter"),
+    priority: Some(1),
+    contexts: Some([
+      "Work",
+      "Planning",
+      "Leadership",
+    ]),
+    doDateTime: Some("2026-04-01T14:00:00-07:00"),
+    doDuration: Some(120),
+    recurrence: Some(Recurrence(
+      frequency: "monthly",
+      interval: Some(3),
+      by_month_day: Some([
+        1,
+      ]),
+    )),
+    story: Some("Strategic-Planning"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "First Monday architecture review",
+    description: Some("Monthly architecture review with tech leads"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+      "Architecture",
+      "Meeting",
+    ]),
+    doDateTime: Some("2026-02-03T10:00:00-08:00"),
+    doDuration: Some(90),
+    recurrence: Some(Recurrence(
+      frequency: "monthly",
+      by_day: Some([
+        "1MO",
+      ]),
+    )),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Weekend planning",
+    description: Some("Plan personal tasks for the week ahead"),
+    contexts: Some([
+      "Personal",
+      "Planning",
+    ]),
+    doDateTime: Some("2026-01-25T10:00:00-08:00"),
+    doDuration: Some(30),
+    recurrence: Some(Recurrence(
+      frequency: "weekly",
+      by_day: Some([
+        "SA",
+      ]),
+    )),
+  ),
+  Action(
+    id: "[uuid]",
+    state: in_progress,
+    name: "In-progress project sync",
+    description: Some("Sync on active projects with stakeholders"),
+    priority: Some(2),
+    contexts: Some([
+      "Work",
+      "Meeting",
+      "Project",
+    ]),
+    doDateTime: Some("2026-01-22T14:00:00-08:00"),
+    doDuration: Some(45),
+    recurrence: Some(Recurrence(
+      frequency: "weekly",
+      by_day: Some([
+        "WE",
+      ]),
+    )),
+    story: Some("Project-Alpha"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: blocked,
+    name: "Blocked approval meeting",
+    description: Some("Waiting on legal approval before proceeding"),
+    priority: Some(1),
+    contexts: Some([
+      "Work",
+      "Blocked",
+      "Legal",
+    ]),
+    doDateTime: Some("2026-01-21T11:00:00-08:00"),
+    doDuration: Some(30),
+  ),
+  Action(
+    id: "[uuid]",
+    state: completed,
+    name: "Past completed event",
+    description: Some("This completed task will be filtered with --open-only"),
+    contexts: Some([
+      "Work",
+    ]),
+    doDateTime: Some("2026-01-15T10:00:00-08:00"),
+    completedDate: Some("2026-01-15T11:00:00-08:00"),
+  ),
+  Action(
+    id: "[uuid]",
+    state: cancelled,
+    name: "Cancelled event",
+    description: Some("Meeting was cancelled due to scheduling conflict"),
+    contexts: Some([
+      "Work",
+      "Cancelled",
+    ]),
+    doDateTime: Some("2026-01-18T15:00:00-08:00"),
+  ),
+]

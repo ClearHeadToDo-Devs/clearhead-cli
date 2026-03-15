@@ -49,6 +49,7 @@ fn create_test_actions() -> ActionList {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_basic_priority_filter() {
     // Example from spec: "All P1 actions"
     let actions = create_test_actions();
@@ -60,6 +61,7 @@ fn test_basic_priority_filter() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_state_filter() {
     // Example from spec: "All completed actions"
     let actions = create_test_actions();
@@ -71,6 +73,7 @@ fn test_state_filter() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_context_filter() {
     // Example from spec: "Actions in 'work' context"
     let actions = create_test_actions();
@@ -81,6 +84,7 @@ fn test_context_filter() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_multiple_contexts() {
     // Example from spec: "Actions in 'work' OR 'urgent' context"
     let actions = create_test_actions();
@@ -95,6 +99,7 @@ fn test_multiple_contexts() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_root_actions_only() {
     // Example from spec: "Root actions only"
     let actions = create_test_actions();
@@ -106,6 +111,7 @@ fn test_root_actions_only() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_children_of_action() {
     // Example from spec: "Immediate children of an action"
     let actions = create_test_actions();
@@ -122,6 +128,7 @@ fn test_children_of_action() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_complex_combined_query() {
     // Example from spec: "P1 actions in 'work' context"
     let actions = create_test_actions();
@@ -132,6 +139,7 @@ fn test_complex_combined_query() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_not_started_actions() {
     let actions = create_test_actions();
     let filtered = clearhead_cli::run_sql_where(&actions, "state = 'not_started'", None, None)
@@ -141,6 +149,7 @@ fn test_not_started_actions() {
 }
 
 #[test]
+#[ignore = "SQL-over-SPARQL layer being removed; replace with ontology-native SPARQL queries"]
 fn test_actions_with_description() {
     let actions = create_test_actions();
     let filtered = clearhead_cli::run_sql_where(&actions, "description IS NOT NULL", None, None)

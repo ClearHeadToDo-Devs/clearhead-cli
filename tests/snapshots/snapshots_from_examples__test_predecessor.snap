@@ -1,0 +1,34 @@
+---
+source: tests/snapshots_from_examples.rs
+expression: actions
+---
+[
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "First task",
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Second task depends on first",
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+        resolved_uuid: "[uuid]",
+      ),
+    ]),
+  ),
+  Action(
+    id: "[uuid]",
+    state: not_started,
+    name: "Third task",
+    createdDate: "[timestamp]",
+    predecessors: Some([
+      PredecessorRef(
+        raw_ref: "[predecessor_ref]",
+      ),
+    ]),
+  ),
+]

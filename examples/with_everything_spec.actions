@@ -1,4 +1,7 @@
-[x] Go to the store for chicken $ Make sure you get the stuff from the butcher directly !1 *Run Errands +Driving,Store,Market @2025-01-19T08:30 D30 %2025-01-19T10:30 #01951111-cfa6-718d-b303-d7107f4005b3
+[x] Go to the store for chicken
+    $ Make sure you get the stuff from the butcher directly
+    $
+    !1 *Run Errands +Driving,Store,Market @2025-01-19T08:30 D30 %2025-01-19T10:30 ^2025-01-19T08:00 #01951111-cfa6-718d-b303-d7107f4005b3
 >[ ] Child action
 >>[ ] Grandchild action
 >>>[ ] Great grandchild action
