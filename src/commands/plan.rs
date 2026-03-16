@@ -5,10 +5,34 @@ use crate::argparser;
 use crate::commands::{CommandContext, load_file, parse_format, read_input, save_file, try_emit};
 use clearhead_cli::telemetry::{TelemetryEvent, event_from_field_change};
 
+/// Collect the charter with the given title plus all its descendants (transitively).
+fn collect_charter_tree(
+    charters: &[clearhead_core::Charter],
+    root_title: &str,
+) -> Vec<clearhead_core::Charter> {
+    let mut result = Vec::new();
+    let mut queue = vec![root_title.to_string()];
+    while let Some(current) = queue.pop() {
+        for charter in charters {
+            let title_lower = charter.title.to_lowercase();
+            if title_lower == current {
+                result.push(charter.clone());
+            } else if charter.parent.as_deref().map(|p| p.to_lowercase()).as_deref()
+                == Some(&current)
+            {
+                result.push(charter.clone());
+                queue.push(title_lower);
+            }
+        }
+    }
+    result
+}
+
 pub fn read_plans(
     ctx: &CommandContext,
     format: &Option<argparser::Format>,
     charter: &Option<String>,
+    recursive: bool,
     where_clause: &Option<String>,
     sparql: &Option<String>,
     sparql_file: &Option<std::path::PathBuf>,
@@ -63,7 +87,7 @@ pub fn read_plans(
     } else if let Some(charter_query) = charter {
         use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
 
-        debug!(charter = %charter_query, "Filtering by charter");
+        debug!(charter = %charter_query, recursive = recursive, "Filtering by charter");
         let fs_store = FsWorkspaceStore::new(&ctx.data_dir);
         let charters = fs_store.discover_charters().map_err(|e| e.to_string())?;
 
@@ -73,33 +97,22 @@ pub fn read_plans(
         let title = &found.charter.title;
         debug!(charter_title = %title, "Resolved charter");
 
-        // Table: build DomainModel directly so the Charter column shows the real title
+        // Table: filter the full workspace DomainModel in memory
         if output_format == clearhead_cli::OutputFormat::Table {
-            use clearhead_core::workspace::store::infer_project_name;
-            use std::path::Path;
-            let charter_base = title.to_lowercase();
-            let objectives = fs_store.list_objectives().map_err(|e| e.to_string())?;
-            let mut all_plans = Vec::new();
-            for obj in &objectives {
-                let obj_base = infer_project_name(Path::new(&obj.key))
-                    .map(|n| n.to_lowercase());
-                if obj_base.as_deref() == Some(&charter_base) {
-                    let model = fs_store.load_domain_model(obj).map_err(|e| e.to_string())?;
-                    all_plans.extend(model.all_plans().into_iter().cloned());
-                }
-            }
-            let charter = clearhead_core::Charter {
-                id: found.charter.id,
-                title: found.charter.title.clone(),
-                description: found.charter.description.clone(),
-                alias: found.charter.alias.clone(),
-                parent: found.charter.parent.clone(),
-                objectives: found.charter.objectives.clone(),
-                plans: all_plans,
+            let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
+            let title_lower = title.to_lowercase();
+            let filtered_charters = if recursive {
+                collect_charter_tree(&model.charters, &title_lower)
+            } else {
+                model
+                    .charters
+                    .into_iter()
+                    .filter(|c| c.title.to_lowercase() == title_lower)
+                    .collect()
             };
             let combined_model = clearhead_core::DomainModel {
                 objectives: vec![],
-                charters: vec![charter],
+                charters: filtered_charters,
             };
             info!(plan_count = combined_model.all_plans().len(), "Loaded domain model for table");
             println!(
@@ -109,20 +122,38 @@ pub fn read_plans(
             return Ok(());
         }
 
-        // Non-table: query plans via bfo:has_part — charter→plan join in SPARQL
-        let query = format!(
-            "SELECT ?id WHERE {{ \
-                ?charter a <{actions}Charter> . \
-                ?charter <{schema}name> \"{title}\" . \
-                ?charter <{bfo}BFO_0000051> ?plan . \
-                ?plan <{actions}id> ?id \
-            }}",
-            actions = "https://clearhead.us/vocab/actions/v4#",
-            schema = "http://schema.org/",
-            bfo = "http://purl.obolibrary.org/obo/",
-            title = title.replace('"', "\\\""),
-        );
-        debug!(sparql = %query, "Querying plans by charter via SPARQL");
+        // Non-table: SPARQL — strict (direct has_part) or recursive (transitive hasSubCharter+)
+        let query = if recursive {
+            format!(
+                "SELECT ?id WHERE {{ \
+                    ?targetCharter a <{actions}Charter> . \
+                    ?targetCharter <{schema}name> \"{title}\" . \
+                    {{ BIND(?targetCharter AS ?charter) }} \
+                    UNION \
+                    {{ ?targetCharter <{actions}hasSubCharter>+ ?charter . }} \
+                    ?charter <{bfo}BFO_0000051> ?plan . \
+                    ?plan <{actions}id> ?id \
+                }}",
+                actions = "https://clearhead.us/vocab/actions/v4#",
+                schema = "http://schema.org/",
+                bfo = "http://purl.obolibrary.org/obo/",
+                title = title.replace('"', "\\\""),
+            )
+        } else {
+            format!(
+                "SELECT ?id WHERE {{ \
+                    ?charter a <{actions}Charter> . \
+                    ?charter <{schema}name> \"{title}\" . \
+                    ?charter <{bfo}BFO_0000051> ?plan . \
+                    ?plan <{actions}id> ?id \
+                }}",
+                actions = "https://clearhead.us/vocab/actions/v4#",
+                schema = "http://schema.org/",
+                bfo = "http://purl.obolibrary.org/obo/",
+                title = title.replace('"', "\\\""),
+            )
+        };
+        debug!(sparql = %query, recursive = recursive, "Querying plans by charter via SPARQL");
         clearhead_cli::run_workspace_sql_query(&ctx.data_dir, &query)?
     } else {
         debug!(data_dir = %ctx.data_dir.display(), "Reading workspace");

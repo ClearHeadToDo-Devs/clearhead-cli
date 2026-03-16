@@ -880,6 +880,74 @@ fn test_read_empty_workspace() {
         .success();
 }
 
+// Helper: write an actions file, creating parent dirs as needed
+fn write_nested_actions(env: &TestEnv, relative_path: &str, content: &str) {
+    let full_path = env.data_dir.join(relative_path);
+    if let Some(parent) = full_path.parent() {
+        fs::create_dir_all(parent).expect("Failed to create nested dir");
+    }
+    fs::write(&full_path, content).expect("Failed to write nested actions file");
+}
+
+#[test]
+fn test_charter_filter_strict_excludes_subcharters() {
+    let env = TestEnv::new();
+
+    // Top-level charter
+    write_nested_actions(&env, "build_clearhead/next.actions", "[ ] Top level plan");
+    // Sub-charter
+    write_nested_actions(&env, "build_clearhead/subcharter.actions", "[ ] Sub plan");
+
+    // Strict filter: only top-level plans
+    env.command()
+        .arg("read")
+        .arg("plans")
+        .arg("--charter")
+        .arg("build_clearhead")
+        .arg("--format")
+        .arg("table")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top level plan"))
+        .stdout(predicate::str::contains("Sub plan").not());
+}
+
+#[test]
+fn test_charter_filter_recursive_includes_subcharters() {
+    let env = TestEnv::new();
+
+    write_nested_actions(&env, "build_clearhead/next.actions", "[ ] Top level plan");
+    write_nested_actions(&env, "build_clearhead/subcharter.actions", "[ ] Sub plan");
+
+    // Recursive filter: both plans
+    env.command()
+        .arg("read")
+        .arg("plans")
+        .arg("--charter")
+        .arg("build_clearhead")
+        .arg("--recursive")
+        .arg("--format")
+        .arg("table")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top level plan"))
+        .stdout(predicate::str::contains("Sub plan"));
+}
+
+#[test]
+fn test_recursive_requires_charter() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Task");
+
+    // --recursive without --charter should fail
+    env.command()
+        .arg("read")
+        .arg("plans")
+        .arg("--recursive")
+        .assert()
+        .failure();
+}
+
 #[test]
 fn test_read_skips_hidden_directories() {
     let env = TestEnv::new();

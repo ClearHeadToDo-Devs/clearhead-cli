@@ -254,6 +254,10 @@ pub enum ReadTarget {
         #[arg(long, conflicts_with_all = ["file", "stdio", "where_clause", "sparql", "sparql_file"])]
         charter: Option<String>,
 
+        /// Include plans from sub-charters recursively (requires --charter)
+        #[arg(long, requires = "charter")]
+        recursive: bool,
+
         /// SPARQL WHERE clause to filter plans (e.g., "?s actions:hasPriority 1")
         #[arg(short = 'w', long = "where")]
         where_clause: Option<String>,

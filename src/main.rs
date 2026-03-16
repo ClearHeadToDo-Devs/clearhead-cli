@@ -52,6 +52,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::ReadTarget::Plans {
                 format,
                 charter,
+                recursive,
                 where_clause,
                 sparql,
                 sparql_file,
@@ -62,6 +63,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 &ctx,
                 format,
                 charter,
+                *recursive,
                 where_clause,
                 sparql,
                 sparql_file,
