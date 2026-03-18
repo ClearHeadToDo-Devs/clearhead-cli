@@ -86,6 +86,33 @@ pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
     }
 }
 
+/// Search all workspace .actions files for a plan matching `query`.
+///
+/// Returns the resolved file path and the full ActionList from that file.
+/// Used by mutating commands (update, complete, delete) when no `-f` is given,
+/// so they operate on the correct file rather than silently defaulting to inbox.
+pub fn find_plan_file(
+    data_dir: &Path,
+    query: &str,
+) -> Result<(PathBuf, ActionList), String> {
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+
+    let store = FsWorkspaceStore::new(data_dir);
+    let objectives = store
+        .list_objectives()
+        .map_err(|e| format!("Failed to list workspace: {}", e))?;
+
+    for obj in &objectives {
+        let file_path = data_dir.join(&obj.key);
+        let actions = load_file(&file_path)?;
+        if clearhead_cli::resolve_reference(&actions, query).is_some() {
+            return Ok((file_path, actions));
+        }
+    }
+
+    Err(format!("No plan found matching '{}'", query))
+}
+
 /// Parse format string to OutputFormat
 pub fn parse_format(s: &str) -> Result<clearhead_cli::OutputFormat, String> {
     match s.to_lowercase().as_str() {

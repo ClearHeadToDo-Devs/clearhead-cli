@@ -5,6 +5,34 @@ use crate::argparser;
 use crate::commands::{CommandContext, load_file, parse_format, read_input, save_file, try_emit};
 use clearhead_cli::telemetry::{TelemetryEvent, event_from_field_change};
 
+/// Derive the charter name used in the workspace graph from a discovered charter.
+///
+/// Explicit charters (from .md files) may have a human-readable title like
+/// "Build the ClearHead Platform", but the workspace graph is built from .actions
+/// files where the charter name is inferred from the directory or file stem
+/// (e.g., "build_clearhead"). This function returns the inferred name so that
+/// SPARQL queries and in-memory filters match what's actually in the graph/model.
+fn charter_graph_name(discovered: &clearhead_core::DiscoveredCharter) -> String {
+    if !discovered.is_explicit {
+        return discovered.charter.title.clone();
+    }
+    let path = std::path::Path::new(&discovered.source_key);
+    if path.file_name().map(|n| n == "README.md").unwrap_or(false) {
+        // "build_clearhead/README.md" → "build_clearhead"
+        path.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or(&discovered.source_key)
+            .to_string()
+    } else {
+        // "health.md" → "health"
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&discovered.source_key)
+            .to_string()
+    }
+}
+
 /// Collect the charter with the given title plus all its descendants (transitively).
 fn collect_charter_tree(
     charters: &[clearhead_core::Charter],
@@ -95,19 +123,23 @@ pub fn read_plans(
             .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
 
         let title = &found.charter.title;
-        debug!(charter_title = %title, "Resolved charter");
+        // The workspace graph is built from .actions files using inferred names
+        // (e.g., "build_clearhead"), not the human-readable title from .md files
+        // (e.g., "Build the ClearHead Platform"). Use the graph name for filtering.
+        let graph_name = charter_graph_name(&found);
+        debug!(charter_title = %title, graph_name = %graph_name, "Resolved charter");
 
         // Table: filter the full workspace DomainModel in memory
         if output_format == clearhead_cli::OutputFormat::Table {
             let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
-            let title_lower = title.to_lowercase();
+            let graph_name_lower = graph_name.to_lowercase();
             let filtered_charters = if recursive {
-                collect_charter_tree(&model.charters, &title_lower)
+                collect_charter_tree(&model.charters, &graph_name_lower)
             } else {
                 model
                     .charters
                     .into_iter()
-                    .filter(|c| c.title.to_lowercase() == title_lower)
+                    .filter(|c| c.title.to_lowercase() == graph_name_lower)
                     .collect()
             };
             let combined_model = clearhead_core::DomainModel {
@@ -122,35 +154,43 @@ pub fn read_plans(
             return Ok(());
         }
 
-        // Non-table: SPARQL — strict (direct has_part) or recursive (transitive hasSubCharter+)
+        // Non-table: SPARQL — strict (direct has_part) or recursive (transitive hasSubCharter+).
+        // The recursive case uses two self-contained UNION branches instead of BIND+UNION
+        // because BIND inside a sub-group with property paths behaves inconsistently in
+        // some SPARQL engines (Oxigraph included).
         let query = if recursive {
             format!(
                 "SELECT ?id WHERE {{ \
-                    ?targetCharter a <{actions}Charter> . \
-                    ?targetCharter <{schema}name> \"{title}\" . \
-                    {{ BIND(?targetCharter AS ?charter) }} \
-                    UNION \
-                    {{ ?targetCharter <{actions}hasSubCharter>+ ?charter . }} \
-                    ?charter <{bfo}BFO_0000051> ?plan . \
-                    ?plan <{actions}id> ?id \
+                    {{ \
+                        ?charter a <{actions}Charter> . \
+                        ?charter <{schema}name> \"{graph_name}\" . \
+                        ?charter <{bfo}BFO_0000051> ?plan . \
+                        ?plan <{actions}id> ?id \
+                    }} UNION {{ \
+                        ?root a <{actions}Charter> . \
+                        ?root <{schema}name> \"{graph_name}\" . \
+                        ?root <{actions}hasSubCharter>+ ?charter . \
+                        ?charter <{bfo}BFO_0000051> ?plan . \
+                        ?plan <{actions}id> ?id \
+                    }} \
                 }}",
                 actions = "https://clearhead.us/vocab/actions/v4#",
                 schema = "http://schema.org/",
                 bfo = "http://purl.obolibrary.org/obo/",
-                title = title.replace('"', "\\\""),
+                graph_name = graph_name.replace('"', "\\\""),
             )
         } else {
             format!(
                 "SELECT ?id WHERE {{ \
                     ?charter a <{actions}Charter> . \
-                    ?charter <{schema}name> \"{title}\" . \
+                    ?charter <{schema}name> \"{graph_name}\" . \
                     ?charter <{bfo}BFO_0000051> ?plan . \
                     ?plan <{actions}id> ?id \
                 }}",
                 actions = "https://clearhead.us/vocab/actions/v4#",
                 schema = "http://schema.org/",
                 bfo = "http://purl.obolibrary.org/obo/",
-                title = title.replace('"', "\\\""),
+                graph_name = graph_name.replace('"', "\\\""),
             )
         };
         debug!(sparql = %query, recursive = recursive, "Querying plans by charter via SPARQL");
@@ -326,10 +366,14 @@ pub fn update_plan(
 ) -> Result<(), String> {
     use clearhead_cli::{ActionUpdate, apply_updates, resolve_reference};
 
-    let input_file = ctx.resolve_action_file(file.as_ref());
+    let (input_file, mut actions) = if let Some(path) = file {
+        let f = ctx.resolve_action_file(Some(path));
+        let a = load_file(&f)?;
+        (f, a)
+    } else {
+        crate::commands::find_plan_file(&ctx.data_dir, query)?
+    };
     debug!(query = %query, input_file = %input_file.display(), "Executing Update Plan");
-
-    let mut actions = load_file(&input_file)?;
 
     let resolved = resolve_reference(&actions, query)
         .ok_or_else(|| format!("No action found matching '{}'", query))?;
@@ -376,10 +420,13 @@ pub fn complete_plan(
     file: &Option<std::path::PathBuf>,
     write: bool,
 ) -> Result<(), String> {
-    let input_file = ctx.resolve_action_file(file.as_ref());
-    debug!(query = %query, input_file = %input_file.display(), "Executing Complete Plan");
-
-    let mut actions = load_file(&input_file)?;
+    let (input_file, mut actions) = if let Some(path) = file {
+        let f = ctx.resolve_action_file(Some(path));
+        let a = load_file(&f)?;
+        (f, a)
+    } else {
+        crate::commands::find_plan_file(&ctx.data_dir, query)?
+    };
 
     let result = crate::commands::complete::complete_action(&mut actions, query)?;
 
@@ -414,10 +461,14 @@ pub fn delete_plan(
     file: &Option<std::path::PathBuf>,
     write: bool,
 ) -> Result<(), String> {
-    let input_file = ctx.resolve_action_file(file.as_ref());
+    let (input_file, mut actions) = if let Some(path) = file {
+        let f = ctx.resolve_action_file(Some(path));
+        let a = load_file(&f)?;
+        (f, a)
+    } else {
+        crate::commands::find_plan_file(&ctx.data_dir, query)?
+    };
     debug!(query = %query, input_file = %input_file.display(), "Executing Delete Plan");
-
-    let mut actions = load_file(&input_file)?;
 
     let resolved = clearhead_cli::resolve_reference(&actions, query)
         .ok_or_else(|| format!("No plan found matching '{}'", query))?;
