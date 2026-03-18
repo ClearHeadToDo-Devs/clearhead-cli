@@ -236,6 +236,21 @@ pub enum Verb {
         #[command(subcommand)]
         target: SyncTarget,
     },
+
+    /// Execute a raw SPARQL SELECT query against the workspace RDF graph
+    Query {
+        /// Full SPARQL SELECT query
+        #[arg(conflicts_with = "where_clause")]
+        sparql: Option<String>,
+
+        /// SPARQL WHERE clause (auto-injects prefixes, selects all variables)
+        #[arg(short = 'w', long = "where", conflicts_with = "sparql")]
+        where_clause: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum)]
+        format: Option<QueryFormat>,
+    },
 }
 
 // =============================================================================
@@ -251,31 +266,19 @@ pub enum ReadTarget {
         format: Option<Format>,
 
         /// Filter plans by charter name, alias, or UUID
-        #[arg(long, conflicts_with_all = ["file", "stdio", "where_clause", "sparql", "sparql_file"])]
+        #[arg(long, conflicts_with_all = ["file", "stdio"])]
         charter: Option<String>,
 
         /// Include plans from sub-charters recursively (requires --charter)
         #[arg(long, requires = "charter")]
         recursive: bool,
 
-        /// SPARQL WHERE clause to filter plans (e.g., "?s actions:hasPriority 1")
-        #[arg(short = 'w', long = "where")]
-        where_clause: Option<String>,
-
-        /// Full SPARQL query (overrides --where)
-        #[arg(long, conflicts_with = "where_clause")]
-        sparql: Option<String>,
-
-        /// Read SPARQL query from a file
-        #[arg(long, conflicts_with_all = ["sparql", "where_clause"])]
-        sparql_file: Option<PathBuf>,
-
         /// Read from a specific file instead of workspace
-        #[arg(long, conflicts_with_all = ["where_clause", "sparql", "sparql_file"])]
+        #[arg(long, conflicts_with_all = ["charter", "stdio"])]
         file: Option<PathBuf>,
 
         /// Read from standard input instead of workspace
-        #[arg(long, conflicts_with_all = ["file", "where_clause", "sparql", "sparql_file"])]
+        #[arg(long, conflicts_with_all = ["file", "charter"])]
         stdio: bool,
 
         /// Table column filtering options
@@ -348,16 +351,20 @@ pub enum AddTarget {
         name: String,
 
         /// File to add to. If not provided, uses the default file
-        #[arg(short, long)]
+        #[arg(short, long, conflicts_with = "charter")]
         file: Option<PathBuf>,
+
+        /// Charter to add the plan to (name, alias, or UUID). Routes to the charter's primary file.
+        #[arg(long, conflicts_with = "file")]
+        charter: Option<String>,
 
         /// Action fields (priority, context, description, alias, state)
         #[command(flatten)]
         fields: ActionFields,
 
-        /// Overwrite the input file with the added plan
-        #[arg(short, long)]
-        write: bool,
+        /// Preview what would be added without writing
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Create a new charter
@@ -373,9 +380,9 @@ pub enum AddTarget {
         #[arg(short, long)]
         parent: Option<String>,
 
-        /// Write the charter to a file in the data directory
-        #[arg(short, long)]
-        write: bool,
+        /// Preview what would be created without writing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -402,9 +409,9 @@ pub enum UpdateTarget {
         #[command(flatten)]
         fields: ActionFields,
 
-        /// Overwrite the input file with the updates
-        #[arg(short, long)]
-        write: bool,
+        /// Preview what would be updated without writing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -419,9 +426,9 @@ pub enum CompleteTarget {
         #[arg(short, long)]
         file: Option<PathBuf>,
 
-        /// Overwrite the input file with the completed plan
-        #[arg(short, long)]
-        write: bool,
+        /// Preview what would be completed without writing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -436,9 +443,9 @@ pub enum DeleteTarget {
         #[arg(short, long)]
         file: Option<PathBuf>,
 
-        /// Overwrite the input file with the deletion
-        #[arg(short, long)]
-        write: bool,
+        /// Preview what would be deleted without writing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -579,6 +586,15 @@ pub enum SyncTarget {
 // =============================================================================
 // Shared value enums
 // =============================================================================
+
+/// Output format for raw SPARQL query results
+#[derive(Clone, Copy, ValueEnum, Debug)]
+pub enum QueryFormat {
+    /// Pretty-printed table
+    Table,
+    /// JSON array of objects
+    Json,
+}
 
 /// CLI-specific format enum that maps to library's OutputFormat
 #[derive(Clone, Copy, ValueEnum)]

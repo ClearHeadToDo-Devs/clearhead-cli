@@ -3,6 +3,7 @@ pub mod charter;
 pub mod complete;
 pub mod file;
 pub mod plan;
+pub mod query;
 pub mod service;
 
 use std::fs;
@@ -137,6 +138,48 @@ pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
             Ok(buffer)
         }
     }
+}
+
+/// Resolve a charter query to the primary `.actions` file for that charter.
+///
+/// Mapping:
+/// - `<dir>/README.md` charter → `<dir>/next.actions`
+/// - `<name>.md` root charter → `<name>.actions`
+/// - `<dir>/<name>.md` sub-charter → `<dir>/<name>.actions`
+/// - implicit from `.actions` file → that file
+/// - implicit from directory → `<dir>/next.actions`
+pub fn charter_to_file_path(
+    data_dir: &Path,
+    charter_query: &str,
+) -> Result<PathBuf, String> {
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+
+    let store = FsWorkspaceStore::new(data_dir);
+    let charters = store
+        .discover_charters()
+        .map_err(|e| e.to_string())?;
+
+    let found = crate::commands::charter::resolve_discovered_charter(&charters, charter_query)
+        .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
+
+    let source = Path::new(&found.source_key);
+    let actions_path = if source.file_name().map(|n| n == "README.md").unwrap_or(false) {
+        // build_clearhead/README.md → build_clearhead/next.actions
+        let dir = source.parent().unwrap_or(Path::new(""));
+        dir.join("next.actions")
+    } else if source.extension().map(|e| e == "md").unwrap_or(false) {
+        // health.md → health.actions
+        // build_clearhead/observability.md → build_clearhead/observability.actions
+        source.with_extension("actions")
+    } else if source.extension().map(|e| e == "actions").unwrap_or(false) {
+        // implicit from .actions file
+        source.to_path_buf()
+    } else {
+        // implicit from directory name
+        source.join("next.actions")
+    };
+
+    Ok(data_dir.join(actions_path))
 }
 
 fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {

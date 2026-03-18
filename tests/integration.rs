@@ -577,10 +577,8 @@ fn test_add_command() {
         .arg("add")
         .arg("plan")
         .arg("New Task")
-        .arg("--write")
         .assert()
-        .success()
-        .stdout(predicate::str::contains("Added action: New Task"));
+        .success(); // outputs UUID to stdout
 
     // Check file content
     let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
@@ -604,7 +602,6 @@ fn test_add_command_with_options() {
         .arg("urgent")
         .arg("--description")
         .arg("Do it now")
-        .arg("--write")
         .assert()
         .success();
 
@@ -625,10 +622,8 @@ fn test_complete_command() {
         .arg("complete")
         .arg("plan")
         .arg(uuid)
-        .arg("--write")
         .assert()
-        .success()
-        .stdout(predicate::str::contains("Completed action"));
+        .success(); // completion logged via tracing, no stdout output
 
     let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
     assert!(content.contains("[x] Task to complete"));
@@ -644,7 +639,6 @@ fn test_complete_command_by_name() {
         .arg("complete")
         .arg("plan")
         .arg("Unique Task")
-        .arg("--write")
         .assert()
         .success();
 
@@ -661,7 +655,6 @@ fn test_complete_command_idempotent_fail() {
         .arg("complete")
         .arg("plan")
         .arg("Already Done")
-        .arg("--write")
         .assert()
         .failure() // Should fail as no *open* action found
         .stderr(predicate::str::contains("No open action found"));
@@ -832,40 +825,32 @@ fn test_read_workspace_filter_by_file_path() {
 }
 
 #[test]
-fn test_file_and_where_conflict() {
+fn test_query_sparql_and_where_conflict() {
     let env = TestEnv::new();
 
-    env.write_actions("inbox.actions", "[ ] Task");
-    let inbox_path = env.data_dir.join("inbox.actions");
-
-    // --file and --where should conflict (clap enforces this)
+    // positional SPARQL query and --where should conflict on `query` verb
     env.command()
-        .arg("read")
-        .arg("plans")
+        .arg("query")
+        .arg("SELECT ?s WHERE { ?s a <urn:x> }")
         .arg("--where")
-        .arg("priority = 1")
-        .arg("--file")
-        .arg(&inbox_path)
+        .arg("?s a <urn:x>")
         .assert()
         .failure()
         .stderr(predicate::str::contains("cannot be used with"));
 }
 
 #[test]
-fn test_stdio_and_sparql_conflict() {
+fn test_read_plans_rejects_where_flag() {
     let env = TestEnv::new();
 
-    // --stdio and --sparql should conflict (clap enforces this)
+    // --where is no longer a valid flag on `read plans` — belongs on `query`
     env.command()
         .arg("read")
         .arg("plans")
-        .arg("--sparql")
-        .arg("SELECT ?s WHERE { ?s a actions:Action }")
-        .arg("--stdio")
-        .write_stdin("[ ] Task")
+        .arg("--where")
+        .arg("?s a cco:Plan")
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("cannot be used with"));
+        .failure();
 }
 
 #[test]

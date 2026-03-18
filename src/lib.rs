@@ -226,6 +226,29 @@ pub fn run_workspace_sql_query(
         .collect())
 }
 
+/// Run a raw SPARQL SELECT query across the workspace and return all variable bindings
+pub fn run_workspace_raw_query(
+    data_dir: &std::path::Path,
+    sparql: &str,
+) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
+    let model = load_workspace_domain_model(data_dir)?;
+    let store = clearhead_core::graph::create_store()
+        .map_err(|e| format!("Failed to create store: {}", e))?;
+    clearhead_core::graph::load_domain_model(&store, &model)
+        .map_err(|e| format!("Failed to load domain model: {}", e))?;
+    clearhead_core::graph::query_raw(&store, sparql)
+        .map_err(|e| format!("SPARQL query failed: {}", e))
+}
+
+/// Run a raw WHERE clause query across the workspace (SELECT *, prefixes injected)
+pub fn run_workspace_raw_where(
+    data_dir: &std::path::Path,
+    where_clause: &str,
+) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
+    let query = clearhead_core::graph::build_raw_where_query(where_clause);
+    run_workspace_raw_query(data_dir, &query)
+}
+
 /// Run a SPARQL WHERE clause query across all workspace actions
 pub fn run_workspace_sql_where(
     data_dir: &std::path::Path,

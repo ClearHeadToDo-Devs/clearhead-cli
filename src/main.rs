@@ -53,9 +53,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 charter,
                 recursive,
-                where_clause,
-                sparql,
-                sparql_file,
                 file,
                 stdio,
                 table_options,
@@ -64,9 +61,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 charter,
                 *recursive,
-                where_clause,
-                sparql,
-                sparql_file,
                 file,
                 *stdio,
                 table_options,
@@ -94,15 +88,16 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::AddTarget::Plan {
                 name,
                 file,
+                charter,
                 fields,
-                write,
-            } => commands::plan::add_plan(&ctx, name, file, fields, *write),
+                dry_run,
+            } => commands::plan::add_plan(&ctx, name, file, charter, fields, *dry_run),
             argparser::AddTarget::Charter {
                 title,
                 alias,
                 parent,
-                write,
-            } => commands::charter::add_charter(&ctx, title, alias, parent, *write),
+                dry_run,
+            } => commands::charter::add_charter(&ctx, title, alias, parent, *dry_run),
         },
         Verb::Update { target } => match target {
             argparser::UpdateTarget::Plan {
@@ -110,17 +105,17 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 name,
                 fields,
-                write,
-            } => commands::plan::update_plan(&ctx, query, file, name, fields, *write),
+                dry_run,
+            } => commands::plan::update_plan(&ctx, query, file, name, fields, *dry_run),
         },
         Verb::Complete { target } => match target {
-            argparser::CompleteTarget::Plan { query, file, write } => {
-                commands::plan::complete_plan(&ctx, query, file, *write)
+            argparser::CompleteTarget::Plan { query, file, dry_run } => {
+                commands::plan::complete_plan(&ctx, query, file, *dry_run)
             }
         },
         Verb::Delete { target } => match target {
-            argparser::DeleteTarget::Plan { query, file, write } => {
-                commands::plan::delete_plan(&ctx, query, file, *write)
+            argparser::DeleteTarget::Plan { query, file, dry_run } => {
+                commands::plan::delete_plan(&ctx, query, file, *dry_run)
             }
         },
         Verb::Format { target } => match target {
@@ -171,5 +166,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 commands::service::sync_events(&ctx, file, *dry_run)
             }
         },
+        Verb::Query { sparql, where_clause, format } => {
+            commands::query::query_workspace(&ctx, sparql.as_deref(), where_clause.as_deref(), *format)
+        }
     }
 }

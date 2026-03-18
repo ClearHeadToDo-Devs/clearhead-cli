@@ -9,6 +9,10 @@ pub struct CompletionResult {
     pub action_name: String,
     pub is_recurring: bool,
     pub event: TelemetryEvent,
+    /// Index of the completed action in the (mutated) actions list.
+    /// For non-recurring: the original index (now marked complete).
+    /// For recurring: the last index (newly pushed completed instance).
+    pub action_index: usize,
 }
 
 /// Find and complete an action by query (ID prefix or name substring).
@@ -76,10 +80,17 @@ pub fn complete_action(actions: &mut ActionList, query: &str) -> Result<Completi
         }
     };
 
+    let action_index = if is_recurring {
+        actions.len() - 1 // the pushed completed instance
+    } else {
+        target_index
+    };
+
     Ok(CompletionResult {
         action_id,
         action_name,
         is_recurring,
         event,
+        action_index,
     })
 }

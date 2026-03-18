@@ -38,8 +38,10 @@ pub fn read_charters(
 
         table.set_header(vec![
             Cell::new("Name").fg(Color::Cyan),
+            Cell::new("Parent").fg(Color::Cyan),
             Cell::new("Type").fg(Color::Cyan),
             Cell::new("Alias").fg(Color::Cyan),
+            Cell::new("ID").fg(Color::Cyan),
             Cell::new("Source").fg(Color::Cyan),
         ]);
 
@@ -50,6 +52,8 @@ pub fn read_charters(
                 "implicit"
             };
             let alias = dc.charter.alias.as_deref().unwrap_or("-");
+            let parent = dc.charter.parent.as_deref().unwrap_or("-");
+            let short_id = &dc.charter.id.to_string()[..8];
             let source_str = if dc.is_explicit {
                 dc.source_key.clone()
             } else {
@@ -58,8 +62,10 @@ pub fn read_charters(
 
             table.add_row(vec![
                 Cell::new(&dc.charter.title),
+                Cell::new(parent),
                 Cell::new(type_str),
                 Cell::new(alias),
+                Cell::new(short_id),
                 Cell::new(source_str),
             ]);
         }
@@ -147,7 +153,7 @@ pub fn add_charter(
     title: &str,
     alias: &Option<String>,
     parent: &Option<String>,
-    write: bool,
+    dry_run: bool,
 ) -> Result<(), String> {
     use clearhead_core::domain::Charter;
 
@@ -162,9 +168,10 @@ pub fn add_charter(
         plans: vec![],
     };
 
-    let formatted = clearhead_core::format_charter(&charter);
-
-    if write {
+    if dry_run {
+        let formatted = clearhead_core::format_charter(&charter);
+        println!("{}", formatted);
+    } else {
         let filename = alias
             .as_deref()
             .unwrap_or(title)
@@ -182,14 +189,7 @@ pub fn add_charter(
         store.save_charter(&objective, &charter).map_err(|e| e.to_string())?;
 
         info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
-        println!(
-            "Created charter: {} #{}\nWritten to: {}",
-            title,
-            id,
-            file_path.display()
-        );
-    } else {
-        println!("{}", formatted);
+        println!("{}", id);
     }
     Ok(())
 }

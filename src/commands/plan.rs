@@ -61,9 +61,6 @@ pub fn read_plans(
     format: &Option<argparser::Format>,
     charter: &Option<String>,
     recursive: bool,
-    where_clause: &Option<String>,
-    sparql: &Option<String>,
-    sparql_file: &Option<std::path::PathBuf>,
     file: &Option<std::path::PathBuf>,
     stdio: bool,
     table_options: &argparser::CliTableOptions,
@@ -146,7 +143,25 @@ pub fn read_plans(
                 objectives: vec![],
                 charters: filtered_charters,
             };
-            info!(plan_count = combined_model.all_plans().len(), "Loaded domain model for table");
+            let plan_count = combined_model.all_plans().len();
+            info!(plan_count, "Loaded domain model for table");
+            if plan_count == 0 {
+                let kind = if found.is_explicit { "explicit" } else { "implicit" };
+                println!(
+                    "Charter '{}' resolved ({}, source: {}, graph name: '{}') but contains no plans.",
+                    title, kind, found.source_key, graph_name
+                );
+                if recursive {
+                    println!("(searched recursively through sub-charters)");
+                } else {
+                    println!(
+                        "Tip: try --recursive to include sub-charters, or \
+                         `clearhead query --where \"?s a <https://clearhead.us/vocab/actions/v4#Charter> ; \
+                         <http://schema.org/name> ?name\"` to see what the graph sees."
+                    );
+                }
+                return Ok(());
+            }
             println!(
                 "{}",
                 clearhead_core::format_domain_as_table(&combined_model, lib_table_opts.as_ref())?
@@ -198,23 +213,7 @@ pub fn read_plans(
     } else {
         debug!(data_dir = %ctx.data_dir.display(), "Reading workspace");
 
-        // Handle SPARQL from file
-        let sparql_query = if let Some(sparql_path) = sparql_file {
-            Some(
-                fs::read_to_string(sparql_path)
-                    .map_err(|e| format!("Failed to read SPARQL file: {}", e))?,
-            )
-        } else {
-            sparql.clone()
-        };
-
-        if let Some(query) = &sparql_query {
-            debug!(sparql = %query, "Filtering with SPARQL query");
-            clearhead_cli::run_workspace_sql_query(&ctx.data_dir, query)?
-        } else if let Some(where_clause) = where_clause {
-            debug!(where_clause = %where_clause, "Filtering with WHERE clause");
-            clearhead_cli::run_workspace_sql_where(&ctx.data_dir, where_clause, None, None)?
-        } else if output_format == clearhead_cli::OutputFormat::Table {
+        if output_format == clearhead_cli::OutputFormat::Table {
             let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
             info!(plan_count = model.all_plans().len(), "Loaded workspace domain model for table");
             println!(
@@ -228,6 +227,18 @@ pub fn read_plans(
     };
 
     info!(action_count = actions.len(), "Loaded actions");
+    if actions.is_empty() {
+        if let Some(charter_query) = charter {
+            println!(
+                "No plans found for charter '{}'. \
+                 Use `--format table` for a richer diagnostic, or \
+                 `clearhead query --where \"?s a <https://clearhead.us/vocab/actions/v4#Charter> ; \
+                 <http://schema.org/name> ?name\"` to inspect the graph.",
+                charter_query
+            );
+            return Ok(());
+        }
+    }
     println!(
         "{}",
         clearhead_cli::format(&actions, output_format, None, lib_table_opts.as_ref())?
@@ -286,17 +297,22 @@ pub fn add_plan(
     ctx: &CommandContext,
     name: &str,
     file: &Option<std::path::PathBuf>,
+    charter: &Option<String>,
     fields: &argparser::ActionFields,
-    write: bool,
+    dry_run: bool,
 ) -> Result<(), String> {
     use chrono::Local;
     use clearhead_cli::{Action, ActionState};
     use uuid::Uuid;
 
-    let input_file = ctx.resolve_action_file(file.as_ref());
-    debug!(name = %name, input_file = %input_file.display(), "Executing Add Plan");
+    let input_file = if let Some(charter_query) = charter {
+        crate::commands::charter_to_file_path(&ctx.data_dir, charter_query)?
+    } else {
+        ctx.resolve_action_file(file.as_ref())
+    };
+    debug!(name = %name, input_file = %input_file.display(), dry_run = dry_run, "Executing Add Plan");
 
-    if !input_file.exists() {
+    if !dry_run && !input_file.exists() {
         info!(input_file = %input_file.display(), "Creating new actions file");
         if let Some(parent) = input_file.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -335,7 +351,11 @@ pub fn add_plan(
 
     actions.push(new_action.clone());
 
-    if write {
+    if dry_run {
+        let preview =
+            clearhead_cli::format(&vec![new_action], clearhead_cli::OutputFormat::Actions, None, None)?;
+        println!("{}", preview);
+    } else {
         save_file(&input_file, &actions)?;
 
         try_emit(
@@ -347,11 +367,7 @@ pub fn add_plan(
         );
 
         info!(name = %name, id = %new_id, "Action added successfully");
-        println!("Added action: {} #{}", name, new_id);
-    } else {
-        let formatted =
-            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-        println!("{}", formatted);
+        println!("{}", new_id);
     }
     Ok(())
 }
@@ -362,7 +378,7 @@ pub fn update_plan(
     file: &Option<std::path::PathBuf>,
     name: &Option<String>,
     fields: &argparser::ActionFields,
-    write: bool,
+    dry_run: bool,
 ) -> Result<(), String> {
     use clearhead_cli::{ActionUpdate, apply_updates, resolve_reference};
 
@@ -373,7 +389,7 @@ pub fn update_plan(
     } else {
         crate::commands::find_plan_file(&ctx.data_dir, query)?
     };
-    debug!(query = %query, input_file = %input_file.display(), "Executing Update Plan");
+    debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Update Plan");
 
     let resolved = resolve_reference(&actions, query)
         .ok_or_else(|| format!("No action found matching '{}'", query))?;
@@ -389,13 +405,20 @@ pub fn update_plan(
     apply_updates(&mut actions[resolved.index], updates);
 
     let new_action = actions[resolved.index].clone();
-    let action_name = new_action.name.clone();
 
-    if write {
+    if dry_run {
+        let preview = clearhead_cli::format(
+            &vec![new_action],
+            clearhead_cli::OutputFormat::Actions,
+            None,
+            None,
+        )?;
+        println!("{}", preview);
+    } else {
         save_file(&input_file, &actions)?;
 
         use clearhead_core::diff_actions;
-        let changes = diff_actions(&vec![old_action], &vec![new_action]);
+        let changes = diff_actions(&vec![old_action], &vec![new_action.clone()]);
         if let Some(action_diff) = changes.modified.first() {
             for change in &action_diff.changes {
                 if let Some(evt) = event_from_field_change(change) {
@@ -404,12 +427,7 @@ pub fn update_plan(
             }
         }
 
-        info!(name = %action_name, id = %action_id, "Action updated successfully");
-        println!("Updated action: {} #{}", action_name, action_id);
-    } else {
-        let formatted =
-            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-        println!("{}", formatted);
+        info!(name = %new_action.name, id = %action_id, "Action updated successfully");
     }
     Ok(())
 }
@@ -418,7 +436,7 @@ pub fn complete_plan(
     ctx: &CommandContext,
     query: &str,
     file: &Option<std::path::PathBuf>,
-    write: bool,
+    dry_run: bool,
 ) -> Result<(), String> {
     let (input_file, mut actions) = if let Some(path) = file {
         let f = ctx.resolve_action_file(Some(path));
@@ -430,27 +448,19 @@ pub fn complete_plan(
 
     let result = crate::commands::complete::complete_action(&mut actions, query)?;
 
-    if write {
+    if dry_run {
+        let completed = &actions[result.action_index];
+        let preview = clearhead_cli::format(
+            &vec![completed.clone()],
+            clearhead_cli::OutputFormat::Actions,
+            None,
+            None,
+        )?;
+        println!("{}", preview);
+    } else {
         save_file(&input_file, &actions)?;
         try_emit(&result.action_id, result.event);
-
-        if result.is_recurring {
-            println!(
-                "Completed instance of recurring action: {} #{}",
-                result.action_name, result.action_id
-            );
-            println!("Template updated for next occurrence.");
-        } else {
-            info!(name = %result.action_name, id = %result.action_id, "Action completed successfully");
-            println!(
-                "Completed action: {} #{}",
-                result.action_name, result.action_id
-            );
-        }
-    } else {
-        let formatted =
-            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-        println!("{}", formatted);
+        info!(name = %result.action_name, id = %result.action_id, recurring = result.is_recurring, "Action completed successfully");
     }
     Ok(())
 }
@@ -459,7 +469,7 @@ pub fn delete_plan(
     ctx: &CommandContext,
     query: &str,
     file: &Option<std::path::PathBuf>,
-    write: bool,
+    dry_run: bool,
 ) -> Result<(), String> {
     let (input_file, mut actions) = if let Some(path) = file {
         let f = ctx.resolve_action_file(Some(path));
@@ -468,14 +478,22 @@ pub fn delete_plan(
     } else {
         crate::commands::find_plan_file(&ctx.data_dir, query)?
     };
-    debug!(query = %query, input_file = %input_file.display(), "Executing Delete Plan");
+    debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Delete Plan");
 
     let resolved = clearhead_cli::resolve_reference(&actions, query)
         .ok_or_else(|| format!("No plan found matching '{}'", query))?;
 
     let action = actions.remove(resolved.index);
 
-    if write {
+    if dry_run {
+        let preview = clearhead_cli::format(
+            &vec![action],
+            clearhead_cli::OutputFormat::Actions,
+            None,
+            None,
+        )?;
+        println!("{}", preview);
+    } else {
         save_file(&input_file, &actions)?;
 
         try_emit(
@@ -486,11 +504,6 @@ pub fn delete_plan(
         );
 
         info!(name = %action.name, id = %action.id, "Action deleted successfully");
-        println!("Deleted action: {} #{}", action.name, action.id);
-    } else {
-        let formatted =
-            clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-        println!("{}", formatted);
     }
     Ok(())
 }
