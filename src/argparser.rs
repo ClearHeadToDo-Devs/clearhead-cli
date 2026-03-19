@@ -225,6 +225,18 @@ pub enum Verb {
         target: ExportTarget,
     },
 
+    /// Expand recurring plans into PlannedAct instances
+    Expand {
+        #[command(subcommand)]
+        target: ExpandTarget,
+    },
+
+    /// Cancel an item (sets phase to Cancelled without deleting)
+    Cancel {
+        #[command(subcommand)]
+        target: CancelTarget,
+    },
+
     /// Start a service
     Start {
         #[command(subcommand)]
@@ -305,6 +317,25 @@ pub enum ReadTarget {
         /// Number of days to project forward
         #[arg(short, long, default_value = "7")]
         days: u32,
+    },
+
+    /// Read and display planned acts
+    Acts {
+        /// Output format (table or json)
+        #[arg(short, long, value_enum)]
+        format: Option<ActFormat>,
+
+        /// Filter acts by plan UUID, short UUID, alias, or name
+        #[arg(long)]
+        plan: Option<String>,
+
+        /// Only show open acts (excludes Completed and Cancelled)
+        #[arg(long)]
+        open_only: bool,
+
+        /// Read from a specific .actions file (also loads sibling .acts.jsonld)
+        #[arg(long)]
+        file: Option<PathBuf>,
     },
 }
 
@@ -413,6 +444,28 @@ pub enum UpdateTarget {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Update a planned act's scheduled time or duration
+    Act {
+        /// UUID or 8-char prefix of the act
+        query: String,
+
+        /// New scheduled datetime (RFC 3339, e.g. "2026-04-01T09:00:00+00:00")
+        #[arg(long)]
+        scheduled_at: Option<String>,
+
+        /// New duration in minutes
+        #[arg(long)]
+        duration: Option<u32>,
+
+        /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Preview what would be updated without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -423,6 +476,20 @@ pub enum CompleteTarget {
         query: String,
 
         /// File containing the plan. If not provided, uses the default file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Preview what would be completed without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Mark a planned act as completed
+    Act {
+        /// UUID or 8-char prefix of the act
+        query: String,
+
+        /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
         #[arg(short, long)]
         file: Option<PathBuf>,
 
@@ -541,6 +608,62 @@ pub enum ArchiveTarget {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Move old completed/cancelled acts to archive.ttl
+    Acts {
+        /// File (.actions) whose sidecar to archive. If not provided, uses the default file.
+        file: Option<PathBuf>,
+
+        /// Archive acts older than this many days (based on completed_at or created_at)
+        #[arg(long, default_value = "30")]
+        older_than_days: u32,
+
+        /// Dry run: show counts without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+// =============================================================================
+// Expand targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum ExpandTarget {
+    /// Expand recurring plans into sidecar PlannedAct instances
+    Acts {
+        /// File to expand (.actions format). If not provided, uses the default file.
+        file: Option<PathBuf>,
+
+        /// Number of days to project forward
+        #[arg(long, default_value = "90")]
+        days: u32,
+
+        /// Preview what would be written without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+// =============================================================================
+// Cancel targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum CancelTarget {
+    /// Cancel a planned act (sets phase to Cancelled)
+    Act {
+        /// UUID or 8-char prefix of the act
+        query: String,
+
+        /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Preview what would be cancelled without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -586,6 +709,15 @@ pub enum SyncTarget {
 // =============================================================================
 // Shared value enums
 // =============================================================================
+
+/// Output format for act listing
+#[derive(Clone, Copy, ValueEnum, Debug)]
+pub enum ActFormat {
+    /// Pretty-printed table (default)
+    Table,
+    /// JSON array
+    Json,
+}
 
 /// Output format for raw SPARQL query results
 #[derive(Clone, Copy, ValueEnum, Debug)]

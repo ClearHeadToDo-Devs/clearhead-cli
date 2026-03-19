@@ -72,6 +72,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::ReadTarget::Agenda { file, days } => {
                 commands::agenda::run_agenda(&ctx, file, *days)
             }
+            argparser::ReadTarget::Acts {
+                format,
+                plan,
+                open_only,
+                file,
+            } => commands::act::read_acts_cmd(&ctx, *format, plan.as_deref(), *open_only, file),
         },
         Verb::Show { target } => match target {
             argparser::ShowTarget::Plan {
@@ -107,10 +113,20 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 fields,
                 dry_run,
             } => commands::plan::update_plan(&ctx, query, file, name, fields, *dry_run),
+            argparser::UpdateTarget::Act {
+                query,
+                scheduled_at,
+                duration,
+                file,
+                dry_run,
+            } => commands::act::update_act(&ctx, query, scheduled_at, duration, file, *dry_run),
         },
         Verb::Complete { target } => match target {
             argparser::CompleteTarget::Plan { query, file, dry_run } => {
                 commands::plan::complete_plan(&ctx, query, file, *dry_run)
+            }
+            argparser::CompleteTarget::Act { query, file, dry_run } => {
+                commands::act::complete_act(&ctx, query, file, *dry_run)
             }
         },
         Verb::Delete { target } => match target {
@@ -150,6 +166,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 log_dir,
                 dry_run,
             } => commands::plan::archive_plans(&ctx, file, log_dir, *dry_run),
+            argparser::ArchiveTarget::Acts {
+                file,
+                older_than_days,
+                dry_run,
+            } => commands::act::archive_acts(&ctx, file, *older_than_days, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {
@@ -169,5 +190,15 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Verb::Query { sparql, where_clause, format } => {
             commands::query::query_workspace(&ctx, sparql.as_deref(), where_clause.as_deref(), *format)
         }
+        Verb::Expand { target } => match target {
+            argparser::ExpandTarget::Acts { file, days, dry_run } => {
+                commands::act::expand_acts(&ctx, file, *days, *dry_run)
+            }
+        },
+        Verb::Cancel { target } => match target {
+            argparser::CancelTarget::Act { query, file, dry_run } => {
+                commands::act::cancel_act(&ctx, query, file, *dry_run)
+            }
+        },
     }
 }

@@ -1,3 +1,4 @@
+pub mod act;
 pub mod agenda;
 pub mod charter;
 pub mod complete;

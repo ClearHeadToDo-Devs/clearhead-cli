@@ -587,7 +587,17 @@ pub fn export_plans(
     debug!(input_file = ?file, output = ?output, open_only = open_only, "Executing Export Plans");
     let content = read_input(file.as_ref())?;
     let actions = clearhead_cli::parse_actions(&content)?;
-    let model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+    let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+
+    // Merge open acts if we have a file path (iCal = upcoming only, no closed acts needed)
+    if let Some(path) = file {
+        let open_path = clearhead_core::open_acts_path(path);
+        let loaded_acts = clearhead_core::read_acts(&open_path)?;
+        if !loaded_acts.is_empty() {
+            clearhead_core::merge_acts_into_model(&mut model, loaded_acts);
+        }
+    }
+
     let icalendar = clearhead_cli::format_as_icalendar(&model, open_only)?;
 
     if let Some(output_path) = output {
