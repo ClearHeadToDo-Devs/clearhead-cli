@@ -609,14 +609,10 @@ pub enum ArchiveTarget {
         dry_run: bool,
     },
 
-    /// Move old completed/cancelled acts to archive.ttl
+    /// Move completed/cancelled acts from open.ttl to closed.ttl. Workspace-wide by default.
     Acts {
-        /// File (.actions) whose sidecar to archive. If not provided, uses the default file.
+        /// Limit to a specific charter's .actions file. If not provided, scans the whole workspace.
         file: Option<PathBuf>,
-
-        /// Archive acts older than this many days (based on completed_at or created_at)
-        #[arg(long, default_value = "30")]
-        older_than_days: u32,
 
         /// Dry run: show counts without writing
         #[arg(long)]

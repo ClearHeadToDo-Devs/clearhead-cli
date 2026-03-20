@@ -168,9 +168,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::archive_plans(&ctx, file, log_dir, *dry_run),
             argparser::ArchiveTarget::Acts {
                 file,
-                older_than_days,
                 dry_run,
-            } => commands::act::archive_acts(&ctx, file, *older_than_days, *dry_run),
+            } => commands::act::archive_acts(&ctx, file, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {

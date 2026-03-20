@@ -240,70 +240,83 @@ pub fn read_acts_cmd(
 // Gap 8 — archive acts
 // ============================================================================
 
-/// Archive old completed/cancelled acts from `<charter>.closed.ttl` to `archive.ttl`.
+/// Move completed/cancelled acts from `<charter>.open.ttl` to `<charter>.closed.ttl`.
+///
+/// If `file` is given, only that charter is processed. Otherwise the whole workspace is scanned.
 pub fn archive_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
-    older_than_days: u32,
     dry_run: bool,
 ) -> Result<(), String> {
-    let path = resolve_actions_path(ctx, file);
-    let closed_path = acts::closed_acts_path(&path);
-    let all_closed = acts::read_acts(&closed_path)?;
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
 
-    let cutoff = Local::now() - chrono::Duration::days(older_than_days as i64);
+    let charter_paths: Vec<PathBuf> = if let Some(f) = file {
+        vec![f.clone()]
+    } else {
+        let store = FsWorkspaceStore::new(&ctx.data_dir);
+        store
+            .list_objectives()
+            .map_err(|e| format!("Failed to list workspace: {}", e))?
+            .into_iter()
+            .map(|obj| ctx.data_dir.join(&obj.key))
+            .collect()
+    };
 
-    let (to_archive, to_keep): (Vec<PlannedAct>, Vec<PlannedAct>) =
-        all_closed.into_iter().partition(|a| {
-            let age_ref = a.completed_at.or(a.created_at);
-            age_ref.map(|dt| dt < cutoff).unwrap_or(false)
-        });
+    let mut total_archived = 0usize;
+    let mut charters_touched = 0usize;
 
-    if dry_run {
+    for actions_path in &charter_paths {
+        let open_path = acts::open_acts_path(actions_path);
+        let all_open = acts::read_acts(&open_path)?;
+
+        let (to_close, to_keep): (Vec<PlannedAct>, Vec<PlannedAct>) =
+            all_open.into_iter().partition(|a| {
+                matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled)
+            });
+
+        if to_close.is_empty() {
+            continue;
+        }
+
+        if dry_run {
+            println!(
+                "Would archive {} act(s) from {}",
+                to_close.len(),
+                open_path.display()
+            );
+        } else {
+            acts::write_acts(&to_keep, &open_path)?;
+
+            let closed_path = acts::closed_acts_path(actions_path);
+            let mut existing_closed = acts::read_acts(&closed_path)?;
+            existing_closed.extend(to_close.iter().cloned());
+            acts::write_acts(&existing_closed, &closed_path)?;
+
+            info!(
+                count = to_close.len(),
+                charter = %open_path.display(),
+                "Acts archived to closed file"
+            );
+        }
+
+        total_archived += to_close.len();
+        charters_touched += 1;
+    }
+
+    if total_archived == 0 {
+        println!("Nothing to archive.");
+    } else if dry_run {
         println!(
-            "Would archive {} acts, keep {} acts",
-            to_archive.len(),
-            to_keep.len()
+            "Would archive {} act(s) across {} charter(s).",
+            total_archived, charters_touched
         );
-        return Ok(());
+    } else {
+        println!(
+            "Archived {} act(s) across {} charter(s).",
+            total_archived, charters_touched
+        );
     }
 
-    if to_archive.is_empty() {
-        println!("No acts eligible for archiving.");
-        return Ok(());
-    }
-
-    // Load existing archive.ttl if present, insert eligible acts, re-serialize
-    let archive_path = path.parent().unwrap_or(Path::new(".")).join("archive.ttl");
-    let store = clearhead_core::graph::create_store()?;
-
-    if archive_path.exists() {
-        let existing_ttl = fs::read_to_string(&archive_path)
-            .map_err(|e| format!("Failed to read archive.ttl: {}", e))?;
-        clearhead_core::graph::load_turtle(&store, &existing_ttl)?;
-    }
-
-    clearhead_core::graph::load_acts_into_store(&store, &to_archive)?;
-
-    let ttl = clearhead_core::graph::dump_store_to_turtle(&store)?;
-    fs::write(&archive_path, ttl)
-        .map_err(|e| format!("Failed to write archive.ttl: {}", e))?;
-
-    // Write back only the remaining closed acts
-    acts::write_acts(&to_keep, &closed_path)?;
-
-    info!(
-        archived = to_archive.len(),
-        kept = to_keep.len(),
-        archive_path = %archive_path.display(),
-        "Acts archived"
-    );
-    println!(
-        "Archived {} acts to {}; {} acts remain in closed file",
-        to_archive.len(),
-        archive_path.display(),
-        to_keep.len(),
-    );
     Ok(())
 }
 
