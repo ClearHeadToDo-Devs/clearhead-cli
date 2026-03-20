@@ -17,44 +17,82 @@ use super::CommandContext;
 // ============================================================================
 
 /// Expand recurring plans into open PlannedAct instances.
+///
+/// If `file` is given, only that file is processed. Otherwise the whole workspace is scanned.
 pub fn expand_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     days: u32,
     dry_run: bool,
 ) -> Result<(), String> {
-    let path = resolve_actions_path(ctx, file);
-    let content = read_actions_content(&path)?;
-    let actions = clearhead_cli::parse_actions(&content)?;
-    let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
 
-    // Load existing open acts and merge them in
-    let open_path = acts::open_acts_path(&path);
-    let existing_acts = acts::read_acts(&open_path)?;
-    if !existing_acts.is_empty() {
-        acts::merge_acts_into_model(&mut model, existing_acts);
+    let charter_paths: Vec<PathBuf> = if let Some(f) = file {
+        vec![f.clone()]
+    } else {
+        let store = FsWorkspaceStore::new(&ctx.data_dir);
+        store
+            .list_objectives()
+            .map_err(|e| format!("Failed to list workspace: {}", e))?
+            .into_iter()
+            .map(|obj| ctx.data_dir.join(&obj.key))
+            .collect()
+    };
+
+    let mut total_written = 0usize;
+    let mut charters_touched = 0usize;
+
+    for path in &charter_paths {
+        let content = read_actions_content(path)?;
+        if content.is_empty() {
+            continue;
+        }
+        let actions = clearhead_cli::parse_actions(&content)?;
+        let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+
+        // Load existing open acts and merge them in
+        let open_path = acts::open_acts_path(path);
+        let existing_acts = acts::read_acts(&open_path)?;
+        if !existing_acts.is_empty() {
+            acts::merge_acts_into_model(&mut model, existing_acts);
+        }
+
+        // Collect plan IDs from this file
+        let plan_ids: HashSet<uuid::Uuid> = model
+            .all_plans()
+            .iter()
+            .map(|p| p.id)
+            .collect();
+
+        if plan_ids.is_empty() {
+            continue;
+        }
+
+        // Expand recurring plans
+        model.expand_recurring_plans(days);
+
+        let expanded_acts: Vec<PlannedAct> = model.all_acts().into_iter().cloned().collect();
+
+        if dry_run {
+            println!("Would write {} acts to {}", expanded_acts.len(), open_path.display());
+        } else {
+            acts::write_acts_for_plans(&expanded_acts, &plan_ids, &open_path)?;
+            info!(count = expanded_acts.len(), path = %open_path.display(), "Acts written");
+            println!("Wrote {} acts to {}", expanded_acts.len(), open_path.display());
+        }
+
+        total_written += expanded_acts.len();
+        charters_touched += 1;
     }
 
-    // Collect plan IDs from this file
-    let plan_ids: HashSet<uuid::Uuid> = model
-        .all_plans()
-        .iter()
-        .map(|p| p.id)
-        .collect();
-
-    // Expand recurring plans
-    model.expand_recurring_plans(days);
-
-    let expanded_acts: Vec<PlannedAct> = model.all_acts().into_iter().cloned().collect();
-
-    if dry_run {
-        println!("Would write {} acts to {}", expanded_acts.len(), open_path.display());
-        return Ok(());
+    if charters_touched > 1 {
+        if dry_run {
+            println!("Would expand acts across {} charter(s).", charters_touched);
+        } else {
+            println!("Expanded {} act(s) across {} charter(s).", total_written, charters_touched);
+        }
     }
 
-    acts::write_acts_for_plans(&expanded_acts, &plan_ids, &open_path)?;
-    info!(count = expanded_acts.len(), path = %open_path.display(), "Acts written");
-    println!("Wrote {} acts to {}", expanded_acts.len(), open_path.display());
     Ok(())
 }
 
@@ -242,9 +280,12 @@ pub fn read_acts_cmd(
 
 /// Move completed/cancelled acts from `<charter>.open.ttl` to `<charter>.closed.ttl`.
 ///
-/// If `file` is given, only that charter is processed. Otherwise the whole workspace is scanned.
+/// If `file` is given, only that charter is processed. If `scope` is given, resolves a
+/// domain reference (e.g. `"health"` or `"health/exercise"`) to a charter file. Otherwise
+/// the whole workspace is scanned.
 pub fn archive_acts(
     ctx: &CommandContext,
+    scope: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
@@ -252,6 +293,14 @@ pub fn archive_acts(
 
     let charter_paths: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
+    } else if let Some(s) = scope {
+        use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
+        // TODO: filter to matching plan tree only when scope is Plan variant
+        match resolve_domain_ref(&ctx.data_dir, s)? {
+            ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
+                vec![file_path]
+            }
+        }
     } else {
         let store = FsWorkspaceStore::new(&ctx.data_dir);
         store
@@ -323,10 +372,6 @@ pub fn archive_acts(
 // ============================================================================
 // Private helpers
 // ============================================================================
-
-fn resolve_actions_path(ctx: &CommandContext, file: &Option<PathBuf>) -> PathBuf {
-    ctx.resolve_action_file(file.as_ref())
-}
 
 fn read_actions_content(path: &Path) -> Result<String, String> {
     if path.exists() {

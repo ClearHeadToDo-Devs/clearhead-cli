@@ -161,15 +161,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::file::patch_file(primary, secondary, *write),
         },
         Verb::Archive { target } => match target {
-            argparser::ArchiveTarget::Plans {
-                file,
-                log_dir,
-                dry_run,
-            } => commands::plan::archive_plans(&ctx, file, log_dir, *dry_run),
-            argparser::ArchiveTarget::Acts {
-                file,
-                dry_run,
-            } => commands::act::archive_acts(&ctx, file, *dry_run),
+            argparser::ArchiveTarget::Plans { scope, file, dry_run } => {
+                commands::plan::archive_plans(&ctx, scope, file, *dry_run)
+            }
+            argparser::ArchiveTarget::Acts { scope, file, dry_run } => {
+                commands::act::archive_acts(&ctx, scope, file, *dry_run)
+            }
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {

@@ -510,72 +510,112 @@ pub fn delete_plan(
 
 pub fn archive_plans(
     ctx: &CommandContext,
+    scope: &Option<String>,
     file: &Option<std::path::PathBuf>,
-    log_dir: &Option<std::path::PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    use crate::environment_reader::ensure_dir_exists;
+    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+    use std::path::PathBuf;
 
-    let input_file = ctx.resolve_action_file(file.as_ref());
-    debug!(input_file = %input_file.display(), dry_run = dry_run, "Executing Archive Plans");
+    let charter_files: Vec<PathBuf> = if let Some(f) = file {
+        vec![f.clone()]
+    } else if let Some(s) = scope {
+        use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
+        // TODO: filter to matching plan tree only when scope is Plan variant
+        match resolve_domain_ref(&ctx.data_dir, s)? {
+            ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
+                vec![file_path]
+            }
+        }
+    } else {
+        FsWorkspaceStore::new(&ctx.data_dir)
+            .list_objectives()
+            .map_err(|e| format!("Failed to list workspace: {}", e))?
+            .into_iter()
+            .map(|o| ctx.data_dir.join(&o.key))
+            .collect()
+    };
 
-    let content = fs::read_to_string(&input_file)
-        .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
+    debug!(dry_run = dry_run, "Executing Archive Plans");
 
-    if dry_run {
-        let all_actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
-        let (_, archived_actions) =
+    let mut total_archived = 0usize;
+    let mut charters_touched = 0usize;
+
+    for source in &charter_files {
+        if !source.exists() {
+            continue;
+        }
+
+        let content = fs::read_to_string(source)
+            .map_err(|e| format!("Failed to read '{}': {}", source.display(), e))?;
+
+        let all_actions = clearhead_cli::parse_actions(&content)?;
+        let (active_actions, archived_actions) =
             clearhead_cli::archive::partition_actions_for_archive(&all_actions);
 
         if archived_actions.is_empty() {
-            println!("No completed action trees to archive.");
-            return Ok(());
+            continue;
         }
 
-        println!(
-            "Would archive {} actions from {}:",
-            archived_actions.len(),
-            input_file.display()
-        );
-        for action in &archived_actions {
-            if action.parent_id.is_none() {
-                println!("  - {} (tree)", action.name);
+        let dest = completed_archive_path(source);
+
+        if dry_run {
+            println!(
+                "Would archive {} action(s) from {} to {}",
+                archived_actions.len(),
+                source.display(),
+                dest.display()
+            );
+            for action in &archived_actions {
+                if action.parent_id.is_none() {
+                    println!("  - {} (tree)", action.name);
+                }
             }
+        } else {
+            // Append archived actions to destination
+            let mut dest_actions = load_file(&dest)?;
+            dest_actions.extend(archived_actions.iter().cloned());
+            save_file(&dest, &dest_actions)?;
+
+            // Write active actions back to source
+            save_file(source, &active_actions)?;
+
+            info!(
+                count = archived_actions.len(),
+                source = %source.display(),
+                dest = %dest.display(),
+                "Plans archived"
+            );
+            println!("Archived {} plan(s) to {}", archived_actions.len(), dest.display());
         }
-        return Ok(());
+
+        total_archived += archived_actions.len();
+        charters_touched += 1;
     }
 
-    let resolved_log_dir = log_dir.clone().unwrap_or_else(|| {
-        if input_file.to_string_lossy().contains(".clearhead") {
-            input_file.parent().unwrap().join("logs")
-        } else {
-            ctx.data_dir.join("logs")
-        }
-    });
+    if total_archived == 0 {
+        println!("Nothing to archive.");
+    } else if dry_run && charters_touched > 1 {
+        println!(
+            "Would archive {} plan(s) across {} charter(s).",
+            total_archived, charters_touched
+        );
+    } else if !dry_run && charters_touched > 1 {
+        println!(
+            "Archived {} plan(s) across {} charter(s).",
+            total_archived, charters_touched
+        );
+    }
 
-    debug!(log_dir = %resolved_log_dir.display(), "Log directory resolved for archiving");
-
-    ensure_dir_exists(&resolved_log_dir)
-        .map_err(|e| format!("Failed to create log directory: {}", e))?;
-
-    let (active_text, result) =
-        clearhead_cli::archive::archive_actions(&content, &input_file, &resolved_log_dir)?;
-
-    fs::write(&input_file, active_text).map_err(|e| {
-        format!(
-            "Failed to update source file '{}': {}",
-            input_file.display(),
-            e
-        )
-    })?;
-
-    info!(archived_count = result.archived_count, log_path = %result.log_path.display(), "Actions archived successfully");
-    println!(
-        "Archived {} actions to {}",
-        result.archived_count,
-        result.log_path.display()
-    );
     Ok(())
+}
+
+fn completed_archive_path(source: &std::path::Path) -> std::path::PathBuf {
+    let stem = source.file_stem().unwrap_or_default().to_string_lossy();
+    source
+        .parent()
+        .unwrap_or(std::path::Path::new(""))
+        .join(format!("{}.completed.actions", stem))
 }
 
 pub fn export_plans(

@@ -5,6 +5,7 @@ pub mod complete;
 pub mod file;
 pub mod plan;
 pub mod query;
+pub mod resolver;
 pub mod service;
 
 use std::fs;

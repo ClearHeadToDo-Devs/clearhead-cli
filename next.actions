@@ -1,8 +1,0 @@
-[ ] an out of workspace file  ^2026-01-30T23:15 #019c12e7-b71f-7112-a871-b4a9b231d966
-[x] delete sql_queries.rs test file (9 permanently-ignored tests, SQL-over-SPARQL layer gone)  ^2026-03-18T00:00 #019d0456-59ea-7263-b4fa-4d5a272122ea
-[x] verify or delete create_database() legacy alias in graph/mod.rs  $ has callers in lib.rs, keeping $ ^2026-03-18T21:24 #019d0456-59ea-7263-b4fa-4d656df29cb6
-[x] verify or delete build_raw_where_query / build_where_query in graph/query.rs (possible SQL-era leftovers)  $ has callers in lib.rs + commands/query.rs, keeping $ ^2026-03-18T21:24 #019d0456-59ea-7263-b4fa-4d7adceed2c2
-[x] fix _use_plan dead function smell in graph/serialize.rs (remove unused Plan import instead)  ^2026-03-18T21:24 #019d0456-59ea-7263-b4fa-4d8de92d24e7
-[ ] add --help text clarifying complete plan (DSL checkbox) vs complete act (sidecar) distinction  ^2026-03-18T21:24 #019d0456-59ea-7263-b4fa-4d9c02d8dc21
-[x] migrate PlannedAct storage from JSON-LD sidecars to per-charter .open.ttl / .closed.ttl Turtle files  %2026-03-18T21:24 ^2026-03-18T21:24 #019d0456-59ea-7263-b4fa-4da4cf2c03d7
-[x] update project_pending_cleanup.md memory — items 1-4 all resolved, only UX help text remains  %2026-03-18T21:24 ^2026-03-18T21:24 #019d0456-8012-7ca3-835a-7acfda27840e

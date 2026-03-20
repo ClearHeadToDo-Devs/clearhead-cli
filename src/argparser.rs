@@ -595,14 +595,14 @@ pub enum PatchTarget {
 
 #[derive(Subcommand)]
 pub enum ArchiveTarget {
-    /// Move completed plans to a log file
+    /// Move completed plans to a <charter>.completed.actions file. Workspace-wide by default.
     Plans {
-        /// File to archive from. If not provided, uses the default file
-        file: Option<PathBuf>,
+        /// Domain path to scope: "health", "health/exercise", etc. Workspace-wide if omitted.
+        scope: Option<String>,
 
-        /// Directory to store logs (defaults to logs/ in data_dir)
-        #[arg(short, long)]
-        log_dir: Option<PathBuf>,
+        /// Escape hatch: explicit file path for out-of-workspace use.
+        #[arg(long, conflicts_with = "scope")]
+        file: Option<PathBuf>,
 
         /// Dry run: show what would be archived without moving
         #[arg(long)]
@@ -611,7 +611,11 @@ pub enum ArchiveTarget {
 
     /// Move completed/cancelled acts from open.ttl to closed.ttl. Workspace-wide by default.
     Acts {
-        /// Limit to a specific charter's .actions file. If not provided, scans the whole workspace.
+        /// Domain path to scope: "health", "health/exercise", etc. Workspace-wide if omitted.
+        scope: Option<String>,
+
+        /// Escape hatch: explicit file path for out-of-workspace use.
+        #[arg(long, conflicts_with = "scope")]
         file: Option<PathBuf>,
 
         /// Dry run: show counts without writing
