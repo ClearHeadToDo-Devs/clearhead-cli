@@ -2,8 +2,8 @@ use std::fs;
 use tracing::{debug, info};
 
 use crate::argparser;
-use crate::commands::{CommandContext, load_file, parse_format, read_input, save_file, try_emit};
-use clearhead_cli::telemetry::{TelemetryEvent, event_from_field_change};
+use crate::commands::{load_file, parse_format, read_input, save_file, try_emit, CommandContext};
+use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
 
 /// Derive the charter name used in the workspace graph from a discovered charter.
 ///
@@ -45,7 +45,11 @@ fn collect_charter_tree(
             let title_lower = charter.title.to_lowercase();
             if title_lower == current {
                 result.push(charter.clone());
-            } else if charter.parent.as_deref().map(|p| p.to_lowercase()).as_deref()
+            } else if charter
+                .parent
+                .as_deref()
+                .map(|p| p.to_lowercase())
+                .as_deref()
                 == Some(&current)
             {
                 result.push(charter.clone());
@@ -146,7 +150,11 @@ pub fn read_plans(
             let plan_count = combined_model.all_plans().len();
             info!(plan_count, "Loaded domain model for table");
             if plan_count == 0 {
-                let kind = if found.is_explicit { "explicit" } else { "implicit" };
+                let kind = if found.is_explicit {
+                    "explicit"
+                } else {
+                    "implicit"
+                };
                 println!(
                     "Charter '{}' resolved ({}, source: {}, graph name: '{}') but contains no plans.",
                     title, kind, found.source_key, graph_name
@@ -215,7 +223,10 @@ pub fn read_plans(
 
         if output_format == clearhead_cli::OutputFormat::Table {
             let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
-            info!(plan_count = model.all_plans().len(), "Loaded workspace domain model for table");
+            info!(
+                plan_count = model.all_plans().len(),
+                "Loaded workspace domain model for table"
+            );
             println!(
                 "{}",
                 clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
@@ -352,8 +363,12 @@ pub fn add_plan(
     actions.push(new_action.clone());
 
     if dry_run {
-        let preview =
-            clearhead_cli::format(&vec![new_action], clearhead_cli::OutputFormat::Actions, None, None)?;
+        let preview = clearhead_cli::format(
+            &vec![new_action],
+            clearhead_cli::OutputFormat::Actions,
+            None,
+            None,
+        )?;
         println!("{}", preview);
     } else {
         save_file(&input_file, &actions)?;
@@ -380,7 +395,7 @@ pub fn update_plan(
     fields: &argparser::ActionFields,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_cli::{ActionUpdate, apply_updates, resolve_reference};
+    use clearhead_cli::{apply_updates, resolve_reference, ActionUpdate};
 
     let (input_file, mut actions) = if let Some(path) = file {
         let f = ctx.resolve_action_file(Some(path));
@@ -520,7 +535,7 @@ pub fn archive_plans(
     let charter_files: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
     } else if let Some(s) = scope {
-        use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
+        use crate::commands::resolver::{resolve_domain_ref, ResolvedScope};
         // TODO: filter to matching plan tree only when scope is Plan variant
         match resolve_domain_ref(&ctx.data_dir, s)? {
             ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
@@ -586,7 +601,11 @@ pub fn archive_plans(
                 dest = %dest.display(),
                 "Plans archived"
             );
-            println!("Archived {} plan(s) to {}", archived_actions.len(), dest.display());
+            println!(
+                "Archived {} plan(s) to {}",
+                archived_actions.len(),
+                dest.display()
+            );
         }
 
         total_archived += archived_actions.len();
@@ -619,24 +638,53 @@ fn completed_archive_path(source: &std::path::Path) -> std::path::PathBuf {
 }
 
 pub fn export_plans(
-    _ctx: &CommandContext,
-    file: &Option<std::path::PathBuf>,
+    ctx: &CommandContext,
+    reference: &Option<String>,
     output: &Option<std::path::PathBuf>,
     open_only: bool,
+    recursive: bool,
 ) -> Result<(), String> {
-    debug!(input_file = ?file, output = ?output, open_only = open_only, "Executing Export Plans");
-    let content = read_input(file.as_ref())?;
-    let actions = clearhead_cli::parse_actions(&content)?;
-    let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+    use crate::environment_reader::resolve_file_path;
+    use clearhead_core::reference::{
+        filter_model_for_act, filter_model_for_charter, filter_model_for_plan, resolve_reference,
+        ReferenceOptions, ReferenceTarget,
+    };
 
-    // Merge open acts if we have a file path (iCal = upcoming only, no closed acts needed)
-    if let Some(path) = file {
-        let open_path = clearhead_core::open_acts_path(path);
-        let loaded_acts = clearhead_core::read_acts(&open_path)?;
-        if !loaded_acts.is_empty() {
-            clearhead_core::merge_acts_into_model(&mut model, loaded_acts);
+    debug!(reference = ?reference, output = ?output, open_only = open_only, recursive = recursive, "Executing Export Plans");
+
+    let model = if let Some(reference) = reference {
+        if reference == "-" {
+            let content = read_input(None)?;
+            let actions = clearhead_cli::parse_actions(&content)?;
+            clearhead_core::workspace::actions::convert::from_actions(&actions)
+        } else if reference.ends_with(".actions") {
+            let resolved = resolve_file_path(reference, &ctx.data_dir);
+            let content = read_input(Some(&resolved))?;
+            let actions = clearhead_cli::parse_actions(&content)?;
+            let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+
+            let open_path = clearhead_core::open_acts_path(&resolved);
+            let closed_path = clearhead_core::closed_acts_path(&resolved);
+            let mut loaded_acts = clearhead_core::read_acts(&open_path)?;
+            let closed_acts = clearhead_core::read_acts(&closed_path)?;
+            loaded_acts.extend(closed_acts);
+            if !loaded_acts.is_empty() {
+                clearhead_core::merge_acts_into_model(&mut model, loaded_acts);
+            }
+            model
+        } else {
+            let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
+            let target = resolve_reference(&model, reference, &ReferenceOptions::default())
+                .map_err(|e| e.to_string())?;
+            match target {
+                ReferenceTarget::Charter(id) => filter_model_for_charter(&model, id, recursive),
+                ReferenceTarget::Plan(id) => filter_model_for_plan(&model, id),
+                ReferenceTarget::Act(id) => filter_model_for_act(&model, id),
+            }
         }
-    }
+    } else {
+        clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?
+    };
 
     let icalendar = clearhead_cli::format_as_icalendar(&model, open_only)?;
 

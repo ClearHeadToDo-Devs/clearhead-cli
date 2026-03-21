@@ -669,9 +669,11 @@ pub enum CancelTarget {
 #[derive(Subcommand)]
 pub enum ExportTarget {
     /// Export plans to calendar format (iCalendar)
+    #[command(alias = "calendar")]
     Plans {
-        /// File to export (.actions format). If not provided, reads from stdin
-        file: Option<PathBuf>,
+        /// Reference to export (charter/plan/act alias or UUID, or .actions file)
+        #[arg(value_name = "REFERENCE")]
+        reference: Option<String>,
 
         /// Output file path. If not provided, writes to stdout
         #[arg(short, long)]
@@ -680,6 +682,10 @@ pub enum ExportTarget {
         /// Only export open plans (pending, in-progress, blocked)
         #[arg(long)]
         open_only: bool,
+
+        /// Include sub-charters when exporting a charter reference
+        #[arg(long, requires = "reference")]
+        recursive: bool,
     },
 }
 

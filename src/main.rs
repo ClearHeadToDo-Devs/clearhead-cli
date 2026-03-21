@@ -170,10 +170,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {
-                file,
+                reference,
                 output,
                 open_only,
-            } => commands::plan::export_plans(&ctx, file, output, *open_only),
+                recursive,
+            } => commands::plan::export_plans(&ctx, reference, output, *open_only, *recursive),
         },
         Verb::Start { target } => match target {
             argparser::StartTarget::Lsp => commands::service::start_lsp(),

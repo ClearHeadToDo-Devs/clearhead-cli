@@ -69,7 +69,9 @@ fn test_export_with_recurrence() {
         .assert()
         .success()
         .stdout(predicate::str::contains("SUMMARY:Daily standup"))
-        .stdout(predicate::str::contains("RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR"));
+        .stdout(predicate::str::contains(
+            "RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR",
+        ));
 }
 
 #[test]
@@ -88,7 +90,9 @@ fn test_export_with_description_and_priority() {
         .assert()
         .success()
         .stdout(predicate::str::contains("SUMMARY:Important meeting"))
-        .stdout(predicate::str::contains("DESCRIPTION:Discuss project roadmap"))
+        .stdout(predicate::str::contains(
+            "DESCRIPTION:Discuss project roadmap",
+        ))
         .stdout(predicate::str::contains("PRIORITY:1"));
 }
 
@@ -119,7 +123,8 @@ fn test_export_status_mapping() {
 "#;
     let file = env.write_actions("status.actions", actions);
 
-    let output = env.command()
+    let output = env
+        .command()
         .arg("export")
         .arg("plans")
         .arg(&file)
@@ -153,7 +158,8 @@ fn test_export_open_only_filter() {
 "#;
     let file = env.write_actions("filter.actions", actions);
 
-    let output = env.command()
+    let output = env
+        .command()
         .arg("export")
         .arg("plans")
         .arg(&file)
@@ -187,7 +193,8 @@ fn test_export_skips_actions_without_dates() {
 "#;
     let file = env.write_actions("nodates.actions", actions);
 
-    let output = env.command()
+    let output = env
+        .command()
         .arg("export")
         .arg("plans")
         .arg(&file)
@@ -237,6 +244,7 @@ fn test_export_from_stdin() {
     env.command()
         .arg("export")
         .arg("plans")
+        .arg("-")
         .write_stdin(actions)
         .assert()
         .success()
@@ -255,7 +263,8 @@ fn test_export_multiple_recurring_patterns() {
 "#;
     let file = env.write_actions("recurring.actions", actions);
 
-    let output = env.command()
+    let output = env
+        .command()
         .arg("export")
         .arg("plans")
         .arg(&file)
@@ -279,7 +288,8 @@ fn test_export_default_duration() {
     let actions = r#"[ ] Meeting without duration @2026-01-20T14:00"#;
     let file = env.write_actions("test.actions", actions);
 
-    let output = env.command()
+    let output = env
+        .command()
         .arg("export")
         .arg("plans")
         .arg(&file)
@@ -305,7 +315,8 @@ fn test_export_empty_calendar() {
 "#;
     let file = env.write_actions("nodates.actions", actions);
 
-    let output = env.command()
+    let output = env
+        .command()
         .arg("export")
         .arg("plans")
         .arg(&file)
