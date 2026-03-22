@@ -54,15 +54,13 @@ pub fn expand_acts(
         let open_path = acts::open_acts_path(path);
         let existing_acts = acts::read_acts(&open_path)?;
         if !existing_acts.is_empty() {
-            acts::merge_acts_into_model(&mut model, existing_acts);
+            acts::merge_acts_into_model(&mut model, existing_acts.clone());
         }
 
+        let existing_acts_ids: HashSet<uuid::Uuid> = existing_acts.iter().map(|a| a.id).collect();
+
         // Collect plan IDs from this file
-        let plan_ids: HashSet<uuid::Uuid> = model
-            .all_plans()
-            .iter()
-            .map(|p| p.id)
-            .collect();
+        let plan_ids: HashSet<uuid::Uuid> = model.all_plans().iter().map(|p| p.id).collect();
 
         if plan_ids.is_empty() {
             continue;
@@ -72,24 +70,35 @@ pub fn expand_acts(
         model.expand_recurring_plans(days);
 
         let expanded_acts: Vec<PlannedAct> = model.all_acts().into_iter().cloned().collect();
+        let expanded_act_ids: HashSet<uuid::Uuid> = expanded_acts.iter().map(|a| a.id).collect();
 
         if dry_run {
-            println!("Would write {} acts to {}", expanded_acts.len(), open_path.display());
-        } else {
+            println!(
+                "Would write {} acts to {}",
+                expanded_acts.len(),
+                open_path.display()
+            );
+        } else if existing_acts_ids != expanded_act_ids {
             acts::write_acts_for_plans(&expanded_acts, &plan_ids, &open_path)?;
             info!(count = expanded_acts.len(), path = %open_path.display(), "Acts written");
-            println!("Wrote {} acts to {}", expanded_acts.len(), open_path.display());
+            println!(
+                "Wrote {} acts to {}",
+                expanded_acts.len(),
+                open_path.display()
+            );
+            total_written += expanded_acts.len();
+            charters_touched += 1;
         }
-
-        total_written += expanded_acts.len();
-        charters_touched += 1;
     }
 
     if charters_touched > 1 {
         if dry_run {
             println!("Would expand acts across {} charter(s).", charters_touched);
         } else {
-            println!("Expanded {} act(s) across {} charter(s).", total_written, charters_touched);
+            println!(
+                "Expanded {} act(s) across {} charter(s).",
+                total_written, charters_touched
+            );
         }
     }
 
@@ -124,7 +133,11 @@ pub fn complete_act(
     };
 
     if dry_run {
-        println!("Would complete act {} ({})", &act_id.to_string()[..8], act_id);
+        println!(
+            "Would complete act {} ({})",
+            &act_id.to_string()[..8],
+            act_id
+        );
         return Ok(());
     }
 
@@ -318,10 +331,9 @@ pub fn archive_acts(
         let open_path = acts::open_acts_path(actions_path);
         let all_open = acts::read_acts(&open_path)?;
 
-        let (to_close, to_keep): (Vec<PlannedAct>, Vec<PlannedAct>) =
-            all_open.into_iter().partition(|a| {
-                matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled)
-            });
+        let (to_close, to_keep): (Vec<PlannedAct>, Vec<PlannedAct>) = all_open
+            .into_iter()
+            .partition(|a| matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled));
 
         if to_close.is_empty() {
             continue;
@@ -375,8 +387,7 @@ pub fn archive_acts(
 
 fn read_actions_content(path: &Path) -> Result<String, String> {
     if path.exists() {
-        fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
+        fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
     } else {
         Ok(String::new())
     }
@@ -401,7 +412,10 @@ fn find_and_load_open_acts(
 }
 
 /// Scan all `*.open.ttl` files in the workspace for an act matching `query`.
-fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, Vec<PlannedAct>), String> {
+fn find_act_in_open_files(
+    data_dir: &Path,
+    query: &str,
+) -> Result<(PathBuf, Vec<PlannedAct>), String> {
     use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
 
     let store = FsWorkspaceStore::new(data_dir);
