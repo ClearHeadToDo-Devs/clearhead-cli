@@ -1,8 +1,13 @@
 use std::path::{Path, PathBuf};
 
 pub enum ResolvedScope {
-    Charter { file_path: PathBuf },
-    Plan    { file_path: PathBuf, _plan_query: String },
+    Charter {
+        file_path: PathBuf,
+    },
+    Plan {
+        file_path: PathBuf,
+        _plan_query: String,
+    },
 }
 
 /// Resolve a domain reference string like `"health"` or `"health/exercise"` to a
