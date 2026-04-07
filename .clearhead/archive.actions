@@ -1,0 +1,8 @@
+[-] build out the full archive pipeline per naming conventions  ~ ^2026-02-06T14:17 #019c3508-65a6-7851-9662-8275fc744086
+        >[x] research next steps  !2 %2026-03-20T00:00 ^2026-03-07T17:36 #019ccb16-ec0f-7222-b4a5-57f578c8b251
+        >[x] update spec to handle completed plans  %2026-03-07T17:50 ^2026-03-07T17:45 #019ccb1f-5784-7f20-a558-12eaf941750f
+        >[ ] implement workspace reference syntax resolver  $ charter/plan/act path notation per reference_syntax.md — needed before archive subcommands can accept domain path args $ ^2026-03-20T00:00 #019d0eed-d0d7-74d2-b492-5118a38be600
+        >[ ] redesign archive subcommands to accept optional domain reference arg  $ replace --file with optional positional domain path (e.g. health, health/exercise); keep --file as escape hatch for out-of-workspace files only $ ^2026-03-20T00:00 #019d0eed-d0d7-74d2-b492-512d681a6a68
+        >[ ] implement archive plans with act cascade  $ workspace-wide by default; complete overdue acts (plan is king), drop projected NotStarted acts; [x] on recurring plan = retired $ ^2026-03-20T00:00 #019d0eed-d0d7-74d2-b492-513882e66cbc
+        >[ ] implement archive charters  $ blocks on open plans with actionable error; if clean cascades acts+plans then collapses to root archive.ttl and removes originals; --force to override $ ^2026-03-20T00:00 #019d0eed-d0d7-74d2-b492-514d232b752c
+        >[ ] build out an lsp hook that will auto-archive closed actions and their plans  ^2026-02-11T21:01 #019c503a-0d1a-7270-aef5-abe46f99dd1d
