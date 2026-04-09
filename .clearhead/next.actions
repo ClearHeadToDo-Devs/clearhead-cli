@@ -8,3 +8,4 @@
 [ ] Add Support for Project-local plans  ^2026-03-31T00:39 #019d42d5-a705-7b32-bc93-22d9fb7154d7
         >[ ] get the recursive search to define between user-scoped and project scoped  ^2026-03-31T00:39 #019d42d5-a705-7b32-bc93-22e0db9cd078
         >[ ] update the work to enable our structures whether user level or project level  ^2026-03-31T00:39 #019d42d5-a705-7b32-bc93-22f19dd8949d
+[ ] usecase: searching for open actions due today or before  ^2026-04-08T17:54 #019d6fbb-fccb-78c1-839c-9623f5aba2d5
