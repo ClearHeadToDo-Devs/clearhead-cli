@@ -122,17 +122,23 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::act::update_act(&ctx, query, scheduled_at, duration, file, *dry_run),
         },
         Verb::Complete { target } => match target {
-            argparser::CompleteTarget::Plan { query, file, dry_run } => {
-                commands::plan::complete_plan(&ctx, query, file, *dry_run)
-            }
-            argparser::CompleteTarget::Act { query, file, dry_run } => {
-                commands::act::complete_act(&ctx, query, file, *dry_run)
-            }
+            argparser::CompleteTarget::Plan {
+                query,
+                file,
+                dry_run,
+            } => commands::plan::complete_plan(&ctx, query, file, *dry_run),
+            argparser::CompleteTarget::Act {
+                query,
+                file,
+                dry_run,
+            } => commands::act::complete_act(&ctx, query, file, *dry_run),
         },
         Verb::Delete { target } => match target {
-            argparser::DeleteTarget::Plan { query, file, dry_run } => {
-                commands::plan::delete_plan(&ctx, query, file, *dry_run)
-            }
+            argparser::DeleteTarget::Plan {
+                query,
+                file,
+                dry_run,
+            } => commands::plan::delete_plan(&ctx, query, file, *dry_run),
         },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {
@@ -161,12 +167,16 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::file::patch_file(primary, secondary, *write),
         },
         Verb::Archive { target } => match target {
-            argparser::ArchiveTarget::Plans { scope, file, dry_run } => {
-                commands::plan::archive_plans(&ctx, scope, file, *dry_run)
-            }
-            argparser::ArchiveTarget::Acts { scope, file, dry_run } => {
-                commands::act::archive_acts(&ctx, scope, file, *dry_run)
-            }
+            argparser::ArchiveTarget::Plans {
+                scope,
+                file,
+                dry_run,
+            } => commands::plan::archive_plans(&ctx, scope, file, *dry_run),
+            argparser::ArchiveTarget::Acts {
+                scope,
+                file,
+                dry_run,
+            } => commands::act::archive_acts(&ctx, scope, file, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {
@@ -184,18 +194,29 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 commands::service::sync_events(&ctx, file, *dry_run)
             }
         },
-        Verb::Query { sparql, where_clause, format } => {
-            commands::query::query_workspace(&ctx, sparql.as_deref(), where_clause.as_deref(), *format)
-        }
+        Verb::Query {
+            sparql,
+            where_clause,
+            format,
+        } => commands::query::query_workspace(
+            &ctx,
+            sparql.as_deref(),
+            where_clause.as_deref(),
+            *format,
+        ),
         Verb::Expand { target } => match target {
-            argparser::ExpandTarget::Acts { file, days, dry_run } => {
-                commands::act::expand_acts(&ctx, file, *days, *dry_run)
-            }
+            argparser::ExpandTarget::Acts {
+                file,
+                days,
+                dry_run,
+            } => commands::act::expand_acts(&ctx, file, *days, *dry_run),
         },
         Verb::Cancel { target } => match target {
-            argparser::CancelTarget::Act { query, file, dry_run } => {
-                commands::act::cancel_act(&ctx, query, file, *dry_run)
-            }
+            argparser::CancelTarget::Act {
+                query,
+                file,
+                dry_run,
+            } => commands::act::cancel_act(&ctx, query, file, *dry_run),
         },
     }
 }
