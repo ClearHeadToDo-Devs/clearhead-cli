@@ -25,18 +25,11 @@ pub fn expand_acts(
     days: u32,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
     let charter_paths: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
     } else {
-        let store = FsWorkspaceStore::new(&ctx.data_dir);
-        store
-            .list_objectives()
+        clearhead_core::list_action_files(&ctx.data_dir)
             .map_err(|e| format!("Failed to list workspace: {}", e))?
-            .into_iter()
-            .map(|obj| ctx.data_dir.join(&obj.key))
-            .collect()
     };
 
     let mut total_written = 0usize;
@@ -48,7 +41,12 @@ pub fn expand_acts(
             continue;
         }
         let actions = clearhead_cli::parse_actions(&content)?;
-        let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
+        let relative = path.strip_prefix(&data_root).unwrap_or(path.as_path());
+        let charter_name = clearhead_core::infer_charter_name(relative)
+            .unwrap_or_else(|| "unknown".to_string());
+        let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(&actions, charter_name);
+        let mut model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
 
         // Load existing open acts and merge them in
         let open_path = acts::open_acts_path(path);
@@ -302,8 +300,6 @@ pub fn archive_acts(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
     let charter_paths: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
     } else if let Some(s) = scope {
@@ -315,13 +311,8 @@ pub fn archive_acts(
             }
         }
     } else {
-        let store = FsWorkspaceStore::new(&ctx.data_dir);
-        store
-            .list_objectives()
+        clearhead_core::list_action_files(&ctx.data_dir)
             .map_err(|e| format!("Failed to list workspace: {}", e))?
-            .into_iter()
-            .map(|obj| ctx.data_dir.join(&obj.key))
-            .collect()
     };
 
     let mut total_archived = 0usize;
@@ -416,15 +407,10 @@ fn find_act_in_open_files(
     data_dir: &Path,
     query: &str,
 ) -> Result<(PathBuf, Vec<PlannedAct>), String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
-    let store = FsWorkspaceStore::new(data_dir);
-    let objectives = store
-        .list_objectives()
+    let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
-    for obj in &objectives {
-        let actions_path = data_dir.join(&obj.key);
+    for actions_path in action_files {
         let open_path = acts::open_acts_path(&actions_path);
         if !open_path.exists() {
             continue;
@@ -464,16 +450,11 @@ fn collect_all_acts(
         return Ok(result);
     }
 
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
-    let store = FsWorkspaceStore::new(&ctx.data_dir);
-    let objectives = store
-        .list_objectives()
+    let action_files = clearhead_core::list_action_files(&ctx.data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
     let mut all = Vec::new();
-    for obj in &objectives {
-        let actions_path = ctx.data_dir.join(&obj.key);
+    for actions_path in action_files {
         all.extend(acts::read_acts(&acts::open_acts_path(&actions_path))?);
         if !open_only {
             all.extend(acts::read_acts(&acts::closed_acts_path(&actions_path))?);

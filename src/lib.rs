@@ -8,45 +8,26 @@ use tree_sitter::Tree;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
-    // Domain models
     ActPhase,
-    // Core entities
     Action,
     ActionList,
     ActionState,
-
-    // Charter types
     Charter,
-
     DomainModel,
-
     OutputFormat,
-
     ParsedDocument,
-
     Plan,
     PlannedAct,
-
-    // Source metadata
     SourceMetadata,
     SourceRange,
-    // Diff types
-    diff as core_diff,
-
-    // Format types and functions
     format,
-    // Charter functions
     format_charter,
     implicit_charter,
-    // Parsing types and functions
     parse_actions,
     parse_charter,
     parse_document,
     parse_tree,
-    // Patch function
     patch_action_list,
-    // Sync types
-    sync as core_sync,
 };
 
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
@@ -108,56 +89,17 @@ pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
 }
 
 /// Load all workspace .actions files as a multi-charter DomainModel.
-///
-/// Each file becomes one Charter; title derived from file path.
-/// Use this for Table format — the ActionList path loses charter hierarchy.
 pub fn load_workspace_domain_model(
     data_dir: &std::path::Path,
 ) -> Result<clearhead_core::DomainModel, String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
-    let store = FsWorkspaceStore::new(data_dir);
-    let objectives = store
-        .list_objectives()
-        .map_err(|e| format!("Failed to list workspace objectives: {}", e))?;
-
-    let mut all_charters = Vec::new();
-    for obj in &objectives {
-        let model = store
-            .load_domain_model(obj)
-            .map_err(|e| format!("Failed to load '{}': {}", obj.key, e))?;
-        all_charters.extend(model.charters);
-    }
-    Ok(clearhead_core::DomainModel {
-        objectives: vec![],
-        charters: all_charters,
-    })
+    clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())
 }
 
-/// Load all actions from a workspace directory via FsWorkspaceStore.
-///
-/// Discovers all .actions files and merges their contents into a flat ActionList.
+/// Load all actions from the workspace as a flat ActionList.
 pub fn load_workspace_actions(data_dir: &std::path::Path) -> Result<ActionList, String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
     use clearhead_core::workspace::actions::convert;
-
-    let store = FsWorkspaceStore::new(data_dir);
-    let objectives = store
-        .list_objectives()
-        .map_err(|e| format!("Failed to list workspace objectives: {}", e))?;
-
-    let all_actions = objectives
-        .iter()
-        .filter_map(|obj| {
-            store
-                .load_domain_model(obj)
-                .ok()
-                .map(|m| convert::to_action_list(&m))
-        })
-        .flatten()
-        .collect();
-
-    Ok(all_actions)
+    let model = clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())?;
+    Ok(convert::to_action_list(&model))
 }
 
 /// Filter actions using a SPARQL query
@@ -168,7 +110,8 @@ pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionL
     let store = clearhead_core::graph::create_database()
         .map_err(|e| format!("Failed to create store: {}", e))?;
 
-    let model = convert::from_actions(actions);
+    let charter = convert::from_actions_with_charter(actions, "_query".to_string());
+    let model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
     clearhead_core::graph::load_domain_model(&store, &model)
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 

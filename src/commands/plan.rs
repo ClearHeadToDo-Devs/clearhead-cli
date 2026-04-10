@@ -5,55 +5,43 @@ use crate::argparser;
 use crate::commands::{load_file, parse_format, read_input, save_file, try_emit, CommandContext};
 use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
 
-/// Derive the charter name used in the workspace graph from a discovered charter.
+/// Returns the key name used in the workspace graph for a charter.
 ///
-/// Explicit charters (from .md files) may have a human-readable title like
-/// "Build the ClearHead Platform", but the workspace graph is built from .actions
-/// files where the charter name is inferred from the directory or file stem
-/// (e.g., "build_clearhead"). This function returns the inferred name so that
-/// SPARQL queries and in-memory filters match what's actually in the graph/model.
-fn charter_graph_name(discovered: &clearhead_core::DiscoveredCharter) -> String {
-    if !discovered.is_explicit {
-        return discovered.charter.title.clone();
-    }
-    let path = std::path::Path::new(&discovered.source_key);
-    if path.file_name().map(|n| n == "README.md").unwrap_or(false) {
-        // "build_clearhead/README.md" → "build_clearhead"
-        path.parent()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or(&discovered.source_key)
-            .to_string()
-    } else {
-        // "health.md" → "health"
-        path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(&discovered.source_key)
-            .to_string()
-    }
+/// Prefers `alias` (the canonical filesystem/graph key) over `title` (which may
+/// be a human-readable string like "Build the ClearHead Platform").
+fn charter_graph_name(charter: &clearhead_core::Charter) -> String {
+    charter
+        .alias
+        .as_deref()
+        .unwrap_or(&charter.title)
+        .to_string()
 }
 
-/// Collect the charter with the given title plus all its descendants (transitively).
+/// Collect the charter with the given key plus all its descendants (transitively).
+///
+/// `root_key` must be the machine key (alias or inferred name) — the same value
+/// returned by `charter_graph_name`. Comparison uses `alias.unwrap_or(&title)`
+/// because `charter.parent` always stores machine keys, not display titles.
 fn collect_charter_tree(
     charters: &[clearhead_core::Charter],
-    root_title: &str,
+    root_key: &str,
 ) -> Vec<clearhead_core::Charter> {
     let mut result = Vec::new();
-    let mut queue = vec![root_title.to_string()];
+    let mut queue = vec![root_key.to_string()];
+    let mut visited = std::collections::HashSet::new();
+
     while let Some(current) = queue.pop() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
         for charter in charters {
-            let title_lower = charter.title.to_lowercase();
-            if title_lower == current {
+            let key = charter.alias.as_deref().unwrap_or(&charter.title).to_lowercase();
+            let parent_key = charter.parent.as_deref().map(str::to_lowercase);
+            if key == current {
                 result.push(charter.clone());
-            } else if charter
-                .parent
-                .as_deref()
-                .map(|p| p.to_lowercase())
-                .as_deref()
-                == Some(&current)
-            {
+            } else if parent_key.as_deref() == Some(current.as_str()) {
                 result.push(charter.clone());
-                queue.push(title_lower);
+                queue.push(key);
             }
         }
     }
@@ -94,14 +82,14 @@ pub fn read_plans(
         let content = read_input(Some(&resolved))?;
         let action_list = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
         if output_format == clearhead_cli::OutputFormat::Table {
-            use clearhead_core::workspace::store::infer_project_name;
-            use std::path::Path;
             let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
-            let charter_name = infer_project_name(Path::new(relative.to_string_lossy().as_ref()));
-            let model = clearhead_core::workspace::actions::convert::from_actions_with_charter(
+            let charter_name = clearhead_core::infer_charter_name(relative)
+                .unwrap_or_else(|| "unknown".to_string());
+            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(
                 &action_list,
                 charter_name,
             );
+            let model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
             println!(
                 "{}",
                 clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
@@ -114,25 +102,19 @@ pub fn read_plans(
         let content = read_input(None)?;
         clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
     } else if let Some(charter_query) = charter {
-        use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
         debug!(charter = %charter_query, recursive = recursive, "Filtering by charter");
-        let fs_store = FsWorkspaceStore::new(&ctx.data_dir);
-        let charters = fs_store.discover_charters().map_err(|e| e.to_string())?;
+        let model = clearhead_core::load_domain_model(&ctx.data_dir)
+            .map_err(|e| e.to_string())?;
 
-        let found = crate::commands::charter::resolve_discovered_charter(&charters, charter_query)
-            .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
-
-        let title = &found.charter.title;
-        // The workspace graph is built from .actions files using inferred names
-        // (e.g., "build_clearhead"), not the human-readable title from .md files
-        // (e.g., "Build the ClearHead Platform"). Use the graph name for filtering.
-        let graph_name = charter_graph_name(&found);
+        let (title, graph_name) = {
+            let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)
+                .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
+            (found.title.clone(), charter_graph_name(found))
+        };
         debug!(charter_title = %title, graph_name = %graph_name, "Resolved charter");
 
-        // Table: filter the full workspace DomainModel in memory
+        // Table: filter the already-loaded DomainModel in memory
         if output_format == clearhead_cli::OutputFormat::Table {
-            let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
             let graph_name_lower = graph_name.to_lowercase();
             let filtered_charters = if recursive {
                 collect_charter_tree(&model.charters, &graph_name_lower)
@@ -150,14 +132,9 @@ pub fn read_plans(
             let plan_count = combined_model.all_plans().len();
             info!(plan_count, "Loaded domain model for table");
             if plan_count == 0 {
-                let kind = if found.is_explicit {
-                    "explicit"
-                } else {
-                    "implicit"
-                };
                 println!(
-                    "Charter '{}' resolved ({}, source: {}, graph name: '{}') but contains no plans.",
-                    title, kind, found.source_key, graph_name
+                    "Charter '{}' (graph name: '{}') resolved but contains no plans.",
+                    title, graph_name
                 );
                 if recursive {
                     println!("(searched recursively through sub-charters)");
@@ -529,13 +506,12 @@ pub fn archive_plans(
     file: &Option<std::path::PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
     use std::path::PathBuf;
 
     let charter_files: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
     } else if let Some(s) = scope {
-        use crate::commands::resolver::{resolve_domain_ref, ResolvedScope};
+        use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
         // TODO: filter to matching plan tree only when scope is Plan variant
         match resolve_domain_ref(&ctx.data_dir, s)? {
             ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
@@ -543,12 +519,8 @@ pub fn archive_plans(
             }
         }
     } else {
-        FsWorkspaceStore::new(&ctx.data_dir)
-            .list_objectives()
+        clearhead_core::list_action_files(&ctx.data_dir)
             .map_err(|e| format!("Failed to list workspace: {}", e))?
-            .into_iter()
-            .map(|o| ctx.data_dir.join(&o.key))
-            .collect()
     };
 
     debug!(dry_run = dry_run, "Executing Archive Plans");
@@ -656,12 +628,17 @@ pub fn export_plans(
         if reference == "-" {
             let content = read_input(None)?;
             let actions = clearhead_cli::parse_actions(&content)?;
-            clearhead_core::workspace::actions::convert::from_actions(&actions)
+            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(&actions, "stdin".to_string());
+            clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] }
         } else if reference.ends_with(".actions") {
             let resolved = resolve_file_path(reference, &ctx.data_dir);
             let content = read_input(Some(&resolved))?;
             let actions = clearhead_cli::parse_actions(&content)?;
-            let mut model = clearhead_core::workspace::actions::convert::from_actions(&actions);
+            let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
+            let charter_name = clearhead_core::infer_charter_name(relative)
+                .unwrap_or_else(|| "unknown".to_string());
+            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(&actions, charter_name);
+            let mut model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
 
             let open_path = clearhead_core::open_acts_path(&resolved);
             let closed_path = clearhead_core::closed_acts_path(&resolved);

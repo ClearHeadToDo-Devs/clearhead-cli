@@ -76,7 +76,9 @@ fn test_from_actions_preserves_data() {
         ..Default::default()
     };
 
-    let domain = convert::from_actions(&vec![action.clone()]);
+    let actions: clearhead_core::ActionList = vec![action.clone()];
+    let charter = convert::from_actions_with_charter(&actions, "test".to_string());
+    let domain = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
 
     assert_eq!(domain.all_plans().len(), 1);
     assert_eq!(domain.all_acts().len(), 1);

@@ -107,15 +107,10 @@ pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
 /// Used by mutating commands (update, complete, delete) when no `-f` is given,
 /// so they operate on the correct file rather than silently defaulting to inbox.
 pub fn find_plan_file(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionList), String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
-
-    let store = FsWorkspaceStore::new(data_dir);
-    let objectives = store
-        .list_objectives()
+    let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
-    for obj in &objectives {
-        let file_path = data_dir.join(&obj.key);
+    for file_path in action_files {
         let actions = load_file(&file_path)?;
         if clearhead_cli::resolve_reference(&actions, query).is_some() {
             return Ok((file_path, actions));
@@ -153,43 +148,40 @@ pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
 
 /// Resolve a charter query to the primary `.actions` file for that charter.
 ///
-/// Mapping:
-/// - `<dir>/README.md` charter → `<dir>/next.actions`
-/// - `<name>.md` root charter → `<name>.actions`
-/// - `<dir>/<name>.md` sub-charter → `<dir>/<name>.actions`
-/// - implicit from `.actions` file → that file
-/// - implicit from directory → `<dir>/next.actions`
+/// Scans all workspace action files and matches the inferred charter name against
+/// the query (by UUID prefix, alias, or inferred file stem / directory name).
 pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<PathBuf, String> {
-    use clearhead_core::{FsWorkspaceStore, WorkspaceStore};
+    let data_root = clearhead_core::workspace_data_root(data_dir);
+    let action_files = clearhead_core::list_action_files(data_dir)
+        .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
-    let store = FsWorkspaceStore::new(data_dir);
-    let charters = store.discover_charters().map_err(|e| e.to_string())?;
+    let query_lower = charter_query.to_lowercase();
 
-    let found = crate::commands::charter::resolve_discovered_charter(&charters, charter_query)
+    for file_path in &action_files {
+        let relative = file_path.strip_prefix(&data_root).unwrap_or(file_path.as_path());
+        let inferred = clearhead_core::infer_charter_name(relative).unwrap_or_default();
+        if inferred.to_lowercase() == query_lower {
+            return Ok(file_path.clone());
+        }
+    }
+
+    // Fall back to model-level resolution (matches alias, UUID, partial title)
+    let model = clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())?;
+    let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)
         .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
 
-    let source = Path::new(&found.source_key);
-    let actions_path = if source
-        .file_name()
-        .map(|n| n == "README.md")
-        .unwrap_or(false)
-    {
-        // build_clearhead/README.md → build_clearhead/next.actions
-        let dir = source.parent().unwrap_or(Path::new(""));
-        dir.join("next.actions")
-    } else if source.extension().map(|e| e == "md").unwrap_or(false) {
-        // health.md → health.actions
-        // build_clearhead/observability.md → build_clearhead/observability.actions
-        source.with_extension("actions")
-    } else if source.extension().map(|e| e == "actions").unwrap_or(false) {
-        // implicit from .actions file
-        source.to_path_buf()
-    } else {
-        // implicit from directory name
-        source.join("next.actions")
-    };
+    let key = found.alias.as_deref().unwrap_or(&found.title);
+    let key_lower = key.to_lowercase();
 
-    Ok(data_dir.join(actions_path))
+    for file_path in &action_files {
+        let relative = file_path.strip_prefix(&data_root).unwrap_or(file_path.as_path());
+        let inferred = clearhead_core::infer_charter_name(relative).unwrap_or_default();
+        if inferred.to_lowercase() == key_lower {
+            return Ok(file_path.clone());
+        }
+    }
+
+    Err(format!("No actions file found for charter '{}'", charter_query))
 }
 
 fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {

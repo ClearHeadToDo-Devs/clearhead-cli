@@ -2,7 +2,7 @@ use tracing::info;
 
 use crate::argparser;
 use crate::commands::CommandContext;
-use clearhead_core::{FsWorkspaceStore, WorkspaceStore, ObjectiveRef};
+use clearhead_core::Charter;
 
 pub fn read_charters(
     ctx: &CommandContext,
@@ -11,11 +11,15 @@ pub fn read_charters(
 ) -> Result<(), String> {
     use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
-    let store = FsWorkspaceStore::new(&ctx.data_dir);
-    let mut charters = store.discover_charters().map_err(|e| e.to_string())?;
+    let model = clearhead_core::load_domain_model(&ctx.data_dir)
+        .map_err(|e| e.to_string())?;
+
+    let mut charters: Vec<&Charter> = model.charters.iter().collect();
 
     if explicit_only {
-        charters.retain(|dc| dc.is_explicit);
+        // An explicit charter has metadata beyond just a title — id that is non-random,
+        // description, alias, or objectives. The simplest proxy: alias is set.
+        charters.retain(|c| c.alias.is_some() || c.description.is_some());
     }
 
     if charters.is_empty() {
@@ -26,8 +30,7 @@ pub fn read_charters(
     let use_json = matches!(format, Some(argparser::Format::Json));
 
     if use_json {
-        let json_charters: Vec<_> = charters.iter().map(|dc| &dc.charter).collect();
-        let json = serde_json::to_string_pretty(&json_charters)
+        let json = serde_json::to_string_pretty(&charters)
             .map_err(|e| format!("Failed to serialize charters: {}", e))?;
         println!("{}", json);
     } else {
@@ -39,34 +42,20 @@ pub fn read_charters(
         table.set_header(vec![
             Cell::new("Name").fg(Color::Cyan),
             Cell::new("Parent").fg(Color::Cyan),
-            Cell::new("Type").fg(Color::Cyan),
             Cell::new("Alias").fg(Color::Cyan),
             Cell::new("ID").fg(Color::Cyan),
-            Cell::new("Source").fg(Color::Cyan),
         ]);
 
-        for dc in &charters {
-            let type_str = if dc.is_explicit {
-                "explicit"
-            } else {
-                "implicit"
-            };
-            let alias = dc.charter.alias.as_deref().unwrap_or("-");
-            let parent = dc.charter.parent.as_deref().unwrap_or("-");
-            let short_id = &dc.charter.id.to_string()[..8];
-            let source_str = if dc.is_explicit {
-                dc.source_key.clone()
-            } else {
-                format!("{} (inferred)", dc.source_key)
-            };
+        for charter in &charters {
+            let alias = charter.alias.as_deref().unwrap_or("-");
+            let parent = charter.parent.as_deref().unwrap_or("-");
+            let short_id = &charter.id.to_string()[..8];
 
             table.add_row(vec![
-                Cell::new(&dc.charter.title),
+                Cell::new(&charter.title),
                 Cell::new(parent),
-                Cell::new(type_str),
                 Cell::new(alias),
                 Cell::new(short_id),
-                Cell::new(source_str),
             ]);
         }
 
@@ -76,31 +65,16 @@ pub fn read_charters(
 }
 
 pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
-    use clearhead_core::workspace::store::infer_project_name;
-    use std::path::Path;
+    let model = clearhead_core::load_domain_model(&ctx.data_dir)
+        .map_err(|e| e.to_string())?;
 
-    let store = FsWorkspaceStore::new(&ctx.data_dir);
-    let charters = store.discover_charters().map_err(|e| e.to_string())?;
-
-    let found = resolve_discovered_charter(&charters, query)
+    let found = resolve_charter(&model.charters, query)
         .ok_or_else(|| format!("No charter found matching '{}'", query))?;
 
-    let formatted = clearhead_core::format_charter(&found.charter);
+    let formatted = clearhead_core::format_charter(found);
     println!("{}", formatted);
 
-    let charter_base = found.charter.title.to_lowercase();
-    let objectives = store.list_objectives().map_err(|e| e.to_string())?;
-    let plan_count: usize = objectives
-        .iter()
-        .filter(|obj| {
-            infer_project_name(Path::new(&obj.key))
-                .map(|n| n.to_lowercase() == charter_base)
-                .unwrap_or(false)
-        })
-        .filter_map(|obj| store.load_domain_model(obj).ok())
-        .map(|model| model.all_plans().len())
-        .sum();
-
+    let plan_count = found.plans.len();
     if plan_count > 0 {
         println!("Plans: {}", plan_count);
     }
@@ -108,44 +82,37 @@ pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolve a charter by UUID prefix, alias, or name from DiscoveredCharter list.
-pub fn resolve_discovered_charter<'a>(
-    charters: &'a [clearhead_core::DiscoveredCharter],
-    query: &str,
-) -> Option<&'a clearhead_core::DiscoveredCharter> {
+/// Resolve a charter by UUID prefix, alias, or name from a slice of charters.
+pub fn resolve_charter<'a>(charters: &'a [Charter], query: &str) -> Option<&'a Charter> {
     let query_lower = query.to_lowercase();
 
     // 1. Full UUID match
     if let Ok(uuid) = uuid::Uuid::parse_str(query) {
-        if let Some(dc) = charters.iter().find(|dc| dc.charter.id == uuid) {
-            return Some(dc);
+        if let Some(c) = charters.iter().find(|c| c.id == uuid) {
+            return Some(c);
         }
     }
 
-    // 2. Short UUID prefix
+    // 2. Short UUID prefix (8 hex chars)
     if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        if let Some(dc) = charters
-            .iter()
-            .find(|dc| dc.charter.id.to_string().starts_with(query))
-        {
-            return Some(dc);
+        if let Some(c) = charters.iter().find(|c| c.id.to_string().starts_with(query)) {
+            return Some(c);
         }
     }
 
     // 3. Alias match (case-insensitive, exact)
-    if let Some(dc) = charters.iter().find(|dc| {
-        dc.charter
-            .alias
+    if let Some(c) = charters.iter().find(|c| {
+        c.alias
             .as_ref()
-            .is_some_and(|a: &String| a.to_lowercase() == query_lower)
+            .is_some_and(|a| a.to_lowercase() == query_lower)
     }) {
-        return Some(dc);
+        return Some(c);
     }
 
     // 4. Title match (case-insensitive, partial)
     charters
         .iter()
-        .find(|dc| dc.charter.title.to_lowercase().contains(&query_lower))
+        .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
 pub fn add_charter(
@@ -184,9 +151,9 @@ pub fn add_charter(
             return Err(format!("File already exists: {}", file_path.display()));
         }
 
-        let mut store = FsWorkspaceStore::new(&ctx.data_dir);
-        let objective = ObjectiveRef::new(&filename);
-        store.save_charter(&objective, &charter).map_err(|e| e.to_string())?;
+        let content = clearhead_core::format_charter(&charter);
+        std::fs::write(&file_path, content)
+            .map_err(|e| format!("Failed to write charter: {}", e))?;
 
         info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
         println!("{}", id);

@@ -939,8 +939,8 @@ fn test_read_skips_hidden_directories() {
 
     env.write_actions("inbox.actions", "[ ] Visible task");
 
-    // Create hidden directory with actions (should be skipped)
-    let hidden_dir = env.data_dir.join(".clearhead");
+    // Create a non-.clearhead hidden directory with actions (should be skipped)
+    let hidden_dir = env.data_dir.join(".git");
     fs::create_dir_all(&hidden_dir).unwrap();
     fs::write(hidden_dir.join("state.actions"), "[ ] Hidden task").unwrap();
 
