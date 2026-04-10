@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use tracing::debug;
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
+use std::collections::HashMap;
+use tracing::debug;
 
 pub fn query_workspace(
     ctx: &CommandContext,
@@ -15,11 +15,12 @@ pub fn query_workspace(
             debug!(where_clause = %w, "Building raw WHERE query");
             clearhead_core::graph::build_raw_where_query(w)
         }
-        (None, None) => return Err(
-            "Provide a SPARQL query or --where clause.\n\
+        (None, None) => {
+            return Err("Provide a SPARQL query or --where clause.\n\
              Usage: clearhead query \"SELECT ?name WHERE { ... }\"\n\
-             Usage: clearhead query --where \"?s schema:name ?name\"".to_string()
-        ),
+             Usage: clearhead query --where \"?s rdfs:label ?name\""
+                .to_string())
+        }
         (Some(_), Some(_)) => return Err("Cannot combine positional query and --where".to_string()),
     };
 
@@ -37,14 +38,14 @@ pub fn query_workspace(
 }
 
 fn format_as_json(rows: &[HashMap<String, String>]) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(rows)
-        .map_err(|e| format!("Failed to serialize: {}", e))?;
+    let json =
+        serde_json::to_string_pretty(rows).map_err(|e| format!("Failed to serialize: {}", e))?;
     println!("{}", json);
     Ok(())
 }
 
 fn format_as_table(rows: &[HashMap<String, String>]) -> Result<(), String> {
-    use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
     use std::collections::BTreeSet;
 
     // BTreeSet for stable alphabetical column order (HashMap order is undefined)

@@ -89,8 +89,8 @@ pub fn planned_act_to_ical_event(plan: &Plan, act: &PlannedAct) -> Option<Event>
         event.description(description);
     }
 
-    // DTSTART / DTEND: act duration first, fall back to plan template duration
-    let (start, end) = calculate_event_times(scheduled_at, act.duration.or(plan.duration));
+    // DTSTART / DTEND: duration is occurrence-level semantics on PlannedAct
+    let (start, end) = calculate_event_times(scheduled_at, act.duration);
     event.starts(start);
     event.ends(end);
 
@@ -187,16 +187,18 @@ mod tests {
             contexts: None,
             recurrence: None,
             parent: None,
-            objective: None,
             alias: None,
             is_sequential: None,
-            duration: None,
             depends_on: None,
             acts: vec![],
         }
     }
 
-    fn make_act(plan_id: Uuid, phase: ActPhase, scheduled_at: Option<DateTime<Local>>) -> PlannedAct {
+    fn make_act(
+        plan_id: Uuid,
+        phase: ActPhase,
+        scheduled_at: Option<DateTime<Local>>,
+    ) -> PlannedAct {
         PlannedAct {
             id: Uuid::new_v5(&plan_id, b"act-0"),
             plan_id,
@@ -214,7 +216,10 @@ mod tests {
         let (start, end) = calculate_event_times(dt, None);
 
         assert_eq!(start, dt.with_timezone(&Utc));
-        assert_eq!(end, (dt + chrono::Duration::minutes(15)).with_timezone(&Utc));
+        assert_eq!(
+            end,
+            (dt + chrono::Duration::minutes(15)).with_timezone(&Utc)
+        );
     }
 
     #[test]
@@ -223,7 +228,10 @@ mod tests {
         let (start, end) = calculate_event_times(dt, Some(60));
 
         assert_eq!(start, dt.with_timezone(&Utc));
-        assert_eq!(end, (dt + chrono::Duration::minutes(60)).with_timezone(&Utc));
+        assert_eq!(
+            end,
+            (dt + chrono::Duration::minutes(60)).with_timezone(&Utc)
+        );
     }
 
     #[test]
@@ -238,11 +246,26 @@ mod tests {
 
     #[test]
     fn test_map_phase_to_event_status() {
-        assert_eq!(map_phase_to_event_status(ActPhase::NotStarted), EventStatus::Tentative);
-        assert_eq!(map_phase_to_event_status(ActPhase::InProgress), EventStatus::Confirmed);
-        assert_eq!(map_phase_to_event_status(ActPhase::Completed), EventStatus::Confirmed);
-        assert_eq!(map_phase_to_event_status(ActPhase::Blocked), EventStatus::Tentative);
-        assert_eq!(map_phase_to_event_status(ActPhase::Cancelled), EventStatus::Cancelled);
+        assert_eq!(
+            map_phase_to_event_status(ActPhase::NotStarted),
+            EventStatus::Tentative
+        );
+        assert_eq!(
+            map_phase_to_event_status(ActPhase::InProgress),
+            EventStatus::Confirmed
+        );
+        assert_eq!(
+            map_phase_to_event_status(ActPhase::Completed),
+            EventStatus::Confirmed
+        );
+        assert_eq!(
+            map_phase_to_event_status(ActPhase::Blocked),
+            EventStatus::Tentative
+        );
+        assert_eq!(
+            map_phase_to_event_status(ActPhase::Cancelled),
+            EventStatus::Cancelled
+        );
     }
 
     #[test]
@@ -322,14 +345,13 @@ mod tests {
     }
 
     #[test]
-    fn test_act_duration_overrides_plan_duration() {
-        let mut plan = make_plan("Task");
-        plan.duration = Some(60); // plan template: 60 min
+    fn test_act_duration_drives_calendar_length() {
+        let plan = make_plan("Task");
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 9, 0, 0).unwrap();
         let mut act = make_act(plan.id, ActPhase::NotStarted, Some(dt));
-        act.duration = Some(30); // act override: 30 min
+        act.duration = Some(30);
 
-        let (start, end) = calculate_event_times(dt, act.duration.or(plan.duration));
+        let (start, end) = calculate_event_times(dt, act.duration);
         assert_eq!(end - start, chrono::Duration::minutes(30));
     }
 }

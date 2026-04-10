@@ -17,10 +17,8 @@ fn test_domain_round_trip_simple() {
         contexts: Some(vec!["ctx".to_string()]),
         recurrence: None,
         parent: None,
-        objective: None,
         alias: None,
         is_sequential: None,
-        duration: None,
         depends_on: None,
         acts: vec![PlannedAct {
             id: act_id,
@@ -78,7 +76,10 @@ fn test_from_actions_preserves_data() {
 
     let actions: clearhead_core::ActionList = vec![action.clone()];
     let charter = convert::from_actions_with_charter(&actions, "test".to_string());
-    let domain = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
+    let domain = clearhead_core::DomainModel {
+        objectives: vec![],
+        charters: vec![charter],
+    };
 
     assert_eq!(domain.all_plans().len(), 1);
     assert_eq!(domain.all_acts().len(), 1);

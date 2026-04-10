@@ -50,7 +50,10 @@ fn collect_charter_tree(
         if !visited.insert(current.clone()) {
             continue;
         }
-        if let Some(node) = charters.iter().find(|c| charter_key(c).eq_ignore_ascii_case(&current)) {
+        if let Some(node) = charters
+            .iter()
+            .find(|c| charter_key(c).eq_ignore_ascii_case(&current))
+        {
             result.push(node.clone());
         }
         for child in direct_children(charters, &current) {
@@ -101,7 +104,10 @@ pub fn read_plans(
                 &action_list,
                 charter_name,
             );
-            let model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
+            let model = clearhead_core::DomainModel {
+                objectives: vec![],
+                charters: vec![charter],
+            };
             println!(
                 "{}",
                 clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
@@ -115,8 +121,7 @@ pub fn read_plans(
         clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
     } else if let Some(charter_query) = charter {
         debug!(charter = %charter_query, recursive = recursive, "Filtering by charter");
-        let model = clearhead_core::load_domain_model(&ctx.data_dir)
-            .map_err(|e| e.to_string())?;
+        let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
 
         let (title, graph_name) = {
             let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)
@@ -154,7 +159,7 @@ pub fn read_plans(
                     println!(
                         "Tip: try --recursive to include sub-charters, or \
                          `clearhead query --where \"?s a <https://clearhead.us/vocab/actions/v4#Charter> ; \
-                         <http://schema.org/name> ?name\"` to see what the graph sees."
+                         <http://www.w3.org/2000/01/rdf-schema#label> ?name\"` to see what the graph sees."
                     );
                 }
                 return Ok(());
@@ -175,19 +180,19 @@ pub fn read_plans(
                 "SELECT ?id WHERE {{ \
                     {{ \
                         ?charter a <{actions}Charter> . \
-                        ?charter <{schema}name> \"{graph_name}\" . \
+                        ?charter <{rdfs}label> \"{graph_name}\" . \
                         ?charter <{bfo}BFO_0000051> ?plan . \
-                        ?plan <{actions}id> ?id \
+                        ?plan <{actions}hasUUID> ?id \
                     }} UNION {{ \
                         ?root a <{actions}Charter> . \
-                        ?root <{schema}name> \"{graph_name}\" . \
+                        ?root <{rdfs}label> \"{graph_name}\" . \
                         ?root <{actions}hasSubCharter>+ ?charter . \
                         ?charter <{bfo}BFO_0000051> ?plan . \
-                        ?plan <{actions}id> ?id \
+                        ?plan <{actions}hasUUID> ?id \
                     }} \
                 }}",
                 actions = "https://clearhead.us/vocab/actions/v4#",
-                schema = "http://schema.org/",
+                rdfs = "http://www.w3.org/2000/01/rdf-schema#",
                 bfo = "http://purl.obolibrary.org/obo/",
                 graph_name = graph_name.replace('"', "\\\""),
             )
@@ -195,12 +200,12 @@ pub fn read_plans(
             format!(
                 "SELECT ?id WHERE {{ \
                     ?charter a <{actions}Charter> . \
-                    ?charter <{schema}name> \"{graph_name}\" . \
+                    ?charter <{rdfs}label> \"{graph_name}\" . \
                     ?charter <{bfo}BFO_0000051> ?plan . \
-                    ?plan <{actions}id> ?id \
+                    ?plan <{actions}hasUUID> ?id \
                 }}",
                 actions = "https://clearhead.us/vocab/actions/v4#",
-                schema = "http://schema.org/",
+                rdfs = "http://www.w3.org/2000/01/rdf-schema#",
                 bfo = "http://purl.obolibrary.org/obo/",
                 graph_name = graph_name.replace('"', "\\\""),
             )
@@ -233,7 +238,7 @@ pub fn read_plans(
                 "No plans found for charter '{}'. \
                  Use `--format table` for a richer diagnostic, or \
                  `clearhead query --where \"?s a <https://clearhead.us/vocab/actions/v4#Charter> ; \
-                 <http://schema.org/name> ?name\"` to inspect the graph.",
+                 <http://www.w3.org/2000/01/rdf-schema#label> ?name\"` to inspect the graph.",
                 charter_query
             );
             return Ok(());
@@ -523,7 +528,7 @@ pub fn archive_plans(
     let charter_files: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
     } else if let Some(s) = scope {
-        use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
+        use crate::commands::resolver::{resolve_domain_ref, ResolvedScope};
         // TODO: filter to matching plan tree only when scope is Plan variant
         match resolve_domain_ref(&ctx.data_dir, s)? {
             ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
@@ -640,8 +645,14 @@ pub fn export_plans(
         if reference == "-" {
             let content = read_input(None)?;
             let actions = clearhead_cli::parse_actions(&content)?;
-            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(&actions, "stdin".to_string());
-            clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] }
+            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(
+                &actions,
+                "stdin".to_string(),
+            );
+            clearhead_core::DomainModel {
+                objectives: vec![],
+                charters: vec![charter],
+            }
         } else if reference.ends_with(".actions") {
             let resolved = resolve_file_path(reference, &ctx.data_dir);
             let content = read_input(Some(&resolved))?;
@@ -649,8 +660,14 @@ pub fn export_plans(
             let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
             let charter_name = clearhead_core::infer_charter_name(relative)
                 .unwrap_or_else(|| "unknown".to_string());
-            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(&actions, charter_name);
-            let mut model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
+            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(
+                &actions,
+                charter_name,
+            );
+            let mut model = clearhead_core::DomainModel {
+                objectives: vec![],
+                charters: vec![charter],
+            };
 
             let open_path = clearhead_core::open_acts_path(&resolved);
             let closed_path = clearhead_core::closed_acts_path(&resolved);
