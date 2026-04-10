@@ -5,23 +5,39 @@ use crate::argparser;
 use crate::commands::{load_file, parse_format, read_input, save_file, try_emit, CommandContext};
 use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
 
-/// Returns the key name used in the workspace graph for a charter.
+/// The canonical machine key for a charter — alias if present, otherwise title.
 ///
-/// Prefers `alias` (the canonical filesystem/graph key) over `title` (which may
-/// be a human-readable string like "Build the ClearHead Platform").
-fn charter_graph_name(charter: &clearhead_core::Charter) -> String {
-    charter
-        .alias
-        .as_deref()
-        .unwrap_or(&charter.title)
-        .to_string()
+/// `charter.parent` always stores a machine key, so this is the right value to
+/// use for any identity comparison or graph edge.
+fn charter_key(charter: &clearhead_core::Charter) -> &str {
+    charter.alias.as_deref().unwrap_or(&charter.title)
 }
 
-/// Collect the charter with the given key plus all its descendants (transitively).
+/// Returns the key name used in the workspace graph for a charter (owned).
+fn charter_graph_name(charter: &clearhead_core::Charter) -> String {
+    charter_key(charter).to_string()
+}
+
+/// All charters whose `parent` field matches `parent_key` (case-insensitive).
+fn direct_children<'a>(
+    charters: &'a [clearhead_core::Charter],
+    parent_key: &str,
+) -> Vec<&'a clearhead_core::Charter> {
+    charters
+        .iter()
+        .filter(|c| {
+            c.parent
+                .as_deref()
+                .map(|p| p.eq_ignore_ascii_case(parent_key))
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// Collect the charter matching `root_key` plus all descendants (transitively).
 ///
-/// `root_key` must be the machine key (alias or inferred name) — the same value
-/// returned by `charter_graph_name`. Comparison uses `alias.unwrap_or(&title)`
-/// because `charter.parent` always stores machine keys, not display titles.
+/// Uses machine keys throughout — `charter.parent` always stores a machine key,
+/// never a display title. A `visited` set guards against cyclic parent data.
 fn collect_charter_tree(
     charters: &[clearhead_core::Charter],
     root_key: &str,
@@ -34,15 +50,11 @@ fn collect_charter_tree(
         if !visited.insert(current.clone()) {
             continue;
         }
-        for charter in charters {
-            let key = charter.alias.as_deref().unwrap_or(&charter.title).to_lowercase();
-            let parent_key = charter.parent.as_deref().map(str::to_lowercase);
-            if key == current {
-                result.push(charter.clone());
-            } else if parent_key.as_deref() == Some(current.as_str()) {
-                result.push(charter.clone());
-                queue.push(key);
-            }
+        if let Some(node) = charters.iter().find(|c| charter_key(c).eq_ignore_ascii_case(&current)) {
+            result.push(node.clone());
+        }
+        for child in direct_children(charters, &current) {
+            queue.push(charter_key(child).to_string());
         }
     }
     result
