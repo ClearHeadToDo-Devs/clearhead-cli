@@ -8,32 +8,17 @@ use tree_sitter::Tree;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
-    ActPhase,
-    Action,
-    ActionList,
-    ActionState,
-    Charter,
-    DomainModel,
-    OutputFormat,
-    ParsedDocument,
-    Plan,
-    PlannedAct,
-    SourceMetadata,
-    SourceRange,
-    format,
-    format_charter,
-    implicit_charter,
-    parse_actions,
-    parse_charter,
-    parse_document,
-    parse_tree,
-    patch_action_list,
+    format, format_charter, implicit_charter, parse_actions, parse_charter, parse_document,
+    parse_tree, patch_action_list, ActPhase, Action, ActionList, ActionState, Charter, DomainModel,
+    OutputFormat, ParsedDocument, Plan, PlannedAct, SourceMetadata, SourceRange,
 };
 
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
 pub use clearhead_core::workspace::actions::TableFormatOptions;
 
-pub use clearhead_core::workspace::actions::{LintDiagnostic, LintResults, LintSeverity, lint_document};
+pub use clearhead_core::workspace::actions::{
+    lint_document, LintDiagnostic, LintResults, LintSeverity,
+};
 
 pub mod export;
 pub use export::format_as_icalendar;
@@ -41,15 +26,15 @@ pub use export::format_as_icalendar;
 pub mod archive;
 
 pub mod mutations;
-pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
+pub use mutations::{apply_updates, resolve_reference, ActionUpdate, MatchType, ResolvedAction};
 
 pub mod environment_reader;
-pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
+pub use environment_reader::{get_config_dir, get_data_dir, load_config, Config};
 
 pub mod telemetry;
 pub use telemetry::{
-    TelemetryEvent, TelemetryRecord, Tool, emit, emit_event, event_from_field_change,
-    event_from_state_change, get_telemetry_dir,
+    emit, emit_event, event_from_field_change, event_from_state_change, get_telemetry_dir,
+    TelemetryEvent, TelemetryRecord, Tool,
 };
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)
@@ -111,11 +96,14 @@ pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionL
         .map_err(|e| format!("Failed to create store: {}", e))?;
 
     let charter = convert::from_actions_with_charter(actions, "_query".to_string());
-    let model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
+    let model = clearhead_core::DomainModel {
+        objectives: vec![],
+        charters: vec![charter],
+    };
     clearhead_core::graph::load_domain_model(&store, &model)
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
-    let matching_ids = clearhead_core::graph::query_actions(&store, sparql_query)
+    let matching_ids = clearhead_core::graph::query_action_ids(&store, sparql_query)
         .map_err(|e| format!("SPARQL query failed: {}", e))?;
 
     let id_set: HashSet<String> = matching_ids.into_iter().collect();
@@ -153,12 +141,11 @@ pub fn run_workspace_sql_query(
     use std::collections::HashSet;
 
     let model = load_workspace_domain_model(data_dir)?;
-    let store = graph::create_database()
-        .map_err(|e| format!("Failed to create store: {}", e))?;
+    let store = graph::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
     graph::load_domain_model(&store, &model)
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
-    let matching_ids = graph::query_actions(&store, sparql_query)
+    let matching_ids = graph::query_action_ids(&store, sparql_query)
         .map_err(|e| format!("SPARQL query failed: {}", e))?;
     let id_set: HashSet<String> = matching_ids.into_iter().collect();
 
@@ -202,4 +189,3 @@ pub fn run_workspace_sql_where(
     let query = clearhead_core::graph::build_where_query(where_clause, select, from);
     run_workspace_sql_query(data_dir, &query)
 }
-

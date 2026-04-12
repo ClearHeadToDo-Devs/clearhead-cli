@@ -12,8 +12,8 @@
 
 // Re-export everything from core so existing call sites need no changes
 pub use clearhead_core::telemetry::{
-    NoopEmitter, TelemetryEmitter, TelemetryEvent, TelemetryRecord, Tool, event_from_field_change,
-    event_from_state_change, noop_emitter,
+    event_from_field_change, event_from_state_change, noop_emitter, NoopEmitter, TelemetryEmitter,
+    TelemetryEvent, TelemetryRecord, Tool,
 };
 
 use std::fs::{self, OpenOptions};

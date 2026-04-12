@@ -1,4 +1,4 @@
-use clearhead_core::{ActionList, ActionState, OutputFormat, format};
+use clearhead_core::{format, ActionList, ActionState, OutputFormat};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -117,9 +117,8 @@ pub fn archive_actions(
     }
     completed_content.push_str(&archived_text);
 
-    fs::write(&completed_path, completed_content).map_err(|e| {
-        format!("Failed to write to '{}': {}", completed_path.display(), e)
-    })?;
+    fs::write(&completed_path, completed_content)
+        .map_err(|e| format!("Failed to write to '{}': {}", completed_path.display(), e))?;
 
     let active_text = format(&active_actions, OutputFormat::Actions, None, None)?;
 
@@ -131,7 +130,6 @@ pub fn archive_actions(
         },
     ))
 }
-
 
 #[cfg(test)]
 mod tests {
