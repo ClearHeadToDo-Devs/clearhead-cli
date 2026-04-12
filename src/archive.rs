@@ -81,14 +81,14 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
 /// Result of an archive operation
 pub struct ArchiveResult {
     pub archived_count: usize,
-    pub log_path: PathBuf,
+    pub completed_path: PathBuf,
 }
 
-/// Moves completed actions from a source string to a log file
+/// Moves completed action trees from `source_path` into its sibling
+/// `<stem>.completed.actions` file, per the workspace naming conventions.
 pub fn archive_actions(
     content: &str,
-    _source_path: &PathBuf,
-    log_dir: &PathBuf,
+    source_path: &PathBuf,
 ) -> Result<(String, ArchiveResult), String> {
     let all_actions = crate::get_action_list_struct(&serde_json::json!({}), content)?;
     let (active_actions, archived_actions) = partition_actions_for_archive(&all_actions);
@@ -97,43 +97,37 @@ pub fn archive_actions(
         return Err("No completed action trees to archive.".to_string());
     }
 
-    // Determine log filename
-    use chrono::Local;
-    let now = Local::now();
-    let month_str = now.format("%Y-%m").to_string();
-    let log_filename = format!("{}.actions", month_str);
-    let log_path = log_dir.join(log_filename);
+    // Derive sibling .completed.actions path
+    let stem = source_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok_or_else(|| "Could not determine file stem from source path".to_string())?;
+    let completed_path = source_path.with_file_name(format!("{}.completed.actions", stem));
 
-    // Prepare log content
-    let mut log_content = if log_path.exists() {
-        fs::read_to_string(&log_path).unwrap_or_default()
+    // Append to existing .completed.actions (or create it)
+    let mut completed_content = if completed_path.exists() {
+        fs::read_to_string(&completed_path).unwrap_or_default()
     } else {
         String::new()
     };
 
     let archived_text = format(&archived_actions, OutputFormat::Actions, None, None)?;
-    if !log_content.is_empty() && !log_content.ends_with('\n') {
-        log_content.push('\n');
+    if !completed_content.is_empty() && !completed_content.ends_with('\n') {
+        completed_content.push('\n');
     }
-    log_content.push_str(&archived_text);
+    completed_content.push_str(&archived_text);
 
-    // Write to log
-    fs::write(&log_path, log_content).map_err(|e| {
-        format!(
-            "Failed to write to log file '{}': {}",
-            log_path.display(),
-            e
-        )
+    fs::write(&completed_path, completed_content).map_err(|e| {
+        format!("Failed to write to '{}': {}", completed_path.display(), e)
     })?;
 
-    // Return new active content
     let active_text = format(&active_actions, OutputFormat::Actions, None, None)?;
 
     Ok((
         active_text,
         ArchiveResult {
             archived_count: archived_actions.len(),
-            log_path,
+            completed_path,
         },
     ))
 }

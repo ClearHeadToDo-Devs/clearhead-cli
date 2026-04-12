@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use chrono::Local;
 use clearhead_cli::archive::archive_actions;
 use clearhead_cli::telemetry::{
     TelemetryEvent, Tool, emit_event, event_from_field_change, event_from_state_change,
 };
-use clearhead_cli::{FormatConfig, OutputFormat, format};
-use clearhead_core::workspace::actions::{FieldChange, diff_actions, get_node_text};
+use clearhead_cli::{FormatConfig, OutputFormat, ParsedDocument, format};
+use clearhead_core::workspace::actions::{Diff, FieldChange, diff_actions, get_node_text};
 use serde_json::Value;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::jsonrpc::{Error, Result};
@@ -13,6 +15,10 @@ use tracing::{debug, info, warn};
 
 use super::Backend;
 use super::providers::*;
+
+// =============================================================================
+// LanguageServer trait — entry points (what the LSP does)
+// =============================================================================
 
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
@@ -64,9 +70,7 @@ impl LanguageServer for Backend {
                 references_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 execute_command_provider: Some(ExecuteCommandOptions {
-                    commands: vec![
-                        "clearhead/archive".to_string(),
-                    ],
+                    commands: vec!["clearhead/archive".to_string()],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -93,85 +97,17 @@ impl LanguageServer for Backend {
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
-        let file_path = uri.to_file_path().map(|p| p.to_string_lossy().to_string());
-
         debug!(uri = ?uri, "Processing didSave notification");
 
         if let Some(mut doc) = self.documents.get_mut(&uri) {
-            // Diff existing parsed vs last_saved
             if let (Some(current), Some(last)) = (&doc.parsed, &doc.last_saved_parsed) {
                 let diff = diff_actions(&last.actions, &current.actions);
-
-                if !diff.is_empty() {
-                    info!(
-                        uri = ?uri,
-                        added = diff.added.len(),
-                        removed = diff.removed.len(),
-                        modified = diff.modified.len(),
-                        "Changes detected on save"
-                    );
-                }
-
-                let event_file_path = file_path.clone().unwrap_or_default();
-
-                // Emit events for added actions
-                for action in &diff.added {
-                    debug!(id = %action.id, name = %action.name, "Emitting action_created event");
-                    if let Err(e) = emit_event(
-                        Tool::Lsp,
-                        Some(action.id.to_string()),
-                        TelemetryEvent::ActionCreated {
-                            name: action.name.clone(),
-                            file_path: event_file_path.clone(),
-                        },
-                    ) {
-                        warn!(error = %e, "Failed to emit action_created event");
-                    }
-                }
-
-                // Emit events for removed actions
-                for action in &diff.removed {
-                    debug!(id = %action.id, name = %action.name, "Emitting action_deleted event");
-                    if let Err(e) = emit_event(
-                        Tool::Lsp,
-                        Some(action.id.to_string()),
-                        TelemetryEvent::ActionDeleted {
-                            name: action.name.clone(),
-                        },
-                    ) {
-                        warn!(error = %e, "Failed to emit action_deleted event");
-                    }
-                }
-
-                // Emit events for modified actions
-                for mod_action in &diff.modified {
-                    let action_uuid = Some(mod_action.id.to_string());
-
-                    let action_name = current
-                        .actions
-                        .iter()
-                        .find(|a| a.id == mod_action.id)
-                        .map(|a| a.name.as_str())
-                        .unwrap_or("");
-
-                    for change in &mod_action.changes {
-                        let event = match change {
-                            FieldChange::State { old, new } => {
-                                debug!(id = %mod_action.id, old = ?old, new = ?new, "Emitting state change event");
-                                event_from_state_change(*old, *new, action_name)
-                            }
-                            _ => event_from_field_change(change),
-                        };
-                        if let Some(evt) = event {
-                            if let Err(e) = emit_event(Tool::Lsp, action_uuid.clone(), evt) {
-                                warn!(error = %e, "Failed to emit property change event");
-                            }
-                        }
-                    }
-                }
+                let file_path = uri
+                    .to_file_path()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                emit_diff_telemetry(&diff, current, &file_path);
             }
-
-            // Update last_saved_parsed to current
             doc.last_saved_parsed = doc.parsed.clone();
         }
     }
@@ -180,8 +116,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
             if let Some(ref parsed) = doc.parsed {
-                let actions = compute_code_actions(parsed, &uri, params.range);
-                return Ok(Some(actions));
+                return Ok(Some(compute_code_actions(parsed, &uri, params.range)));
             }
         }
         Ok(None)
@@ -194,31 +129,28 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
             let tokens = compute_semantic_tokens(&doc.tree);
-
-            // Convert to relative (delta) encoding
             let mut last_line = 0;
             let mut last_start = 0;
-            let mut data = Vec::new();
-
-            for token in tokens {
-                let delta_line = token.delta_line - last_line;
-                let delta_start = if delta_line == 0 {
-                    token.delta_start - last_start
-                } else {
-                    token.delta_start
-                };
-
-                data.push(SemanticToken {
-                    delta_line,
-                    delta_start,
-                    length: token.length,
-                    token_type: token.token_type,
-                    token_modifiers_bitset: 0,
-                });
-
-                last_line = token.delta_line;
-                last_start = token.delta_start;
-            }
+            let data = tokens
+                .into_iter()
+                .map(|token| {
+                    let delta_line = token.delta_line - last_line;
+                    let delta_start = if delta_line == 0 {
+                        token.delta_start - last_start
+                    } else {
+                        token.delta_start
+                    };
+                    last_line = token.delta_line;
+                    last_start = token.delta_start;
+                    SemanticToken {
+                        delta_line,
+                        delta_start,
+                        length: token.length,
+                        token_type: token.token_type,
+                        token_modifiers_bitset: 0,
+                    }
+                })
+                .collect();
 
             return Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
                 result_id: None,
@@ -232,8 +164,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         if let Some(doc) = self.documents.get(&uri) {
             if let Some(ref parsed) = doc.parsed {
-                let hints = compute_inlay_hints(parsed, None);
-                return Ok(Some(hints));
+                return Ok(Some(compute_inlay_hints(parsed, None)));
             }
         }
         Ok(None)
@@ -303,35 +234,12 @@ impl LanguageServer for Backend {
                 let char_idx = position.character as usize;
 
                 if char_idx > 0 {
-                    let char_before = line.chars().nth(char_idx - 1);
-
-                    if let Some(c) = char_before {
+                    if let Some(c) = line.chars().nth(char_idx - 1) {
                         match c {
                             '@' | '%' | '^' => {
-                                let now = Local::now();
-                                let mut items = Vec::new();
-
-                                let make_item = |label: String, detail: &str| -> CompletionItem {
-                                    CompletionItem {
-                                        label: label.clone(),
-                                        kind: Some(CompletionItemKind::VALUE),
-                                        detail: Some(detail.to_string()),
-                                        insert_text: Some(label),
-                                        ..Default::default()
-                                    }
-                                };
-
-                                let now_str = now.format("%Y-%m-%dT%H:%M").to_string();
-                                items.push(make_item(now_str, "Now"));
-
-                                let today_str = now.format("%Y-%m-%d").to_string();
-                                items.push(make_item(today_str, "Today"));
-
-                                let tomorrow = now + chrono::Duration::days(1);
-                                let tomorrow_str = tomorrow.format("%Y-%m-%d").to_string();
-                                items.push(make_item(tomorrow_str, "Tomorrow"));
-
-                                return Ok(Some(CompletionResponse::Array(items)));
+                                return Ok(Some(CompletionResponse::Array(date_completion_items(
+                                    Local::now(),
+                                ))));
                             }
                             _ => {}
                         }
@@ -350,20 +258,13 @@ impl LanguageServer for Backend {
                     indent_width: params.options.tab_size as usize,
                     ..Default::default()
                 };
-
                 match format(&parsed.actions, OutputFormat::Actions, Some(config), None) {
-                    Ok(formatted_text) => {
-                        let start = Position::new(0, 0);
-                        let end = Position::new(u32::MAX, 0);
-
-                        return Ok(Some(vec![TextEdit {
-                            range: Range::new(start, end),
-                            new_text: formatted_text,
-                        }]));
+                    Ok(new_text) => {
+                        return Ok(Some(vec![full_replace_text_edit(new_text)]));
                     }
                     Err(e) => {
                         self.client
-                            .log_message(MessageType::ERROR, format!("Formatting failed: {}", e))
+                            .log_message(MessageType::ERROR, format!("Formatting failed: {e}"))
                             .await;
                         return Ok(None);
                     }
@@ -375,73 +276,181 @@ impl LanguageServer for Backend {
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         match params.command.as_str() {
-            "clearhead/archive" => {
-                if let Some(uri_val) = params.arguments.first() {
-                    if let Ok(uri) = serde_json::from_value::<Uri>(uri_val.clone()) {
-                        if let Some(doc) = self.documents.get(&uri) {
-                            let source_path = uri
-                                .to_file_path()
-                                .ok_or_else(|| Error::invalid_params("Invalid URI"))?;
-                            let log_dir = source_path.parent().unwrap().join("logs");
-
-                            let _ = std::fs::create_dir_all(&log_dir);
-
-                            match archive_actions(&doc.text, &source_path.to_path_buf(), &log_dir) {
-                                Ok((new_content, result)) => {
-                                    let edit = WorkspaceEdit {
-                                        changes: Some({
-                                            let mut map = std::collections::HashMap::new();
-                                            map.insert(
-                                                uri.clone(),
-                                                vec![TextEdit {
-                                                    range: Range::new(
-                                                        Position::new(0, 0),
-                                                        Position::new(u32::MAX, 0),
-                                                    ),
-                                                    new_text: new_content,
-                                                }],
-                                            );
-                                            map
-                                        }),
-                                        ..Default::default()
-                                    };
-
-                                    self.client.apply_edit(edit).await.map_err(|e| {
-                                        let err = format!("Failed to apply edit: {}", e);
-                                        Error {
-                                            code:
-                                                tower_lsp_server::jsonrpc::ErrorCode::InternalError,
-                                            message: err.into(),
-                                            data: None,
-                                        }
-                                    })?;
-
-                                    self.client
-                                        .show_message(
-                                            MessageType::INFO,
-                                            format!(
-                                                "Archived {} actions to {}",
-                                                result.archived_count,
-                                                result.log_path.display()
-                                            ),
-                                        )
-                                        .await;
-                                }
-                                Err(e) => {
-                                    self.client
-                                        .show_message(
-                                            MessageType::WARNING,
-                                            format!("Archive failed: {}", e),
-                                        )
-                                        .await;
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(None)
-            }
+            "clearhead/archive" => self.cmd_archive(params.arguments).await,
             _ => Ok(None),
+        }
+    }
+}
+
+// =============================================================================
+// Backend command implementations — one function per command
+// =============================================================================
+
+impl Backend {
+    async fn cmd_archive(&self, args: Vec<Value>) -> Result<Option<Value>> {
+        let uri_val = args
+            .first()
+            .ok_or_else(|| Error::invalid_params("Missing URI argument"))?;
+        let uri = serde_json::from_value::<Uri>(uri_val.clone())
+            .map_err(|e| Error::invalid_params(format!("Invalid URI: {e}")))?;
+
+        let source_path = uri
+            .to_file_path()
+            .ok_or_else(|| Error::invalid_params("URI is not a file path"))?
+            .to_path_buf();
+
+        // Drop the DashMap guard before any .await points
+        let content = {
+            self.documents
+                .get(&uri)
+                .ok_or_else(|| Error::invalid_params("Document not found in LSP state"))?
+                .text
+                .clone()
+        };
+
+        // Run blocking file I/O on a dedicated thread so the async executor stays
+        // free to process the workspace/applyEdit round-trip with the client
+        let result =
+            tokio::task::spawn_blocking(move || archive_actions(&content, &source_path))
+                .await
+                .map_err(|e| internal_error(format!("Archive task panicked: {e}")))?;
+
+        match result {
+            Ok((new_content, archive_result)) => {
+                self.client
+                    .apply_edit(full_replace_workspace_edit(uri, new_content))
+                    .await
+                    .map_err(|e| internal_error(format!("Failed to apply edit: {e}")))?;
+                self.client
+                    .show_message(
+                        MessageType::INFO,
+                        format!(
+                            "Archived {} actions to {}",
+                            archive_result.archived_count,
+                            archive_result.completed_path.display()
+                        ),
+                    )
+                    .await;
+            }
+            Err(e) => {
+                self.client
+                    .show_message(MessageType::WARNING, format!("Archive failed: {e}"))
+                    .await;
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+// =============================================================================
+// Helpers — small, stateless utilities used above
+// =============================================================================
+
+/// A WorkspaceEdit that replaces the entire content of a document.
+fn full_replace_workspace_edit(uri: Uri, text: String) -> WorkspaceEdit {
+    WorkspaceEdit {
+        changes: Some(HashMap::from([(uri, vec![full_replace_text_edit(text)])])),
+        ..Default::default()
+    }
+}
+
+/// A TextEdit that replaces the entire content of a document.
+fn full_replace_text_edit(text: String) -> TextEdit {
+    TextEdit {
+        range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
+        new_text: text,
+    }
+}
+
+fn internal_error(msg: impl std::fmt::Display) -> Error {
+    Error {
+        code: tower_lsp_server::jsonrpc::ErrorCode::InternalError,
+        message: msg.to_string().into(),
+        data: None,
+    }
+}
+
+fn date_completion_items(now: chrono::DateTime<Local>) -> Vec<CompletionItem> {
+    let make_item = |label: String, detail: &str| CompletionItem {
+        label: label.clone(),
+        kind: Some(CompletionItemKind::VALUE),
+        detail: Some(detail.to_string()),
+        insert_text: Some(label),
+        ..Default::default()
+    };
+
+    vec![
+        make_item(now.format("%Y-%m-%dT%H:%M").to_string(), "Now"),
+        make_item(now.format("%Y-%m-%d").to_string(), "Today"),
+        make_item(
+            (now + chrono::Duration::days(1))
+                .format("%Y-%m-%d")
+                .to_string(),
+            "Tomorrow",
+        ),
+    ]
+}
+
+fn emit_diff_telemetry(diff: &Diff, current: &ParsedDocument, file_path: &str) {
+    if !diff.is_empty() {
+        info!(
+            added = diff.added.len(),
+            removed = diff.removed.len(),
+            modified = diff.modified.len(),
+            "Changes detected on save"
+        );
+    }
+
+    for action in &diff.added {
+        debug!(id = %action.id, name = %action.name, "Emitting action_created event");
+        if let Err(e) = emit_event(
+            Tool::Lsp,
+            Some(action.id.to_string()),
+            TelemetryEvent::ActionCreated {
+                name: action.name.clone(),
+                file_path: file_path.to_string(),
+            },
+        ) {
+            warn!(error = %e, "Failed to emit action_created event");
+        }
+    }
+
+    for action in &diff.removed {
+        debug!(id = %action.id, name = %action.name, "Emitting action_deleted event");
+        if let Err(e) = emit_event(
+            Tool::Lsp,
+            Some(action.id.to_string()),
+            TelemetryEvent::ActionDeleted {
+                name: action.name.clone(),
+            },
+        ) {
+            warn!(error = %e, "Failed to emit action_deleted event");
+        }
+    }
+
+    for mod_action in &diff.modified {
+        let id = Some(mod_action.id.to_string());
+        let name = current
+            .actions
+            .iter()
+            .find(|a| a.id == mod_action.id)
+            .map(|a| a.name.as_str())
+            .unwrap_or("");
+
+        for change in &mod_action.changes {
+            let event = match change {
+                FieldChange::State { old, new } => {
+                    debug!(id = %mod_action.id, old = ?old, new = ?new, "Emitting state change event");
+                    event_from_state_change(*old, *new, name)
+                }
+                _ => event_from_field_change(change),
+            };
+            if let Some(evt) = event {
+                if let Err(e) = emit_event(Tool::Lsp, id.clone(), evt) {
+                    warn!(error = %e, "Failed to emit property change event");
+                }
+            }
         }
     }
 }
