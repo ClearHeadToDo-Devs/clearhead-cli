@@ -346,6 +346,8 @@ pub fn add_plan(
         do_date_time: None,
         do_duration: None,
         recurrence: None,
+        due_date_time: None,
+        due_recurrence: None,
         completed_date_time: None,
         created_date_time: Some(Local::now()),
         predecessors: None,
