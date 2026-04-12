@@ -50,7 +50,7 @@ pub fn expand_acts(
 
         // Load existing open acts and merge them in
         let open_path = acts::open_acts_path(path);
-        let existing_acts = acts::read_acts(&open_path)?;
+        let existing_acts = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
         if !existing_acts.is_empty() {
             acts::merge_acts_into_model(&mut model, existing_acts.clone());
         }
@@ -77,7 +77,7 @@ pub fn expand_acts(
                 open_path.display()
             );
         } else if existing_acts_ids != expanded_act_ids {
-            acts::write_acts_for_plans(&expanded_acts, &plan_ids, &open_path)?;
+            acts::write_acts_for_plans(&expanded_acts, &plan_ids, &open_path).map_err(|e| e.to_string())?;
             info!(count = expanded_acts.len(), path = %open_path.display(), "Acts written");
             println!(
                 "Wrote {} acts to {}",
@@ -141,12 +141,12 @@ pub fn complete_act(
 
     // Remove from open
     open_acts.retain(|a| a.id != act_id);
-    acts::write_acts(&open_acts, &open_path)?;
+    acts::write_acts(&open_acts, &open_path).map_err(|e| e.to_string())?;
 
     // Append to closed
-    let mut closed_acts = acts::read_acts(&closed_path)?;
+    let mut closed_acts = acts::read_acts(&closed_path).map_err(|e| e.to_string())?;
     closed_acts.push(completed_act);
-    acts::write_acts(&closed_acts, &closed_path)?;
+    acts::write_acts(&closed_acts, &closed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Act marked completed");
     println!("Completed act {}", act_id);
@@ -197,7 +197,7 @@ pub fn update_act(
         return Ok(());
     }
 
-    acts::write_acts(&open_acts, &open_path)?;
+    acts::write_acts(&open_acts, &open_path).map_err(|e| e.to_string())?;
     info!(%act_id, "Act updated");
     println!("Updated act {}", act_id);
     Ok(())
@@ -231,12 +231,12 @@ pub fn cancel_act(
 
     // Remove from open
     open_acts.retain(|a| a.id != act_id);
-    acts::write_acts(&open_acts, &open_path)?;
+    acts::write_acts(&open_acts, &open_path).map_err(|e| e.to_string())?;
 
     // Append to closed
-    let mut closed_acts = acts::read_acts(&closed_path)?;
+    let mut closed_acts = acts::read_acts(&closed_path).map_err(|e| e.to_string())?;
     closed_acts.push(cancelled_act);
-    acts::write_acts(&closed_acts, &closed_path)?;
+    acts::write_acts(&closed_acts, &closed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Act cancelled");
     println!("Cancelled act {}", act_id);
@@ -320,7 +320,7 @@ pub fn archive_acts(
 
     for actions_path in &charter_paths {
         let open_path = acts::open_acts_path(actions_path);
-        let all_open = acts::read_acts(&open_path)?;
+        let all_open = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
 
         let (to_close, to_keep): (Vec<PlannedAct>, Vec<PlannedAct>) = all_open
             .into_iter()
@@ -337,12 +337,12 @@ pub fn archive_acts(
                 open_path.display()
             );
         } else {
-            acts::write_acts(&to_keep, &open_path)?;
+            acts::write_acts(&to_keep, &open_path).map_err(|e| e.to_string())?;
 
             let closed_path = acts::closed_acts_path(actions_path);
-            let mut existing_closed = acts::read_acts(&closed_path)?;
+            let mut existing_closed = acts::read_acts(&closed_path).map_err(|e| e.to_string())?;
             existing_closed.extend(to_close.iter().cloned());
-            acts::write_acts(&existing_closed, &closed_path)?;
+            acts::write_acts(&existing_closed, &closed_path).map_err(|e| e.to_string())?;
 
             info!(
                 count = to_close.len(),
@@ -394,7 +394,7 @@ fn find_and_load_open_acts(
 ) -> Result<(PathBuf, Vec<PlannedAct>), String> {
     if let Some(path) = file {
         let open_path = acts::open_acts_path(path);
-        let acts = acts::read_acts(&open_path)?;
+        let acts = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
         return Ok((path.clone(), acts));
     }
 
@@ -415,7 +415,7 @@ fn find_act_in_open_files(
         if !open_path.exists() {
             continue;
         }
-        let acts = acts::read_acts(&open_path)?;
+        let acts = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
         if acts.iter().any(|a| act_matches(a, query)) {
             return Ok((actions_path, acts));
         }
@@ -443,9 +443,9 @@ fn collect_all_acts(
     open_only: bool,
 ) -> Result<Vec<PlannedAct>, String> {
     if let Some(path) = file {
-        let mut result = acts::read_acts(&acts::open_acts_path(path))?;
+        let mut result = acts::read_acts(&acts::open_acts_path(path)).map_err(|e| e.to_string())?;
         if !open_only {
-            result.extend(acts::read_acts(&acts::closed_acts_path(path))?);
+            result.extend(acts::read_acts(&acts::closed_acts_path(path)).map_err(|e| e.to_string())?);
         }
         return Ok(result);
     }
@@ -455,9 +455,9 @@ fn collect_all_acts(
 
     let mut all = Vec::new();
     for actions_path in action_files {
-        all.extend(acts::read_acts(&acts::open_acts_path(&actions_path))?);
+        all.extend(acts::read_acts(&acts::open_acts_path(&actions_path)).map_err(|e| e.to_string())?);
         if !open_only {
-            all.extend(acts::read_acts(&acts::closed_acts_path(&actions_path))?);
+            all.extend(acts::read_acts(&acts::closed_acts_path(&actions_path)).map_err(|e| e.to_string())?);
         }
     }
     Ok(all)

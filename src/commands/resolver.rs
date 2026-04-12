@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 pub enum ResolvedScope {
     Charter {
@@ -6,7 +7,7 @@ pub enum ResolvedScope {
     },
     Plan {
         file_path: PathBuf,
-        _plan_query: String,
+        plan_id: Uuid,
     },
 }
 
@@ -28,17 +29,14 @@ pub fn resolve_domain_ref(data_dir: &Path, ref_str: &str) -> Result<ResolvedScop
         return Ok(ResolvedScope::Charter { file_path });
     }
 
-    // 2 segments: validate the plan exists (eager error on typo)
+    // 2 segments: resolve the plan and extract its UUID
     let actions = crate::commands::load_file(&file_path)?;
-    if clearhead_cli::resolve_reference(&actions, segments[1]).is_none() {
-        return Err(format!(
-            "No plan found matching '{}' in charter '{}'",
-            segments[1], segments[0]
-        ));
-    }
+    let resolved = clearhead_cli::resolve_reference(&actions, segments[1])
+        .ok_or_else(|| format!("No plan found matching '{}' in charter '{}'", segments[1], segments[0]))?;
+    let plan_id = actions[resolved.index].id;
 
     Ok(ResolvedScope::Plan {
         file_path,
-        _plan_query: segments[1].to_string(),
+        plan_id,
     })
 }

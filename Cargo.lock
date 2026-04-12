@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "clearhead_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automerge",
  "autosurgeon",
@@ -499,6 +499,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yml",
+ "thiserror 2.0.18",
  "topiary-core",
  "topiary-tree-sitter-facade",
  "tree-sitter",

@@ -303,6 +303,7 @@ pub fn add_plan(
     name: &str,
     file: &Option<std::path::PathBuf>,
     charter: &Option<String>,
+    parent: &Option<String>,
     fields: &argparser::ActionFields,
     dry_run: bool,
 ) -> Result<(), String> {
@@ -319,18 +320,52 @@ pub fn add_plan(
 
     if !dry_run && !input_file.exists() {
         info!(input_file = %input_file.display(), "Creating new actions file");
-        if let Some(parent) = input_file.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+        if let Some(parent_dir) = input_file.parent() {
+            fs::create_dir_all(parent_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
         fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
     }
 
     let mut actions = load_file(&input_file)?;
 
+    // Resolve parent reference if provided
+    let parent_id: Option<Uuid> = if let Some(parent_ref) = parent {
+        if parent_ref.contains('/') {
+            // Cross-charter: charter/plan path
+            use crate::commands::resolver::{resolve_domain_ref, ResolvedScope};
+            let resolved_file = match resolve_domain_ref(&ctx.data_dir, parent_ref)? {
+                ResolvedScope::Plan { file_path, plan_id } => {
+                    // If --charter was also given, the resolved file must agree
+                    if let Some(charter_query) = charter {
+                        let charter_file = crate::commands::charter_to_file_path(&ctx.data_dir, charter_query)?;
+                        if file_path != charter_file {
+                            return Err(format!(
+                                "--parent '{}' resolves to a different charter than --charter '{}'",
+                                parent_ref, charter_query
+                            ));
+                        }
+                    }
+                    Some(plan_id)
+                }
+                ResolvedScope::Charter { .. } => {
+                    return Err(format!("'{}' resolves to a charter, not a plan", parent_ref));
+                }
+            };
+            resolved_file
+        } else {
+            // Same-file: alias, name, or short UUID
+            let resolved = clearhead_cli::resolve_reference(&actions, parent_ref)
+                .ok_or_else(|| format!("No plan found matching '{}'", parent_ref))?;
+            Some(actions[resolved.index].id)
+        }
+    } else {
+        None
+    };
+
     let new_id = Uuid::now_v7();
     let new_action = Action {
         id: new_id,
-        parent_id: None,
+        parent_id,
         state: fields
             .state
             .map(|s| s.into())
@@ -673,8 +708,8 @@ pub fn export_plans(
 
             let open_path = clearhead_core::open_acts_path(&resolved);
             let closed_path = clearhead_core::closed_acts_path(&resolved);
-            let mut loaded_acts = clearhead_core::read_acts(&open_path)?;
-            let closed_acts = clearhead_core::read_acts(&closed_path)?;
+            let mut loaded_acts = clearhead_core::read_acts(&open_path).map_err(|e| e.to_string())?;
+            let closed_acts = clearhead_core::read_acts(&closed_path).map_err(|e| e.to_string())?;
             loaded_acts.extend(closed_acts);
             if !loaded_acts.is_empty() {
                 clearhead_core::merge_acts_into_model(&mut model, loaded_acts);

@@ -249,8 +249,21 @@ pub enum Verb {
         target: SyncTarget,
     },
 
-    /// Execute a raw SPARQL SELECT query against the workspace RDF graph
+    /// Execute SPARQL queries against the workspace RDF graph
     Query {
+        #[command(subcommand)]
+        target: QueryTarget,
+    },
+}
+
+// =============================================================================
+// Query targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum QueryTarget {
+    /// Run a raw SPARQL query
+    Run {
         /// Full SPARQL SELECT query
         #[arg(conflicts_with = "where_clause")]
         sparql: Option<String>,
@@ -263,6 +276,20 @@ pub enum Verb {
         #[arg(short, long, value_enum)]
         format: Option<QueryFormat>,
     },
+
+    /// Run a named query stored in ~/.clearhead/queries/ or <workspace>/.clearhead/queries/
+    #[command(name = "named")]
+    NamedRun {
+        /// Name of the query (stem of the .sparql file)
+        name: String,
+
+        /// Output format
+        #[arg(short, long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+
+    /// List available named queries
+    List,
 }
 
 // =============================================================================
@@ -388,6 +415,10 @@ pub enum AddTarget {
         /// Charter to add the plan to (name, alias, or UUID). Routes to the charter's primary file.
         #[arg(long, conflicts_with = "file")]
         charter: Option<String>,
+
+        /// Parent plan reference: alias/name (same-file) or charter/plan (cross-charter)
+        #[arg(long)]
+        parent: Option<String>,
 
         /// Action fields (priority, context, description, alias, state)
         #[command(flatten)]

@@ -9,7 +9,7 @@ repository = "https://github.com/ClearHeadToDo-Devs/clearhead_cli.git"
 
 [dependencies]
 # Core library with pure business logic
-clearhead_core = { path = "../clearhead-core", version = "0.1.0" }
+clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
 
 # CLI-specific dependencies
 clap = { version = "4.0", features = ["derive"] }

@@ -95,9 +95,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 name,
                 file,
                 charter,
+                parent,
                 fields,
                 dry_run,
-            } => commands::plan::add_plan(&ctx, name, file, charter, fields, *dry_run),
+            } => commands::plan::add_plan(&ctx, name, file, charter, parent, fields, *dry_run),
             argparser::AddTarget::Charter {
                 title,
                 alias,
@@ -194,16 +195,22 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 commands::service::sync_events(&ctx, file, *dry_run)
             }
         },
-        Verb::Query {
-            sparql,
-            where_clause,
-            format,
-        } => commands::query::query_workspace(
-            &ctx,
-            sparql.as_deref(),
-            where_clause.as_deref(),
-            *format,
-        ),
+        Verb::Query { target } => match target {
+            argparser::QueryTarget::Run {
+                sparql,
+                where_clause,
+                format,
+            } => commands::query::query_workspace(
+                &ctx,
+                sparql.as_deref(),
+                where_clause.as_deref(),
+                *format,
+            ),
+            argparser::QueryTarget::NamedRun { name, format } => {
+                commands::query::run_named_query(&ctx, name, *format)
+            }
+            argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
+        },
         Verb::Expand { target } => match target {
             argparser::ExpandTarget::Acts {
                 file,
