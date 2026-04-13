@@ -1,6 +1,7 @@
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use tracing::debug;
 
@@ -44,6 +45,7 @@ pub fn query_workspace(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum QuerySource {
+    Builtin,
     User,
     Project,
 }
@@ -51,42 +53,109 @@ enum QuerySource {
 impl std::fmt::Display for QuerySource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            QuerySource::Builtin => write!(f, "builtin"),
             QuerySource::User => write!(f, "user"),
             QuerySource::Project => write!(f, "project"),
         }
     }
 }
 
+enum QueryLocation {
+    File(PathBuf),
+    Builtin(&'static str),
+}
+
 struct NamedQuery {
-    path: PathBuf,
+    location: QueryLocation,
     source: QuerySource,
 }
+
+const BUILTIN_QUERIES: &[(&str, &str)] = &[
+    (
+        "all-plans",
+        include_str!("../resources/queries/all-plans.sparql"),
+    ),
+    (
+        "open-acts",
+        include_str!("../resources/queries/open-acts.sparql"),
+    ),
+    (
+        "overdue-acts",
+        include_str!("../resources/queries/overdue-acts.sparql"),
+    ),
+    ("agenda", include_str!("../resources/queries/agenda.sparql")),
+];
 
 /// Scan user-global and project-local query directories, returning a map of
 /// stem → NamedQuery. Project entries override user entries on name collision.
 fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
     let mut queries: HashMap<String, NamedQuery> = HashMap::new();
 
-    // User-global: ~/.clearhead/queries/
-    if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".clearhead").join("queries");
-        scan_query_dir(&user_dir, QuerySource::User, &mut queries);
-    }
+    // Builtin scope (lowest precedence)
+    scan_builtin_queries(&mut queries);
 
-    // Project-local: <data_dir>/.clearhead/queries/ (overrides user)
-    let project_dir = ctx.data_dir.join(".clearhead").join("queries");
-    scan_query_dir(&project_dir, QuerySource::Project, &mut queries);
+    // User scope: <data_dir>/queries
+    let user_dir = ctx.data_dir.join("queries");
+    scan_query_dir(&user_dir, QuerySource::User, &mut queries);
+
+    // Project scope: nearest workspace root/.clearhead/queries (overrides user)
+    if let Ok(cwd) = env::current_dir() {
+        if let Some(workspace_root) = clearhead_core::workspace::check_for_workspace(&cwd) {
+            let project_dir = workspace_root.join(".clearhead").join("queries");
+            scan_query_dir(&project_dir, QuerySource::Project, &mut queries);
+        }
+    }
 
     queries
 }
 
-fn scan_query_dir(dir: &std::path::Path, source: QuerySource, out: &mut HashMap<String, NamedQuery>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+fn scan_builtin_queries(out: &mut HashMap<String, NamedQuery>) {
+    for (name, content) in BUILTIN_QUERIES {
+        out.insert(
+            (*name).to_string(),
+            NamedQuery {
+                location: QueryLocation::Builtin(content),
+                source: QuerySource::Builtin,
+            },
+        );
+    }
+}
+
+fn query_search_paths(ctx: &CommandContext) -> Vec<(QuerySource, PathBuf)> {
+    let mut paths = Vec::new();
+    paths.push((QuerySource::User, ctx.data_dir.join("queries")));
+
+    if let Ok(cwd) = env::current_dir() {
+        if let Some(workspace_root) = clearhead_core::workspace::check_for_workspace(&cwd) {
+            paths.push((
+                QuerySource::Project,
+                workspace_root.join(".clearhead").join("queries"),
+            ));
+        }
+    }
+
+    paths
+}
+
+fn scan_query_dir(
+    dir: &std::path::Path,
+    source: QuerySource,
+    out: &mut HashMap<String, NamedQuery>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("sparql") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                out.insert(stem.to_string(), NamedQuery { path: path.clone(), source });
+                out.insert(
+                    stem.to_string(),
+                    NamedQuery {
+                        location: QueryLocation::File(path.clone()),
+                        source,
+                    },
+                );
             }
         }
     }
@@ -99,16 +168,24 @@ pub fn run_named_query(
 ) -> Result<(), String> {
     let queries = resolve_named_queries(ctx);
     let named = queries.get(name).ok_or_else(|| {
+        let searched = query_search_paths(ctx)
+            .into_iter()
+            .map(|(source, path)| format!("  - {}: {}", source, path.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
         format!(
-            "No query named '{}'. Use `clearhead query list` to see available.",
-            name
+            "No query named '{}'.\nSearched:\n{}\nUse `clearhead query list` to see available.",
+            name, searched
         )
     })?;
 
-    let where_clause = std::fs::read_to_string(&named.path)
-        .map_err(|e| format!("Failed to read query file '{}': {}", named.path.display(), e))?;
+    let query_text = match &named.location {
+        QueryLocation::Builtin(content) => (*content).to_string(),
+        QueryLocation::File(path) => std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read query file '{}': {}", path.display(), e))?,
+    };
 
-    let full_query = clearhead_core::graph::build_raw_where_query(where_clause.trim());
+    let full_query = normalize_query_file(query_text.trim());
     let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &full_query)?;
 
     if rows.is_empty() {
@@ -129,7 +206,7 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
 
     if queries.is_empty() {
         println!("No named queries found.");
-        println!("Add .sparql files to ~/.clearhead/queries/ or <workspace>/.clearhead/queries/");
+        println!("Builtin queries are unavailable (unexpected). Add files to <data_dir>/queries or <workspace>/.clearhead/queries");
         return Ok(());
     }
 
@@ -139,14 +216,23 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
         .set_content_arrangement(ContentArrangement::Dynamic);
     table.set_header(vec![
         Cell::new("NAME").fg(Color::Cyan),
-        Cell::new("SOURCE").fg(Color::Cyan),
+        Cell::new("SCOPE").fg(Color::Cyan),
+        Cell::new("PATH").fg(Color::Cyan),
     ]);
 
     let mut names: Vec<&String> = queries.keys().collect();
     names.sort();
     for name in names {
         let q = &queries[name];
-        table.add_row(vec![Cell::new(name), Cell::new(q.source.to_string())]);
+        let path = match &q.location {
+            QueryLocation::Builtin(_) => "(builtin)".to_string(),
+            QueryLocation::File(path) => path.display().to_string(),
+        };
+        table.add_row(vec![
+            Cell::new(name),
+            Cell::new(q.source.to_string()),
+            Cell::new(path),
+        ]);
     }
 
     println!("{}", table);
@@ -158,6 +244,19 @@ fn format_as_json(rows: &[HashMap<String, String>]) -> Result<(), String> {
         serde_json::to_string_pretty(rows).map_err(|e| format!("Failed to serialize: {}", e))?;
     println!("{}", json);
     Ok(())
+}
+
+fn normalize_query_file(raw: &str) -> String {
+    if looks_like_full_sparql(raw) {
+        raw.to_string()
+    } else {
+        clearhead_core::graph::build_raw_where_query(raw)
+    }
+}
+
+fn looks_like_full_sparql(raw: &str) -> bool {
+    let upper = raw.to_ascii_uppercase();
+    upper.contains("SELECT") || upper.contains("ASK") || upper.contains("CONSTRUCT")
 }
 
 fn format_as_table(rows: &[HashMap<String, String>]) -> Result<(), String> {

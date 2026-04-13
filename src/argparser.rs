@@ -277,7 +277,7 @@ pub enum QueryTarget {
         format: Option<QueryFormat>,
     },
 
-    /// Run a named query stored in ~/.clearhead/queries/ or <workspace>/.clearhead/queries/
+    /// Run a named query stored in <data_dir>/queries or <workspace>/.clearhead/queries/
     #[command(name = "named")]
     NamedRun {
         /// Name of the query (stem of the .sparql file)

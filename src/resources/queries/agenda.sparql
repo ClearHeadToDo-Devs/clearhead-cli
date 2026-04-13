@@ -1,0 +1,22 @@
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?act_id ?plan_name ?scheduled_at ?due_date ?status WHERE {
+  ?act a cco:ont00000228 ;
+       actions:hasUUID ?act_id ;
+       cco:ont00001868 ?status .
+  FILTER(?status != actions:Completed && ?status != actions:Cancelled)
+
+  ?plan cco:ont00001942 ?act ;
+        rdfs:label ?plan_name .
+
+  OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
+  OPTIONAL { ?act actions:hasDueDateTime ?due_date }
+
+  FILTER(
+    (BOUND(?scheduled_at) && ?scheduled_at <= NOW()) ||
+    (BOUND(?due_date) && ?due_date <= NOW())
+  )
+}
+ORDER BY ?scheduled_at ?due_date ?plan_name

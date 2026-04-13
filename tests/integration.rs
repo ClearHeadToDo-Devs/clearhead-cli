@@ -46,6 +46,22 @@ impl TestEnv {
         fs::write(actions_path, content).expect("Failed to write actions file");
     }
 
+    fn write_user_query(&self, name: &str, content: &str) -> std::path::PathBuf {
+        let dir = self.data_dir.join("queries");
+        fs::create_dir_all(&dir).expect("Failed to create user query dir");
+        let path = dir.join(format!("{}.sparql", name));
+        fs::write(&path, content).expect("Failed to write user query");
+        path
+    }
+
+    fn write_project_query(&self, name: &str, content: &str) -> std::path::PathBuf {
+        let dir = self.work_dir.join(".clearhead").join("queries");
+        fs::create_dir_all(&dir).expect("Failed to create project query dir");
+        let path = dir.join(format!("{}.sparql", name));
+        fs::write(&path, content).expect("Failed to write project query");
+        path
+    }
+
     /// Get a Command with XDG env vars set to test directories and cwd in isolated work dir
     fn command(&self) -> Command {
         let bin = assert_cmd::cargo::cargo_bin!("clearhead_cli");
@@ -56,6 +72,122 @@ impl TestEnv {
         cmd.current_dir(&self.work_dir); // Run from isolated temp directory
         cmd
     }
+}
+
+#[test]
+fn test_query_named_uses_user_scope_when_no_project_workspace() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Query target");
+    env.write_user_query(
+        "ids",
+        "?s <https://clearhead.us/vocab/actions/v4#hasUUID> ?id .",
+    );
+
+    env.command()
+        .arg("query")
+        .arg("named")
+        .arg("ids")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"id\""));
+}
+
+#[test]
+fn test_query_named_project_scope_overrides_user_scope() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Query target");
+
+    env.write_user_query("agenda", "SELECT ?id WHERE { FILTER(false) }");
+    env.write_project_query(
+        "agenda",
+        "SELECT ?id WHERE { ?s <https://clearhead.us/vocab/actions/v4#hasUUID> ?id . }",
+    );
+
+    env.command()
+        .arg("query")
+        .arg("named")
+        .arg("agenda")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"id\""))
+        .stdout(predicate::str::contains("(no results)").not());
+}
+
+#[test]
+fn test_query_list_includes_scope_and_path() {
+    let env = TestEnv::new();
+    let user_query = env.write_user_query("user_only", "SELECT ?id WHERE { FILTER(false) }");
+    let project_query =
+        env.write_project_query("project_only", "SELECT ?id WHERE { FILTER(false) }");
+
+    env.command()
+        .arg("query")
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("NAME"))
+        .stdout(predicate::str::contains("SCOPE"))
+        .stdout(predicate::str::contains("PATH"))
+        .stdout(predicate::str::contains("user_only"))
+        .stdout(predicate::str::contains("project_only"))
+        .stdout(predicate::str::contains("user"))
+        .stdout(predicate::str::contains("project"))
+        .stdout(predicate::str::contains(user_query.display().to_string()))
+        .stdout(predicate::str::contains(
+            project_query.display().to_string(),
+        ));
+}
+
+#[test]
+fn test_query_list_includes_builtin_queries() {
+    let env = TestEnv::new();
+
+    env.command()
+        .arg("query")
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("all-plans"))
+        .stdout(predicate::str::contains("open-acts"))
+        .stdout(predicate::str::contains("overdue-acts"))
+        .stdout(predicate::str::contains("agenda"))
+        .stdout(predicate::str::contains("builtin"));
+}
+
+#[test]
+fn test_query_named_runs_builtin_query_by_default() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Builtin target");
+
+    env.command()
+        .arg("query")
+        .arg("named")
+        .arg("all-plans")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"id\""))
+        .stdout(predicate::str::contains("\"name\""));
+}
+
+#[test]
+fn test_query_named_user_overrides_builtin() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Override target");
+    env.write_user_query("all-plans", "SELECT ?x WHERE { FILTER(false) }");
+
+    env.command()
+        .arg("query")
+        .arg("named")
+        .arg("all-plans")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("(no results)"));
 }
 
 #[test]
@@ -373,11 +505,7 @@ fn test_workspace_read_succeeds_when_empty() {
     // Don't create any files - empty workspace
 
     // Workspace read succeeds even when empty (just returns no results)
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success();
+    env.command().arg("read").arg("plans").assert().success();
 }
 
 #[test]
@@ -422,11 +550,7 @@ fn test_error_on_invalid_format_in_config() {
     env.write_actions("inbox.actions", "[ ] Task");
 
     // Should use default format (actions) since config format is invalid
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success(); // Falls back to default
+    env.command().arg("read").arg("plans").assert().success(); // Falls back to default
 }
 
 #[test]
@@ -667,7 +791,10 @@ fn test_sync_events_command() {
     let uuid2 = "019baaec-00b6-7991-be34-94b68212619b";
 
     // Create file with two actions
-    env.write_actions("inbox.actions", &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}", uuid1, uuid2));
+    env.write_actions(
+        "inbox.actions",
+        &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}", uuid1, uuid2),
+    );
 
     // 1. First sync - should sync both
     env.command()
@@ -679,21 +806,19 @@ fn test_sync_events_command() {
 
     // 2. Second sync - should skip both (TODO: idempotency not implemented yet)
     // This test documents the current behavior (re-syncs all)
-    env.command()
-        .arg("sync")
-        .arg("events")
-        .assert()
-        .success();
+    env.command().arg("sync").arg("events").assert().success();
 
     // 3. Add a third action and sync again
     let uuid3 = "019baaec-00b6-7991-be34-94b68212619c";
-    env.write_actions("inbox.actions", &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}\n[ ] Task 3 #{}", uuid1, uuid2, uuid3));
+    env.write_actions(
+        "inbox.actions",
+        &format!(
+            "[ ] Task 1 #{}\n[ ] Task 2 #{}\n[ ] Task 3 #{}",
+            uuid1, uuid2, uuid3
+        ),
+    );
 
-    env.command()
-        .arg("sync")
-        .arg("events")
-        .assert()
-        .success();
+    env.command().arg("sync").arg("events").assert().success();
 }
 
 // ============================================================================
@@ -828,9 +953,10 @@ fn test_read_workspace_filter_by_file_path() {
 fn test_query_sparql_and_where_conflict() {
     let env = TestEnv::new();
 
-    // positional SPARQL query and --where should conflict on `query` verb
+    // positional SPARQL query and --where should conflict on `query run`
     env.command()
         .arg("query")
+        .arg("run")
         .arg("SELECT ?s WHERE { ?s a <urn:x> }")
         .arg("--where")
         .arg("?s a <urn:x>")
@@ -858,11 +984,7 @@ fn test_read_empty_workspace() {
     let env = TestEnv::new();
 
     // Empty workspace should succeed (may output just a newline)
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success();
+    env.command().arg("read").arg("plans").assert().success();
 }
 
 // Helper: write an actions file, creating parent dirs as needed

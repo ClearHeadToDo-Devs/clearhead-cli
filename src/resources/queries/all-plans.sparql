@@ -1,0 +1,11 @@
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?id ?name ?priority WHERE {
+  ?plan a cco:ont00000974 ;
+        actions:hasUUID ?id ;
+        rdfs:label ?name .
+  OPTIONAL { ?plan actions:hasPriority ?priority }
+}
+ORDER BY ?priority ?name

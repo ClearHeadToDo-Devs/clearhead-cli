@@ -130,6 +130,35 @@ For more details see [The Specification](https://github.com/ClearHeadToDo-Devs/t
 
 Commands follow a verb-noun structure, such that you can operate on different entities (plans, planned acts, charters, objectives) with the same command. here we will cover the nouns in general, and you may assume that this can be used for any entities in the system unless otherwise specified
 
+### Query
+
+Run SPARQL directly or through named `.sparql` files:
+
+```bash
+# Raw query (full SPARQL)
+clearhead_cli query run "SELECT ?id ?name WHERE { ?s <https://clearhead.us/vocab/actions/v4#hasUUID> ?id ; <http://schema.org/name> ?name . }"
+
+# WHERE-only shorthand (prefixes + SELECT * injected)
+clearhead_cli query run --where "?s <https://clearhead.us/vocab/actions/v4#hasUUID> ?id"
+
+# List named queries discovered by scope
+clearhead_cli query list
+
+# Run a named query by file stem
+clearhead_cli query named agenda --format table
+```
+
+Named query scope resolution follows layered scope precedence:
+
+- **Builtin scope**: vendored defaults shipped with the CLI binary
+- **User scope**: `<data_dir>/queries/*.sparql`
+- **Project scope**: `<workspace>/.clearhead/queries/*.sparql`
+
+Precedence is `project > user > builtin`.
+If multiple scopes define the same query name, the higher scope wins.
+Query files may be either full SPARQL (`SELECT/ASK/CONSTRUCT`) or WHERE-only fragments.
+Builtin names currently include: `all-plans`, `open-acts`, `overdue-acts`, `agenda`.
+
 ### Read
 
 The `read` command operates in three modes:
