@@ -123,6 +123,20 @@ pub fn get_data_dir() -> PathBuf {
         .join("clearhead")
 }
 
+/// Walk up from cwd looking for a `.clearhead/` directory.
+/// Returns the first ancestor directory that contains `.clearhead/`, or `None`.
+pub fn find_project_data_dir() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    loop {
+        if dir.join(".clearhead").is_dir() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
 /// Expand shell variables in a path string
 fn expand_path(path: &str) -> PathBuf {
     if path.starts_with("~/") {

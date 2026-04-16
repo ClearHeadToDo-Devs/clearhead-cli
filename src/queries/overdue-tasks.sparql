@@ -1,0 +1,52 @@
+# =============================================================================
+# Query: Overdue Tasks
+# =============================================================================
+# Purpose: Find PlannedActs that are past their due date and not completed
+# Parameters:
+#   - ?CUTOFF_DATE: Current date/time (e.g., "2025-01-20T00:00:00Z"^^xsd:dateTime)
+# Returns: act, plan_name, due_date, scheduled_at, status, priority_level, contexts
+# Usage: Daily/weekly overdue task review
+# =============================================================================
+
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?act ?plan_name ?due_date ?scheduled_at ?status ?priority_level ?contexts WHERE {
+    # Find acts that are not completed or cancelled
+    ?act a cco:ont00000228 ;
+         cco:ont00001868 ?status .  # is_measured_by_nominal
+
+    FILTER(?status != actions:Completed && ?status != actions:Cancelled)
+
+    # Get the plan that prescribes the act
+    ?plan cco:ont00001942 ?act ;
+          rdfs:label ?plan_name .
+
+    # Due date is act-level metadata
+    ?act actions:hasDueDateTime ?due_date .
+
+    # Optional scheduled time (independent from due date)
+    OPTIONAL {
+        ?act actions:hasScheduledDateTime ?scheduled_at .
+    }
+
+    # Filter for overdue (parameter substitution needed)
+    # Example: FILTER(?due_date < "2025-01-20T00:00:00Z"^^xsd:dateTime)
+    # FILTER(?due_date < ?CUTOFF_DATE)
+
+    # Optional priority
+    OPTIONAL {
+        ?plan actions:hasPriority ?priority_level .
+    }
+
+    # Optional contexts
+    OPTIONAL {
+        SELECT ?plan (GROUP_CONCAT(?context; separator=", ") AS ?contexts) WHERE {
+            ?plan actions:requiresContext ?context .
+        }
+        GROUP BY ?plan
+    }
+}
+ORDER BY ?priority_level ?due_date

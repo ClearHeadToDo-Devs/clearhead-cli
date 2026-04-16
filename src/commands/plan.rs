@@ -149,18 +149,10 @@ pub fn read_plans(
             let plan_count = combined_model.all_plans().len();
             info!(plan_count, "Loaded domain model for table");
             if plan_count == 0 {
-                println!(
-                    "Charter '{}' (graph name: '{}') resolved but contains no plans.",
-                    title, graph_name
-                );
                 if recursive {
-                    println!("(searched recursively through sub-charters)");
+                    println!("{}: no plans (searched sub-charters)", title);
                 } else {
-                    println!(
-                        "Tip: try --recursive to include sub-charters, or \
-                         `clearhead query --where \"?s a <https://clearhead.us/vocab/actions/v4#Charter> ; \
-                         <http://www.w3.org/2000/01/rdf-schema#label> ?name\"` to see what the graph sees."
-                    );
+                    println!("{}: no plans", title);
                 }
                 return Ok(());
             }
@@ -217,10 +209,12 @@ pub fn read_plans(
 
         if output_format == clearhead_cli::OutputFormat::Table {
             let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
-            info!(
-                plan_count = model.all_plans().len(),
-                "Loaded workspace domain model for table"
-            );
+            let plan_count = model.all_plans().len();
+            info!(plan_count, "Loaded workspace domain model for table");
+            if plan_count == 0 {
+                println!("workspace: no plans");
+                return Ok(());
+            }
             println!(
                 "{}",
                 clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?

@@ -1,0 +1,50 @@
+# =============================================================================
+# Query: Next Actions (GTD Style)
+# =============================================================================
+# Purpose: Find actionable tasks with no unfulfilled dependencies
+# Returns: act, plan_name, context, priority_level, scheduled_at, due_date
+# Usage: GTD-style next actions list for daily planning
+# Notes: A task is actionable if all its predecessors are completed or cancelled
+# =============================================================================
+
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX bfo: <http://purl.obolibrary.org/obo/>
+
+SELECT DISTINCT ?act ?plan_name ?context ?priority_level ?scheduled_at ?due_date WHERE {
+    # Find not-started acts
+    ?act a cco:ont00000228 ;
+         cco:ont00001868 actions:NotStarted .  # is_measured_by_nominal
+
+    # Get the plan
+    ?plan cco:ont00001942 ?act ;
+          rdfs:label ?plan_name .
+
+    # Check that all predecessors are satisfied (using is_successor_of)
+    FILTER NOT EXISTS {
+        ?plan cco:ont00001775 ?pred_plan .  # is_successor_of
+        ?pred_plan cco:ont00001942 ?pred_act .
+        ?pred_act cco:ont00001868 ?pred_status .
+        FILTER(?pred_status != actions:Completed && ?pred_status != actions:Cancelled)
+    }
+
+    # Also check that parent plans (if any) don't block this
+    FILTER NOT EXISTS {
+        ?plan bfo:BFO_0000050 ?parent_plan .  # partOf
+        ?parent_plan actions:hasSequentialChildren true .
+        # Find previous sibling that's not complete
+        ?parent_plan bfo:BFO_0000051 ?sibling_plan .  # hasPart
+        ?sibling_plan cco:ont00001942 ?sibling_act .
+        ?sibling_act cco:ont00001868 ?sibling_status .
+        FILTER(?sibling_status != actions:Completed && ?sibling_status != actions:Cancelled)
+        # This is a simplified check - full sequential logic is complex
+    }
+
+    # Get optional metadata
+    OPTIONAL { ?plan actions:requiresContext ?context }
+    OPTIONAL { ?plan actions:hasPriority ?priority_level }
+    OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
+    OPTIONAL { ?act actions:hasDueDateTime ?due_date }
+}
+ORDER BY ?priority_level ?scheduled_at ?due_date ?plan_name

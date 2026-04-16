@@ -15,7 +15,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::environment_reader::{
-    Config, ensure_dir_exists, get_data_dir, load_config, resolve_file_path,
+    Config, ensure_dir_exists, find_project_data_dir, get_data_dir, load_config, resolve_file_path,
 };
 use clearhead_cli::ActionList;
 use clearhead_cli::telemetry::{TelemetryEvent, Tool, emit_event};
@@ -33,7 +33,11 @@ impl CommandContext {
         let config =
             load_config(cli.config.clone()).map_err(|e| format!("Failed to load config: {}", e))?;
 
-        let data_dir = resolve_file_path(&config.data_dir, &get_data_dir());
+        let data_dir = if config.data_dir.is_empty() {
+            find_project_data_dir().unwrap_or_else(get_data_dir)
+        } else {
+            resolve_file_path(&config.data_dir, &get_data_dir())
+        };
         let config_dir = resolve_file_path(
             &config.config_dir,
             &crate::environment_reader::get_config_dir(),

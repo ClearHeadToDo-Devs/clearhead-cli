@@ -1,0 +1,46 @@
+# =============================================================================
+# Query: Agenda (Root Plans with Actionable Open Acts)
+# =============================================================================
+# Purpose: Find root plans (part_of Charter) where the plan itself or any
+#          descendant plan has an open PlannedAct that is scheduled or due now.
+# Parameters:
+#   - ?NOW: Current date/time (e.g., "2026-04-12T09:00:00Z"^^xsd:dateTime)
+# Returns: root_plan, root_plan_name, act, scheduled_at, due_date, status
+# Usage: Daily agenda generation anchored at top-level plans
+# =============================================================================
+
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX bfo: <http://purl.obolibrary.org/obo/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT DISTINCT ?root_plan ?root_plan_name ?act ?scheduled_at ?due_date ?status WHERE {
+    VALUES ?now { ?NOW }
+
+    # Root plan: directly scoped by a Charter
+    ?root_plan a cco:ont00000974 ;
+               bfo:BFO_0000050 ?charter ;
+               rdfs:label ?root_plan_name .
+    ?charter a actions:Charter .
+
+    # Plan in scope: root plan or any descendant via has_part/part_of closure
+    ?descendant_plan bfo:BFO_0000050* ?root_plan .
+    ?descendant_plan a cco:ont00000974 ;
+                     cco:ont00001942 ?act .
+
+    # Open acts only
+    ?act a cco:ont00000228 ;
+         cco:ont00001868 ?status .
+    FILTER(?status != actions:Completed && ?status != actions:Cancelled)
+
+    OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
+    OPTIONAL { ?act actions:hasDueDateTime ?due_date }
+
+    # Agenda condition: scheduled or due on/before now
+    FILTER(
+        (BOUND(?scheduled_at) && ?scheduled_at <= ?now) ||
+        (BOUND(?due_date) && ?due_date <= ?now)
+    )
+}
+ORDER BY ?root_plan_name ?scheduled_at ?due_date

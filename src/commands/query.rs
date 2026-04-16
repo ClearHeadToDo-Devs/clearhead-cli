@@ -1,7 +1,6 @@
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tracing::debug;
 
 pub fn query_workspace(
@@ -44,6 +43,7 @@ pub fn query_workspace(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum QuerySource {
+    BuiltIn,
     User,
     Project,
 }
@@ -51,6 +51,7 @@ enum QuerySource {
 impl std::fmt::Display for QuerySource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            QuerySource::BuiltIn => write!(f, "built-in"),
             QuerySource::User => write!(f, "user"),
             QuerySource::Project => write!(f, "project"),
         }
@@ -58,14 +59,37 @@ impl std::fmt::Display for QuerySource {
 }
 
 struct NamedQuery {
-    path: PathBuf,
+    /// Full SPARQL text — either embedded at compile time or read from disk.
+    sparql: String,
     source: QuerySource,
 }
 
-/// Scan user-global and project-local query directories, returning a map of
-/// stem → NamedQuery. Project entries override user entries on name collision.
+// Vendored v4 queries embedded at compile time.
+const BUILT_IN_QUERIES: &[(&str, &str)] = &[
+    ("acts-by-phase",       include_str!("../queries/acts-by-phase.sparql")),
+    ("agenda",              include_str!("../queries/agenda.sparql")),
+    ("all-plans",           include_str!("../queries/all-plans.sparql")),
+    ("all-plans-simple",    include_str!("../queries/all-plans-simple.sparql")),
+    ("completion-velocity", include_str!("../queries/completion-velocity.sparql")),
+    ("dependency-chain",    include_str!("../queries/dependency-chain.sparql")),
+    ("next-actions",        include_str!("../queries/next-actions.sparql")),
+    ("orphaned-acts",       include_str!("../queries/orphaned-acts.sparql")),
+    ("overdue-tasks",       include_str!("../queries/overdue-tasks.sparql")),
+    ("plans-with-contexts", include_str!("../queries/plans-with-contexts.sparql")),
+    ("unexecuted-plans",    include_str!("../queries/unexecuted-plans.sparql")),
+];
+
+/// Build the query map. Priority: project > user > built-in.
 fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
     let mut queries: HashMap<String, NamedQuery> = HashMap::new();
+
+    // Built-ins first (lowest priority)
+    for (name, sparql) in BUILT_IN_QUERIES {
+        queries.insert(name.to_string(), NamedQuery {
+            sparql: sparql.to_string(),
+            source: QuerySource::BuiltIn,
+        });
+    }
 
     // User-global: ~/.clearhead/queries/
     if let Some(home) = dirs::home_dir() {
@@ -73,7 +97,7 @@ fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
         scan_query_dir(&user_dir, QuerySource::User, &mut queries);
     }
 
-    // Project-local: <data_dir>/.clearhead/queries/ (overrides user)
+    // Project-local: <data_dir>/.clearhead/queries/ (highest priority)
     let project_dir = ctx.data_dir.join(".clearhead").join("queries");
     scan_query_dir(&project_dir, QuerySource::Project, &mut queries);
 
@@ -86,7 +110,9 @@ fn scan_query_dir(dir: &std::path::Path, source: QuerySource, out: &mut HashMap<
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("sparql") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                out.insert(stem.to_string(), NamedQuery { path: path.clone(), source });
+                if let Ok(sparql) = std::fs::read_to_string(&path) {
+                    out.insert(stem.to_string(), NamedQuery { sparql, source });
+                }
             }
         }
     }
@@ -105,11 +131,8 @@ pub fn run_named_query(
         )
     })?;
 
-    let where_clause = std::fs::read_to_string(&named.path)
-        .map_err(|e| format!("Failed to read query file '{}': {}", named.path.display(), e))?;
-
-    let full_query = clearhead_core::graph::build_raw_where_query(where_clause.trim());
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &full_query)?;
+    // Named query files are full SPARQL SELECT statements, not WHERE clauses.
+    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &named.sparql)?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -126,12 +149,6 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
     use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
 
     let queries = resolve_named_queries(ctx);
-
-    if queries.is_empty() {
-        println!("No named queries found.");
-        println!("Add .sparql files to ~/.clearhead/queries/ or <workspace>/.clearhead/queries/");
-        return Ok(());
-    }
 
     let mut table = Table::new();
     table
@@ -150,6 +167,7 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
     }
 
     println!("{}", table);
+    println!("Custom queries: add .sparql files to ~/.clearhead/queries/ or <workspace>/.clearhead/queries/");
     Ok(())
 }
 

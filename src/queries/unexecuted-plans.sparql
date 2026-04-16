@@ -1,0 +1,32 @@
+# =============================================================================
+# Query: Unexecuted Plans
+# =============================================================================
+# Purpose: Find Plans that have no PlannedActs (potential data issue)
+# Returns: unexecuted_plan, plan_name, has_recurrence
+# Usage: Data validation - Plans should typically have at least one PlannedAct
+# Notes: Plans without acts might be incomplete data entry or archived plans
+# =============================================================================
+
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?unexecuted_plan ?plan_name ?has_recurrence WHERE {
+    # Find all Plans
+    ?unexecuted_plan a cco:ont00000974 ;
+                     rdfs:label ?plan_name .
+
+    # Check that no PlannedAct is prescribed by this plan
+    FILTER NOT EXISTS {
+        ?unexecuted_plan cco:ont00001942 ?act .
+        ?act a cco:ont00000228 .
+    }
+
+    # Check if it has recurrence (might explain lack of acts)
+    OPTIONAL {
+        ?unexecuted_plan actions:hasRecurrenceRule ?recurrence .
+        BIND("yes" AS ?has_recurrence)
+    }
+    BIND(COALESCE(?has_recurrence, "no") AS ?has_recurrence)
+}
+ORDER BY ?plan_name

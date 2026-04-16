@@ -1,0 +1,41 @@
+# =============================================================================
+# Query: Completion Velocity
+# =============================================================================
+# Purpose: Calculate task completion rate by context over time period
+# Parameters:
+#   - ?START_DATE: Start of time period (e.g., "2025-01-01T00:00:00Z"^^xsd:dateTime)
+#   - ?END_DATE: End of time period (e.g., "2025-01-31T23:59:59Z"^^xsd:dateTime)
+# Returns: context, completed_count, avg_duration_days
+# Usage: Productivity analysis and capacity planning
+# =============================================================================
+
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?context (COUNT(?act) AS ?completed_count)
+       (AVG(?duration_days) AS ?avg_duration_days) WHERE {
+
+    # Find completed acts in date range
+    ?act a cco:ont00000228 ;
+         cco:ont00001868 actions:Completed ;  # is_measured_by_nominal
+         actions:hasCompletedDateTime ?completion_date .
+
+    # Filter by date range (parameter substitution needed)
+    # Example: FILTER(?completion_date >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
+    #                 ?completion_date <= "2025-01-31T23:59:59Z"^^xsd:dateTime)
+    # FILTER(?completion_date >= ?START_DATE && ?completion_date <= ?END_DATE)
+
+    # Get plan and contexts
+    ?plan cco:ont00001942 ?act ;
+          actions:requiresContext ?context .
+
+    # Calculate duration (if created date available)
+    OPTIONAL {
+        ?plan actions:hasCreatedDateTime ?created_date .
+        BIND(((?completion_date - ?created_date) / 86400) AS ?duration_days)
+    }
+}
+GROUP BY ?context
+ORDER BY DESC(?completed_count)
