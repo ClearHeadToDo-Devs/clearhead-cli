@@ -828,9 +828,10 @@ fn test_read_workspace_filter_by_file_path() {
 fn test_query_sparql_and_where_conflict() {
     let env = TestEnv::new();
 
-    // positional SPARQL query and --where should conflict on `query` verb
+    // positional SPARQL query and --where should conflict on `query run`
     env.command()
         .arg("query")
+        .arg("run")
         .arg("SELECT ?s WHERE { ?s a <urn:x> }")
         .arg("--where")
         .arg("?s a <urn:x>")

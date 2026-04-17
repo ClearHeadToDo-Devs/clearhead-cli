@@ -5,6 +5,32 @@ use crate::argparser;
 use crate::commands::{load_file, parse_format, read_input, save_file, try_emit, CommandContext};
 use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
 
+/// Find the index at which to insert a child action so it appears immediately
+/// after the last existing descendant of `parent_id`.
+///
+/// Walks forward from the parent's position, collecting all actions whose
+/// ancestor chain leads back to `parent_id`. Returns the index after the last
+/// one, or `actions.len()` if the parent is not found.
+fn insert_index_after_descendants(actions: &[clearhead_cli::Action], parent_id: uuid::Uuid) -> usize {
+    let parent_idx = match actions.iter().position(|a| a.id == parent_id) {
+        Some(idx) => idx,
+        None => return actions.len(),
+    };
+
+    let mut descendant_ids: std::collections::HashSet<uuid::Uuid> =
+        std::collections::HashSet::from([parent_id]);
+    let mut last = parent_idx;
+
+    for (offset, action) in actions[parent_idx + 1..].iter().enumerate() {
+        if action.parent_id.map_or(false, |pid| descendant_ids.contains(&pid)) {
+            descendant_ids.insert(action.id);
+            last = parent_idx + 1 + offset;
+        }
+    }
+
+    last + 1
+}
+
 /// The canonical machine key for a charter — alias if present, otherwise title.
 ///
 /// `charter.parent` always stores a machine key, so this is the right value to
@@ -301,7 +327,6 @@ pub fn add_plan(
     fields: &argparser::ActionFields,
     dry_run: bool,
 ) -> Result<(), String> {
-    use chrono::Local;
     use clearhead_cli::{Action, ActionState};
     use uuid::Uuid;
 
@@ -360,32 +385,19 @@ pub fn add_plan(
     let new_action = Action {
         id: new_id,
         parent_id,
-        state: fields
-            .state
-            .map(|s| s.into())
-            .unwrap_or(ActionState::NotStarted),
+        state: fields.state.map(|s| s.into()).unwrap_or_default(),
         name: name.to_string(),
         description: fields.description.clone(),
         priority: fields.priority,
-        context_list: if fields.context.is_empty() {
-            None
-        } else {
-            Some(fields.context.clone())
-        },
-        do_date_time: None,
-        do_duration: None,
-        recurrence: None,
-        due_date_time: None,
-        due_recurrence: None,
-        completed_date_time: None,
-        created_date_time: Some(Local::now()),
-        predecessors: None,
-        charter: None,
+        context_list: (!fields.context.is_empty()).then(|| fields.context.clone()),
         alias: fields.alias.clone(),
-        is_sequential: None,
+        ..Default::default()
     };
 
-    actions.push(new_action.clone());
+    let insert_idx = parent_id
+        .map(|pid| insert_index_after_descendants(&actions, pid))
+        .unwrap_or(actions.len());
+    actions.insert(insert_idx, new_action.clone());
 
     if dry_run {
         let preview = clearhead_cli::format(
@@ -732,4 +744,64 @@ pub fn export_plans(
         println!("{}", icalendar);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clearhead_cli::{Action, ActionState};
+    use uuid::Uuid;
+
+    fn action(id: Uuid, parent_id: Option<Uuid>) -> Action {
+        Action { id, parent_id, name: id.to_string(), ..Default::default() }
+    }
+
+    #[test]
+    fn insert_after_last_descendant_with_no_children() {
+        let parent = Uuid::new_v4();
+        let sibling = Uuid::new_v4();
+        // [parent, sibling] — sibling is not a descendant of parent
+        let actions = vec![action(parent, None), action(sibling, None)];
+        // child should go at index 1 (immediately after parent, before sibling)
+        assert_eq!(insert_index_after_descendants(&actions, parent), 1);
+    }
+
+    #[test]
+    fn insert_after_last_descendant_skips_existing_children() {
+        let parent = Uuid::new_v4();
+        let child = Uuid::new_v4();
+        let sibling = Uuid::new_v4();
+        // [parent, child, sibling]
+        let actions = vec![
+            action(parent, None),
+            action(child, Some(parent)),
+            action(sibling, None),
+        ];
+        // new child should go at index 2 (after existing child, before sibling)
+        assert_eq!(insert_index_after_descendants(&actions, parent), 2);
+    }
+
+    #[test]
+    fn insert_after_last_descendant_handles_grandchildren() {
+        let parent = Uuid::new_v4();
+        let child = Uuid::new_v4();
+        let grandchild = Uuid::new_v4();
+        let sibling = Uuid::new_v4();
+        // [parent, child, grandchild, sibling]
+        let actions = vec![
+            action(parent, None),
+            action(child, Some(parent)),
+            action(grandchild, Some(child)),
+            action(sibling, None),
+        ];
+        // new child should go at index 3 (after grandchild, before sibling)
+        assert_eq!(insert_index_after_descendants(&actions, parent), 3);
+    }
+
+    #[test]
+    fn insert_after_last_descendant_unknown_parent_appends() {
+        let unknown = Uuid::new_v4();
+        let actions = vec![action(Uuid::new_v4(), None)];
+        assert_eq!(insert_index_after_descendants(&actions, unknown), actions.len());
+    }
 }
