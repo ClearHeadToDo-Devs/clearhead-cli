@@ -21,9 +21,7 @@ SELECT ?act ?plan_name ?status ?completion_date WHERE {
     ?plan cco:ont00001942 ?act ;
           rdfs:label ?plan_name .
 
-    # Filter by status (parameter substitution)
-    # Example: FILTER(?status = actions:InProgress)
-    # FILTER(?status = ?STATUS_FILTER)
+    FILTER(?status = ?STATUS_FILTER)
 
     # Optional completion date (only for completed acts)
     OPTIONAL {

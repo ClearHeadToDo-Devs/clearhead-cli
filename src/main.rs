@@ -206,8 +206,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 where_clause.as_deref(),
                 *format,
             ),
-            argparser::QueryTarget::NamedRun { name, format } => {
-                commands::query::run_named_query(&ctx, name, *format)
+            argparser::QueryTarget::NamedRun { name, status, format } => {
+                commands::query::run_named_query(&ctx, name, status.map(|s| s.to_sparql_iri()), *format)
             }
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },

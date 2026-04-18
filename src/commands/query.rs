@@ -4,14 +4,19 @@ use chrono::Utc;
 use std::collections::HashMap;
 use tracing::debug;
 
-/// Replace well-known time placeholders with the current UTC datetime literal.
-/// Supports: ?NOW, ?CUTOFF_DATE → "YYYY-MM-DDTHH:MM:SSZ"^^xsd:dateTime
-fn inject_time_params(sparql: &str) -> String {
+/// Replace well-known placeholders before query execution.
+/// Time: ?NOW, ?CUTOFF_DATE → current UTC datetime literal
+/// Status: ?STATUS_FILTER → full v4 IRI (e.g. <actions:InProgress>)
+fn inject_params(sparql: &str, status: Option<&str>) -> String {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let literal = format!("\"{}\"^^xsd:dateTime", now);
-    sparql
-        .replace("?NOW", &literal)
-        .replace("?CUTOFF_DATE", &literal)
+    let datetime = format!("\"{}\"^^xsd:dateTime", now);
+    let mut out = sparql
+        .replace("?NOW", &datetime)
+        .replace("?CUTOFF_DATE", &datetime);
+    if let Some(iri) = status {
+        out = out.replace("?STATUS_FILTER", iri);
+    }
+    out
 }
 
 pub fn query_workspace(
@@ -35,7 +40,7 @@ pub fn query_workspace(
         (Some(_), Some(_)) => return Err("Cannot combine positional query and --where".to_string()),
     };
 
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_time_params(&full_query))?;
+    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -133,6 +138,7 @@ fn scan_query_dir(dir: &std::path::Path, source: QuerySource, out: &mut HashMap<
 pub fn run_named_query(
     ctx: &CommandContext,
     name: &str,
+    status: Option<&str>,
     format: Option<QueryFormat>,
 ) -> Result<(), String> {
     let queries = resolve_named_queries(ctx);
@@ -143,7 +149,7 @@ pub fn run_named_query(
         )
     })?;
 
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_time_params(&named.sparql))?;
+    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&named.sparql, status))?;
 
     if rows.is_empty() {
         println!("(no results)");

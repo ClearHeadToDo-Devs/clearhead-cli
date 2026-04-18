@@ -124,6 +124,18 @@ pub enum ActionStateArg {
     Cancelled,
 }
 
+impl ActionStateArg {
+    pub fn to_sparql_iri(self) -> &'static str {
+        match self {
+            ActionStateArg::NotStarted => "<https://clearhead.us/vocab/actions/v4#NotStarted>",
+            ActionStateArg::InProgress => "<https://clearhead.us/vocab/actions/v4#InProgress>",
+            ActionStateArg::Blocked    => "<https://clearhead.us/vocab/actions/v4#Blocked>",
+            ActionStateArg::Completed  => "<https://clearhead.us/vocab/actions/v4#Completed>",
+            ActionStateArg::Cancelled  => "<https://clearhead.us/vocab/actions/v4#Cancelled>",
+        }
+    }
+}
+
 impl From<ActionStateArg> for clearhead_cli::ActionState {
     fn from(s: ActionStateArg) -> Self {
         match s {
@@ -282,6 +294,10 @@ pub enum QueryTarget {
     NamedRun {
         /// Name of the query (stem of the .sparql file)
         name: String,
+
+        /// Filter by act status (substitutes ?STATUS_FILTER in the query)
+        #[arg(short, long, value_enum)]
+        status: Option<ActionStateArg>,
 
         /// Output format
         #[arg(short, long, value_enum)]
