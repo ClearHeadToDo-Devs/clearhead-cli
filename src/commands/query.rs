@@ -92,8 +92,8 @@ const BUILT_IN_QUERIES: &[(&str, &str)] = &[
     ("next-actions",        include_str!("../queries/next-actions.sparql")),
     ("orphaned-acts",       include_str!("../queries/orphaned-acts.sparql")),
     ("overdue-tasks",       include_str!("../queries/overdue-tasks.sparql")),
+    ("open-plans",          include_str!("../queries/open-plans.sparql")),
     ("plans-with-contexts", include_str!("../queries/plans-with-contexts.sparql")),
-    ("unexecuted-plans",    include_str!("../queries/unexecuted-plans.sparql")),
 ];
 
 /// Build the query map. Priority: project > user > built-in.
