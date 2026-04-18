@@ -1,7 +1,18 @@
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
+use chrono::Utc;
 use std::collections::HashMap;
 use tracing::debug;
+
+/// Replace well-known time placeholders with the current UTC datetime literal.
+/// Supports: ?NOW, ?CUTOFF_DATE → "YYYY-MM-DDTHH:MM:SSZ"^^xsd:dateTime
+fn inject_time_params(sparql: &str) -> String {
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let literal = format!("\"{}\"^^xsd:dateTime", now);
+    sparql
+        .replace("?NOW", &literal)
+        .replace("?CUTOFF_DATE", &literal)
+}
 
 pub fn query_workspace(
     ctx: &CommandContext,
@@ -24,7 +35,7 @@ pub fn query_workspace(
         (Some(_), Some(_)) => return Err("Cannot combine positional query and --where".to_string()),
     };
 
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &full_query)?;
+    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_time_params(&full_query))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -72,6 +83,7 @@ const BUILT_IN_QUERIES: &[(&str, &str)] = &[
     ("all-plans-simple",    include_str!("../queries/all-plans-simple.sparql")),
     ("completion-velocity", include_str!("../queries/completion-velocity.sparql")),
     ("dependency-chain",    include_str!("../queries/dependency-chain.sparql")),
+    ("high-priority",       include_str!("../queries/high-priority.sparql")),
     ("next-actions",        include_str!("../queries/next-actions.sparql")),
     ("orphaned-acts",       include_str!("../queries/orphaned-acts.sparql")),
     ("overdue-tasks",       include_str!("../queries/overdue-tasks.sparql")),
@@ -131,8 +143,7 @@ pub fn run_named_query(
         )
     })?;
 
-    // Named query files are full SPARQL SELECT statements, not WHERE clauses.
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &named.sparql)?;
+    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_time_params(&named.sparql))?;
 
     if rows.is_empty() {
         println!("(no results)");

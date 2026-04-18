@@ -1,0 +1,28 @@
+# =============================================================================
+# Query: High Priority Plans
+# =============================================================================
+# Purpose: Find open plans with priority set, ordered by priority (lower = higher)
+# Returns: plan_name, priority_level, status, due_date, scheduled_at
+# Usage: Focus view — what matters most right now
+# =============================================================================
+
+PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?plan_name ?priority_level ?status ?due_date ?scheduled_at WHERE {
+    ?plan a cco:ont00000974 ;
+          rdfs:label ?plan_name ;
+          actions:hasPriority ?priority_level ;
+          cco:ont00001942 ?act .
+
+    ?act a cco:ont00000228 ;
+         cco:ont00001868 ?status .
+
+    FILTER(?status != actions:Completed && ?status != actions:Cancelled)
+
+    OPTIONAL { ?act actions:hasDueDateTime ?due_date }
+    OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
+}
+ORDER BY ?priority_level ?due_date ?plan_name
