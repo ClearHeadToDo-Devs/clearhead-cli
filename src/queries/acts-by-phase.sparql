@@ -13,19 +13,17 @@ PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?act ?plan_name ?status ?completion_date WHERE {
+SELECT ?act ?plan_name ?phase ?completion_date WHERE {
     ?act a cco:ont00000228 ;
-         cco:ont00001868 ?status .  # is_measured_by_nominal
+         cco:ont00001868 ?status .
 
-    # Get the plan that prescribes this act
     ?plan cco:ont00001942 ?act ;
           rdfs:label ?plan_name .
 
     FILTER(?status = ?STATUS_FILTER)
 
-    # Optional completion date (only for completed acts)
-    OPTIONAL {
-        ?act actions:hasCompletedDateTime ?completion_date .
-    }
+    BIND(STRAFTER(STR(?status), "#") AS ?phase)
+
+    OPTIONAL { ?act actions:hasCompletedDateTime ?completion_date }
 }
 ORDER BY ?plan_name
