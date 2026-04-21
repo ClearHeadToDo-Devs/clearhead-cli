@@ -1,103 +1,170 @@
 //! Handlers for PlannedAct commands (expand, complete, cancel, update, read, archive).
 
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
 use tracing::info;
 
 use clearhead_core::workspace::acts;
-use clearhead_core::{ActPhase, PlannedAct};
+use clearhead_core::{Action, ActionState, ActPhase, PlannedAct};
 
 use super::CommandContext;
 
 // ============================================================================
-// Gap 5 — expand acts
+// expand acts — ICS schedule → .actions file
 // ============================================================================
 
-/// Expand recurring plans into open PlannedAct instances.
+/// Expand ICS schedule VEVENTs into planned acts in the charter's `.actions` file.
 ///
-/// If `file` is given, only that file is processed. Otherwise the whole workspace is scanned.
+/// Acts are written to `<charter>.actions` (not TTL). Expansion is idempotent:
+/// act UUIDs are derived from `(VEVENT.UID, occurrence_rfc3339)` so re-running
+/// never creates duplicates. Only occurrences within `now..now+days` are generated.
+///
+/// If `file` is given, only the charter whose `.actions` file matches that path
+/// is processed. Otherwise the whole workspace is scanned.
 pub fn expand_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     days: u32,
     dry_run: bool,
 ) -> Result<(), String> {
-    let charter_paths: Vec<PathBuf> = if let Some(f) = file {
-        vec![f.clone()]
+    use chrono::Duration;
+    use clearhead_core::workspace::ics::{occurrence_act_id, parse_ics_file};
+    use clearhead_core::workspace::plans::collect_plan_files;
+
+    let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
+    let now = Local::now();
+    let horizon = now + Duration::days(days as i64);
+
+    // Collect all ICS entries, optionally filtered to one charter.
+    let all_entries = collect_plan_files(&data_root)
+        .map_err(|e| format!("Failed to discover ICS files: {}", e))?;
+
+    let entries: Vec<_> = if let Some(actions_path) = file {
+        let relative = actions_path
+            .strip_prefix(&data_root)
+            .unwrap_or(actions_path.as_path());
+        let charter_name = clearhead_core::infer_charter_name(relative)
+            .ok_or_else(|| format!("Cannot infer charter name from '{}'", actions_path.display()))?;
+        all_entries
+            .into_iter()
+            .filter(|e| e.charter_name == charter_name)
+            .collect()
     } else {
-        clearhead_core::list_action_files(&ctx.data_dir)
-            .map_err(|e| format!("Failed to list workspace: {}", e))?
+        all_entries
     };
 
-    let mut total_written = 0usize;
+    if entries.is_empty() {
+        println!("No ICS schedule files found.");
+        return Ok(());
+    }
+
+    let mut total_added = 0usize;
     let mut charters_touched = 0usize;
 
-    for path in &charter_paths {
-        let content = read_actions_content(path)?;
-        if content.is_empty() {
-            continue;
-        }
-        let actions = clearhead_cli::parse_actions(&content)?;
-        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
-        let relative = path.strip_prefix(&data_root).unwrap_or(path.as_path());
-        let charter_name = clearhead_core::infer_charter_name(relative)
-            .unwrap_or_else(|| "unknown".to_string());
-        let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(&actions, charter_name);
-        let mut model = clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] };
+    for entry in &entries {
+        let plans = parse_ics_file(&entry.path)
+            .map_err(|e| format!("Failed to parse {}: {}", entry.path.display(), e))?;
 
-        // Load existing open acts and merge them in
-        let open_path = acts::open_acts_path(path);
-        let existing_acts = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
-        if !existing_acts.is_empty() {
-            acts::merge_acts_into_model(&mut model, existing_acts.clone());
-        }
-
-        let existing_acts_ids: HashSet<uuid::Uuid> = existing_acts.iter().map(|a| a.id).collect();
-
-        // Collect plan IDs from this file
-        let plan_ids: HashSet<uuid::Uuid> = model.all_plans().iter().map(|p| p.id).collect();
-
-        if plan_ids.is_empty() {
+        if plans.is_empty() {
             continue;
         }
 
-        // Expand recurring plans
-        model.expand_recurring_plans(days);
+        // Derive the .actions path from the .ics path — same stem, same directory.
+        let actions_path = entry.path.with_extension("actions");
 
-        let expanded_acts: Vec<PlannedAct> = model.all_acts().into_iter().cloned().collect();
-        let expanded_act_ids: HashSet<uuid::Uuid> = expanded_acts.iter().map(|a| a.id).collect();
+        // Use parse_document so recoverable syntax errors don't block expansion.
+        let actions_content = if actions_path.exists() {
+            std::fs::read_to_string(&actions_path)
+                .map_err(|e| format!("Failed to read '{}': {}", actions_path.display(), e))?
+        } else {
+            String::new()
+        };
+        let parsed = clearhead_core::parse_document(&actions_content)
+            .map_err(|e| format!("Failed to parse '{}': {}", actions_path.display(), e))?;
+        if !parsed.syntax_errors.is_empty() {
+            eprintln!(
+                "warning: [{}] parsed with {} issue(s); proceeding with {} recoverable act(s)",
+                actions_path.display(),
+                parsed.syntax_errors.len(),
+                parsed.actions.len()
+            );
+        }
+        let mut action_list = parsed.actions;
+        let existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
+
+        let mut new_count = 0usize;
+
+        for plan in &plans {
+            let vevent_uid = match &plan.external_id {
+                Some(uid) => uid.as_str(),
+                None => continue,
+            };
+            let Some(dtstart) = plan.dtstart else { continue };
+
+            if plan.recurrence.is_some() {
+                let occurrences = plan.expand_occurrences(dtstart, 1000);
+                for occ in occurrences {
+                    let occ_local = occ.with_timezone(&Local);
+                    if occ_local > horizon {
+                        break;
+                    }
+                    if occ_local < now {
+                        continue;
+                    }
+                    let occ_key = occ_local.to_rfc3339();
+                    let act_id = occurrence_act_id(vevent_uid, &occ_key);
+                    if existing_ids.contains(&act_id) {
+                        continue;
+                    }
+                    action_list.push(Action {
+                        id: act_id,
+                        state: ActionState::NotStarted,
+                        name: plan.name.clone(),
+                        do_date_time: Some(occ_local),
+                        created_date_time: Some(now),
+                        ..Default::default()
+                    });
+                    new_count += 1;
+                }
+            } else if dtstart >= now && dtstart <= horizon {
+                // One-off VEVENT within horizon
+                let occ_key = dtstart.to_rfc3339();
+                let act_id = occurrence_act_id(vevent_uid, &occ_key);
+                if !existing_ids.contains(&act_id) {
+                    action_list.push(Action {
+                        id: act_id,
+                        state: ActionState::NotStarted,
+                        name: plan.name.clone(),
+                        do_date_time: Some(dtstart),
+                        created_date_time: Some(now),
+                        ..Default::default()
+                    });
+                    new_count += 1;
+                }
+            }
+        }
+
+        if new_count == 0 {
+            continue;
+        }
 
         if dry_run {
-            println!(
-                "Would write {} acts to {}",
-                expanded_acts.len(),
-                open_path.display()
-            );
-        } else if existing_acts_ids != expanded_act_ids {
-            acts::write_acts_for_plans(&expanded_acts, &plan_ids, &open_path).map_err(|e| e.to_string())?;
-            info!(count = expanded_acts.len(), path = %open_path.display(), "Acts written");
-            println!(
-                "Wrote {} acts to {}",
-                expanded_acts.len(),
-                open_path.display()
-            );
-            total_written += expanded_acts.len();
+            println!("Would add {} act(s) to {}", new_count, actions_path.display());
+        } else {
+            super::save_file(&actions_path, &action_list)?;
+            info!(count = new_count, path = %actions_path.display(), "Acts expanded");
+            println!("Added {} act(s) to {}", new_count, actions_path.display());
+            total_added += new_count;
             charters_touched += 1;
         }
     }
 
-    if charters_touched > 1 {
-        if dry_run {
-            println!("Would expand acts across {} charter(s).", charters_touched);
-        } else {
-            println!(
-                "Expanded {} act(s) across {} charter(s).",
-                total_written, charters_touched
-            );
-        }
+    if total_added == 0 && !dry_run {
+        println!("Nothing to expand.");
+    } else if charters_touched > 1 {
+        println!("Expanded {} act(s) across {} charter(s).", total_added, charters_touched);
     }
 
     Ok(())
@@ -375,14 +442,6 @@ pub fn archive_acts(
 // ============================================================================
 // Private helpers
 // ============================================================================
-
-fn read_actions_content(path: &Path) -> Result<String, String> {
-    if path.exists() {
-        fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
-    } else {
-        Ok(String::new())
-    }
-}
 
 /// Find the actions file for a given query (by scanning open acts), and load open acts.
 ///
