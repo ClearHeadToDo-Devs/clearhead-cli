@@ -1,3 +1,6 @@
 Cargo.lock
 target/*
 .aider*
+.clearhead/*.open.ttl
+.clearhead/*.closed.ttl
+.clearhead/*.archive.ttl

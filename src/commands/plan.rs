@@ -327,7 +327,7 @@ pub fn add_plan(
     fields: &argparser::ActionFields,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_cli::{Action, ActionState};
+    use clearhead_cli::Action;
     use uuid::Uuid;
 
     let input_file = if let Some(charter_query) = charter {
@@ -512,7 +512,7 @@ pub fn complete_plan(
     } else {
         save_file(&input_file, &actions)?;
         try_emit(&result.action_id, result.event);
-        info!(name = %result.action_name, id = %result.action_id, recurring = result.is_recurring, "Action completed successfully");
+        info!(name = %result.action_name, id = %result.action_id, "Action completed successfully");
     }
     Ok(())
 }
