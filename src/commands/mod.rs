@@ -108,6 +108,29 @@ pub fn parse_content_for_read(content: &str, source: &str, command: &str) -> Res
     Ok(outcome.document.actions)
 }
 
+/// Parse actions content for mutating operations.
+///
+/// If syntax issues are present, this returns an error and callers must not write.
+pub fn parse_content_for_mutation(
+    content: &str,
+    source: &str,
+    command: &str,
+) -> Result<ActionList, String> {
+    let outcome = clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
+        .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
+
+    if !outcome.syntax_errors.is_empty() {
+        report_mutation_parse_failure(Path::new(source), command, &outcome.syntax_errors);
+        return Err(format!(
+            "Parse error in '{}': {} issue(s). File not modified.",
+            source,
+            outcome.syntax_errors.len()
+        ));
+    }
+
+    Ok(outcome.document.actions)
+}
+
 /// Load actions for mutating operations.
 ///
 /// If syntax issues are present, this returns an error and callers must not write.
@@ -118,19 +141,7 @@ pub fn load_file_for_mutation(path: &Path, command: &str) -> Result<ActionList, 
 
     let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
-    let outcome = clearhead_cli::parse_actions_with_mode(&content, clearhead_cli::ParseMode::Recover)
-        .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
-
-    if !outcome.syntax_errors.is_empty() {
-        report_mutation_parse_failure(path, command, &outcome.syntax_errors);
-        return Err(format!(
-            "Parse error in '{}': {} issue(s). File not modified.",
-            path.display(),
-            outcome.syntax_errors.len()
-        ));
-    }
-
-    Ok(outcome.document.actions)
+    parse_content_for_mutation(&content, &path.display().to_string(), command)
 }
 
 /// Format actions and write to a .actions file on disk.

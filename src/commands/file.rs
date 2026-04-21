@@ -1,6 +1,8 @@
 use tracing::debug;
 
-use crate::commands::{CommandContext, read_input, write_or_print};
+use crate::commands::{
+    CommandContext, parse_content_for_mutation, parse_content_for_read, read_input, write_or_print,
+};
 
 pub fn format_file(
     ctx: &CommandContext,
@@ -13,7 +15,12 @@ pub fn format_file(
     let input_file = path.as_ref();
     debug!(input_file = ?input_file, write = write, "Executing Format File");
     let content = read_input(input_file)?;
-    let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+    let source = source_label(input_file);
+    let actions = if write {
+        parse_content_for_mutation(&content, &source, "format file")?
+    } else {
+        parse_content_for_read(&content, &source, "format file")?
+    };
 
     let (config_indent_style, config_indent_width) = ctx.indent_config();
 
@@ -82,7 +89,7 @@ pub fn lint_file(path: &Option<std::path::PathBuf>) -> Result<(), String> {
 
     if has_errors {
         tracing::warn!("Linting failed with errors");
-        std::process::exit(1);
+        return Err("Linting failed with errors".to_string());
     }
     Ok(())
 }
@@ -96,7 +103,12 @@ pub fn normalize_file(
     let input_file = path.as_ref();
     debug!(input_file = ?input_file, write = write, "Executing Normalize File");
     let content = read_input(input_file)?;
-    let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+    let source = source_label(input_file);
+    let actions = if write {
+        parse_content_for_mutation(&content, &source, "normalize file")?
+    } else {
+        parse_content_for_read(&content, &source, "normalize file")?
+    };
 
     let output = if no_format {
         clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?
@@ -134,10 +146,13 @@ pub fn patch_file(
     let secondary_content = fs::read_to_string(secondary)
         .map_err(|e| format!("Failed to read secondary file: {}", e))?;
 
-    let mut primary_actions =
-        clearhead_cli::get_action_list_struct(&serde_json::json!({}), &primary_content)?;
+    let mut primary_actions = if write {
+        parse_content_for_mutation(&primary_content, &primary.display().to_string(), "patch file")?
+    } else {
+        parse_content_for_read(&primary_content, &primary.display().to_string(), "patch file")?
+    };
     let secondary_actions =
-        clearhead_cli::get_action_list_struct(&serde_json::json!({}), &secondary_content)?;
+        parse_content_for_read(&secondary_content, &secondary.display().to_string(), "patch file")?;
 
     clearhead_cli::patch_action_list(&mut primary_actions, &secondary_actions);
 
@@ -150,4 +165,9 @@ pub fn patch_file(
 
     write_or_print(&formatted, write, Some(primary))?;
     Ok(())
+}
+
+fn source_label(path: Option<&std::path::PathBuf>) -> String {
+    path.map(|p| p.display().to_string())
+        .unwrap_or_else(|| "stdin".to_string())
 }

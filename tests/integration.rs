@@ -1072,3 +1072,42 @@ fn test_sync_events_file_recover_mode_warns_and_succeeds() {
         .stdout(predicate::str::contains("1 events backfilled"))
         .stderr(predicate::str::contains("parsed with"));
 }
+
+#[test]
+fn test_normalize_file_write_parse_error_keeps_file_unchanged_and_fails() {
+    let env = TestEnv::new();
+    let malformed = "not valid actions syntax !!!\n[ ] Keep normalize file\n";
+    env.write_text("normalize-bad.actions", malformed);
+    let path = env.data_dir.join("normalize-bad.actions");
+
+    env.command()
+        .arg("normalize")
+        .arg("file")
+        .arg(&path)
+        .arg("--write")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("file not modified"));
+
+    let after = fs::read_to_string(&path).unwrap();
+    assert_eq!(after, malformed, "malformed file should remain byte-stable");
+}
+
+#[test]
+fn test_format_file_read_recover_mode_warns_and_succeeds() {
+    let env = TestEnv::new();
+    env.write_text(
+        "format-recover.actions",
+        "not valid actions syntax !!!\n[ ] Keep formatting preview\n",
+    );
+    let path = env.data_dir.join("format-recover.actions");
+
+    env.command()
+        .arg("format")
+        .arg("file")
+        .arg(&path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Keep formatting preview"))
+        .stderr(predicate::str::contains("parsed with"));
+}
