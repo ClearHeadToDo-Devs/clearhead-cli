@@ -68,7 +68,7 @@ clearhead_cli read file inbox.actions
 ## Features
 
 - **CRDT-Based Sync**: CRDTs allow for us to merge changes from multiple devices/editors without conflicts
-- **Calendar export**: Export actions with due dates to iCalendar (`.ics`) format with full recurrence support
+- **Calendar export**: Export planned acts to iCalendar (`.ics`) for calendar tooling interoperability
 - **SPARQL queries**: Filter actions with WHERE clauses or full SPARQL queries for powerful all-graph filtering
 - **Multiple output formats**: actions, json, xml, table
 - **Zero lock-in**: Plain text files, use any editor
@@ -115,16 +115,17 @@ For more details see [The Specification](https://github.com/ClearHeadToDo-Devs/t
 - `[_]` Cancelled
 
 **Metadata:**
-- `$description$` - Plan description
+- `$description$` - Planned act description
 - `!N` - Priority (1-4, where 1 is highest)
 - `+tag,tag` - Context tags
 - `@YYYY-MM-DDTHH:MM` - Do date/time (when task should be done)
 - `DN` - Duration in minutes (e.g., `D30` for 30 minutes)
-- `R:FREQ=...` - Recurrence rule (RRULE format)
 - `%YYYY-MM-DDTHH:MM` - Completed date/time
 - `^YYYY-MM-DDTHH:MM` - Created date/time
 - `#uuid` - Unique ID (auto-generated if omitted)
 - `*story` - Story/project (root actions only)
+
+Note: recurrence/schedule definitions are represented in `.ics` schedules, not in `.actions` lines.
 
 ## Commands
 
@@ -179,11 +180,8 @@ clearhead_cli complete "Buy groceries" --write
 clearhead_cli complete 019baae --write
 ```
 
-**Recurring Actions:**
-When you complete a recurring action (e.g., "Laundry R:FREQ=WEEKLY"), ClearHead will:
-1. Log a completed instance for today.
-2. Advance the template's due date to the next occurrence.
-3. Keep the template open for the future.
+**Schedule-Generated Acts:**
+When you complete an act generated from a schedule, ClearHead records completion on that act instance. Future instances are produced by schedule expansion from `.ics` sources.
 
 
 ### Format
