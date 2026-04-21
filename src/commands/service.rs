@@ -1,7 +1,6 @@
-use std::fs;
 use tracing::{debug, info, warn};
 
-use crate::commands::CommandContext;
+use crate::commands::{CommandContext, load_file_for_read};
 use clearhead_cli::telemetry::{TelemetryEvent, TelemetryRecord, Tool, emit};
 
 pub fn start_lsp() -> Result<(), String> {
@@ -23,10 +22,7 @@ pub fn sync_events(
     let input_file = ctx.resolve_action_file(file.as_ref());
     debug!(input_file = %input_file.display(), dry_run = dry_run, "Executing Sync Events");
 
-    let content = fs::read_to_string(&input_file)
-        .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
-
-    let actions = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+    let actions = load_file_for_read(&input_file, "sync events")?;
     let mut sync_count = 0;
     let skip_count = 0; // TODO: track which events already exist
 

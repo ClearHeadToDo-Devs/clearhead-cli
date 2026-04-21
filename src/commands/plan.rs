@@ -3,7 +3,8 @@ use tracing::{debug, info};
 
 use crate::argparser;
 use crate::commands::{
-    CommandContext, find_plan_file_for_mutation, load_file, load_file_for_mutation, parse_format,
+    CommandContext, find_plan_file_for_mutation, load_file, load_file_for_mutation,
+    load_existing_file_for_read, load_file_for_read, parse_content_for_read, parse_format,
     read_input, save_file, try_emit,
 };
 use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
@@ -123,8 +124,7 @@ pub fn read_plans(
     let actions = if let Some(path) = file {
         let resolved = resolve_file_path(&path.to_string_lossy(), &ctx.data_dir);
         debug!(file = %resolved.display(), "Reading file");
-        let content = read_input(Some(&resolved))?;
-        let action_list = clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?;
+        let action_list = load_existing_file_for_read(&resolved, "read plans")?;
         if output_format == clearhead_cli::OutputFormat::Table {
             let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
             let charter_name = clearhead_core::infer_charter_name(relative)
@@ -147,7 +147,7 @@ pub fn read_plans(
     } else if stdio {
         debug!("Reading stdin");
         let content = read_input(None)?;
-        clearhead_cli::get_action_list_struct(&serde_json::json!({}), &content)?
+        parse_content_for_read(&content, "stdin", "read plans")?
     } else if let Some(charter_query) = charter {
         debug!(charter = %charter_query, recursive = recursive, "Filtering by charter");
         let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
@@ -687,7 +687,7 @@ pub fn export_plans(
     let model = if let Some(reference) = reference {
         if reference == "-" {
             let content = read_input(None)?;
-            let actions = clearhead_cli::parse_actions(&content)?;
+            let actions = parse_content_for_read(&content, "stdin", "export plans")?;
             let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(
                 &actions,
                 "stdin".to_string(),
@@ -698,8 +698,7 @@ pub fn export_plans(
             }
         } else if reference.ends_with(".actions") {
             let resolved = resolve_file_path(reference, &ctx.data_dir);
-            let content = read_input(Some(&resolved))?;
-            let actions = clearhead_cli::parse_actions(&content)?;
+            let actions = load_file_for_read(&resolved, "export plans")?;
             let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
             let charter_name = clearhead_core::infer_charter_name(relative)
                 .unwrap_or_else(|| "unknown".to_string());

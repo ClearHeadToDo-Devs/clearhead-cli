@@ -1020,3 +1020,55 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
     assert!(good_after.contains("already here"));
     assert!(good_after.contains("Good schedule"));
 }
+
+#[test]
+fn test_read_plans_file_recover_mode_warns_and_succeeds() {
+    let env = TestEnv::new();
+    let malformed = "not valid actions syntax !!!\n[ ] Keep me\n";
+    env.write_text("recover-read.actions", malformed);
+    let path = env.data_dir.join("recover-read.actions");
+
+    env.command()
+        .arg("read")
+        .arg("plans")
+        .arg("--file")
+        .arg(&path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Keep me"))
+        .stderr(predicate::str::contains("parsed with"));
+}
+
+#[test]
+fn test_export_plans_stdin_recover_mode_warns_and_succeeds() {
+    let env = TestEnv::new();
+
+    env.command()
+        .arg("export")
+        .arg("plans")
+        .arg("-")
+        .write_stdin("not valid actions syntax !!!\n[ ] Keep export\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("BEGIN:VCALENDAR"))
+        .stderr(predicate::str::contains("parsed with"));
+}
+
+#[test]
+fn test_sync_events_file_recover_mode_warns_and_succeeds() {
+    let env = TestEnv::new();
+    env.write_text(
+        "recover-sync.actions",
+        "not valid actions syntax !!!\n[ ] Sync me #019baaec-00b6-7991-be34-94b68212619a\n",
+    );
+    let path = env.data_dir.join("recover-sync.actions");
+
+    env.command()
+        .arg("sync")
+        .arg("events")
+        .arg(&path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 events backfilled"))
+        .stderr(predicate::str::contains("parsed with"));
+}

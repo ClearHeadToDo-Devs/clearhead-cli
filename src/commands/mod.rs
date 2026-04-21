@@ -82,11 +82,27 @@ pub fn load_file_for_read(path: &Path, command: &str) -> Result<ActionList, Stri
 
     let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
-    let outcome = clearhead_cli::parse_actions_with_mode(&content, clearhead_cli::ParseMode::Recover)
-        .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
+    parse_content_for_read(&content, &path.display().to_string(), command)
+}
+
+/// Load actions from an explicitly provided file path for read-only operations.
+///
+/// Unlike `load_file_for_read`, this fails when the file does not exist.
+pub fn load_existing_file_for_read(path: &Path, command: &str) -> Result<ActionList, String> {
+    if !path.exists() {
+        return Err(format!("Failed to read file '{}': file does not exist", path.display()));
+    }
+
+    load_file_for_read(path, command)
+}
+
+/// Parse actions content for read-only operations using recoverable parse mode.
+pub fn parse_content_for_read(content: &str, source: &str, command: &str) -> Result<ActionList, String> {
+    let outcome = clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
+        .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
 
     if !outcome.syntax_errors.is_empty() {
-        report_parse_recovered(path, command, &outcome.syntax_errors, outcome.recovery.recoverable_actions);
+        report_parse_recovered(source, command, &outcome.syntax_errors, outcome.recovery.recoverable_actions);
     }
 
     Ok(outcome.document.actions)
@@ -252,7 +268,7 @@ fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {
 }
 
 fn report_parse_recovered(
-    path: &Path,
+    source: &str,
     command: &str,
     syntax_errors: &[clearhead_cli::LintDiagnostic],
     recoverable_actions: usize,
@@ -261,7 +277,7 @@ fn report_parse_recovered(
         Tool::Cli,
         None,
         TelemetryEvent::ParseRecovered {
-            file_path: path.display().to_string(),
+            file_path: source.to_string(),
             error_count: syntax_errors.len(),
             recoverable_count: recoverable_actions,
         },
@@ -270,7 +286,7 @@ fn report_parse_recovered(
 
     eprintln!(
         "warning: [{}] {} parsed with {} issue(s); proceeding with {} recoverable action(s)",
-        path.display(),
+        source,
         command,
         syntax_errors.len(),
         recoverable_actions
