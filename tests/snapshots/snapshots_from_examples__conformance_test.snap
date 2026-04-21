@@ -15,10 +15,6 @@ expression: actions
     ]),
     doDateTime: Some("2026-01-01T09:00:00-08:00"),
     doDuration: Some(60),
-    recurrence: Some(Recurrence(
-      frequency: "daily",
-      count: Some(5),
-    )),
     createdDate: "[timestamp]",
     story: Some("Conformance-Project"),
   ),

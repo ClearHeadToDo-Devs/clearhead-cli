@@ -144,10 +144,15 @@ pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<Strin
 
     for charter in &model.charters {
         for plan in &charter.plans {
+            let plan_acts: Vec<&PlannedAct> = charter.acts
+                .iter()
+                .filter(|a| a.plan_id == Some(plan.id))
+                .collect();
+
             if plan.recurrence.is_some() {
                 // Recurring plan: the first scheduled act becomes the master VEVENT.
                 // RRULE lives on the Plan (information content), so it's emitted once.
-                if let Some(act) = plan.acts.iter().find(|a| a.scheduled_at.is_some()) {
+                if let Some(act) = plan_acts.iter().find(|a| a.scheduled_at.is_some()) {
                     if should_include_act(act, open_only) {
                         if let Some(event) = planned_act_to_ical_event(plan, act) {
                             calendar.push(event);
@@ -156,7 +161,7 @@ pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<Strin
                 }
             } else {
                 // Non-recurring: each scheduled act is its own VEVENT
-                for act in &plan.acts {
+                for act in plan_acts {
                     if !should_include_act(act, open_only) {
                         continue;
                     }
@@ -182,16 +187,7 @@ mod tests {
         Plan {
             id: Uuid::new_v4(),
             name: name.to_string(),
-            description: None,
-            priority: None,
-            contexts: None,
-            recurrence: None,
-            due_recurrence: None,
-            parent: None,
-            alias: None,
-            is_sequential: None,
-            depends_on: None,
-            acts: vec![],
+            ..Default::default()
         }
     }
 
@@ -202,13 +198,10 @@ mod tests {
     ) -> PlannedAct {
         PlannedAct {
             id: Uuid::new_v5(&plan_id, b"act-0"),
-            plan_id,
+            plan_id: Some(plan_id),
             phase,
             scheduled_at,
-            due_date: None,
-            duration: None,
-            completed_at: None,
-            created_at: None,
+            ..Default::default()
         }
     }
 

@@ -262,7 +262,7 @@ pub fn read_acts_cmd(
         .iter()
         .filter(|a| {
             if let Some(filter) = plan_filter {
-                let id_str = a.plan_id.to_string();
+                let id_str = a.plan_id.map(|id| id.to_string()).unwrap_or_default();
                 let short = &id_str[..8.min(id_str.len())];
                 id_str == filter || short == filter
             } else {
@@ -471,7 +471,8 @@ fn print_acts_table(acts: &[&PlannedAct]) {
 
     for act in acts {
         let short_id = &act.id.to_string()[..8];
-        let short_plan = &act.plan_id.to_string()[..8];
+        let plan_id_str = act.plan_id.map(|id| id.to_string()).unwrap_or_default();
+        let short_plan = &plan_id_str[..8.min(plan_id_str.len())];
         let phase = format!("{:?}", act.phase);
         let scheduled = act
             .scheduled_at

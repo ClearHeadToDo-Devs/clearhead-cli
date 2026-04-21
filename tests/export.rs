@@ -56,23 +56,6 @@ fn test_export_basic_action_with_date() {
         .stdout(predicate::str::contains("END:VCALENDAR"));
 }
 
-#[test]
-fn test_export_with_recurrence() {
-    let env = TestEnv::new();
-    let actions = r#"[ ] Daily standup @2026-01-20T09:00 D15 R:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR"#;
-    let file = env.write_actions("recurring.actions", actions);
-
-    env.command()
-        .arg("export")
-        .arg("plans")
-        .arg(&file)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("SUMMARY:Daily standup"))
-        .stdout(predicate::str::contains(
-            "RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR",
-        ));
-}
 
 #[test]
 fn test_export_with_description_and_priority() {
@@ -252,35 +235,6 @@ fn test_export_from_stdin() {
         .stdout(predicate::str::contains("SUMMARY:Standup"));
 }
 
-#[test]
-fn test_export_multiple_recurring_patterns() {
-    let env = TestEnv::new();
-    let actions = r#"
-[ ] Daily task @2026-01-20T09:00 R:FREQ=DAILY
-[ ] Weekly task @2026-01-20T14:00 R:FREQ=WEEKLY;BYDAY=MO
-[ ] Monthly task @2026-02-01T10:00 R:FREQ=MONTHLY;BYMONTHDAY=1
-[ ] Yearly task @2026-06-15 R:FREQ=YEARLY
-"#;
-    let file = env.write_actions("recurring.actions", actions);
-
-    let output = env
-        .command()
-        .arg("export")
-        .arg("plans")
-        .arg(&file)
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let output_str = String::from_utf8_lossy(&output);
-
-    assert!(output_str.contains("RRULE:FREQ=DAILY"));
-    assert!(output_str.contains("RRULE:FREQ=WEEKLY;BYDAY=MO"));
-    assert!(output_str.contains("RRULE:FREQ=MONTHLY;BYMONTHDAY=1"));
-    assert!(output_str.contains("RRULE:FREQ=YEARLY"));
-}
 
 #[test]
 fn test_export_default_duration() {

@@ -143,20 +143,7 @@ mod tests {
             parent_id: parent,
             state,
             name: "test".to_string(),
-            description: None,
-            priority: None,
-            context_list: None,
-            do_date_time: None,
-            do_duration: None,
-            recurrence: None,
-            due_date_time: None,
-            due_recurrence: None,
-            completed_date_time: None,
-            created_date_time: None,
-            predecessors: None,
-            charter: None,
-            alias: None,
-            is_sequential: None,
+            ..Default::default()
         }
     }
 

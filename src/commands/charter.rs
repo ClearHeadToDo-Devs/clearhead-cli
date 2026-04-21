@@ -133,6 +133,7 @@ pub fn add_charter(
         parent: parent.clone(),
         objectives: None,
         plans: vec![],
+        acts: vec![],
     };
 
     if dry_run {

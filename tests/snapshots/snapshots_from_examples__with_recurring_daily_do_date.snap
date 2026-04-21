@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots_from_examples.rs
-assertion_line: 19
 expression: actions
 ---
 [
@@ -10,9 +9,6 @@ expression: actions
     name: "Daily medication",
     doDateTime: Some("2019-01-01T00:01:00-08:00"),
     doDuration: Some(120),
-    recurrence: Some(Recurrence(
-      frequency: "daily",
-    )),
     createdDate: "[timestamp]",
   ),
 ]

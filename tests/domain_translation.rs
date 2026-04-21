@@ -15,22 +15,17 @@ fn test_domain_round_trip_simple() {
         description: Some("Description".to_string()),
         priority: Some(1),
         contexts: Some(vec!["ctx".to_string()]),
-        recurrence: None,
-        due_recurrence: None,
-        parent: None,
-        alias: None,
-        is_sequential: None,
-        depends_on: None,
-        acts: vec![PlannedAct {
-            id: act_id,
-            plan_id,
-            phase: ActPhase::NotStarted,
-            scheduled_at: Some(Local::now()),
-            due_date: None,
-            duration: Some(30),
-            completed_at: None,
-            created_at: Some(Local::now()),
-        }],
+        ..Default::default()
+    };
+
+    let act = PlannedAct {
+        id: act_id,
+        plan_id: Some(plan_id),
+        phase: ActPhase::NotStarted,
+        scheduled_at: Some(Local::now()),
+        duration: Some(30),
+        created_at: Some(Local::now()),
+        ..Default::default()
     };
 
     let charter = Charter {
@@ -41,6 +36,7 @@ fn test_domain_round_trip_simple() {
         parent: None,
         objectives: None,
         plans: vec![plan],
+        acts: vec![act],
     };
 
     let domain = DomainModel {
