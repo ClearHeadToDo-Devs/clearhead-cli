@@ -10,7 +10,7 @@ fn test_syntax_error_reporting() {
     
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("Syntax error"));
+    assert!(err.contains("syntax-error"));
     assert!(err.contains("line 1"));
     // It should mention missing "]" or unexpected token
 }

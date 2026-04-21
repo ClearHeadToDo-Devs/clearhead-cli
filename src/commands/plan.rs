@@ -706,19 +706,11 @@ pub fn export_plans(
                 &actions,
                 charter_name,
             );
-            let mut model = clearhead_core::DomainModel {
+            let model = clearhead_core::DomainModel {
                 objectives: vec![],
                 charters: vec![charter],
             };
 
-            let open_path = clearhead_core::open_acts_path(&resolved);
-            let closed_path = clearhead_core::closed_acts_path(&resolved);
-            let mut loaded_acts = clearhead_core::read_acts(&open_path).map_err(|e| e.to_string())?;
-            let closed_acts = clearhead_core::read_acts(&closed_path).map_err(|e| e.to_string())?;
-            loaded_acts.extend(closed_acts);
-            if !loaded_acts.is_empty() {
-                clearhead_core::merge_acts_into_model(&mut model, loaded_acts);
-            }
             model
         } else {
             let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
@@ -748,7 +740,7 @@ pub fn export_plans(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clearhead_cli::{Action, ActionState};
+    use clearhead_cli::Action;
     use uuid::Uuid;
 
     fn action(id: Uuid, parent_id: Option<Uuid>) -> Action {

@@ -1,4 +1,4 @@
-//! Handlers for PlannedAct commands (expand, complete, cancel, update, read, archive).
+//! Handlers for act commands (expand, complete, cancel, update, read, archive).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -7,7 +7,7 @@ use chrono::Local;
 use tracing::{info, warn};
 
 use clearhead_core::workspace::acts;
-use clearhead_core::{Action, ActionState, ActPhase, PlannedAct};
+use clearhead_core::{Action, ActionList, ActionState};
 
 use super::CommandContext;
 
@@ -17,12 +17,9 @@ use super::CommandContext;
 
 /// Expand ICS schedule VEVENTs into planned acts in the charter's `.actions` file.
 ///
-/// Acts are written to `<charter>.actions` (not TTL). Expansion is idempotent:
-/// act UUIDs are derived from `(VEVENT.UID, occurrence_rfc3339)` so re-running
-/// never creates duplicates. Only occurrences within `now..now+days` are generated.
-///
-/// If `file` is given, only the charter whose `.actions` file matches that path
-/// is processed. Otherwise the whole workspace is scanned.
+/// Acts are written to `<charter>.actions`. Expansion is idempotent: act UUIDs
+/// are derived from `(VEVENT.UID, occurrence_rfc3339)` so re-running never
+/// creates duplicates. Only occurrences within `now..now+days` are generated.
 pub fn expand_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
@@ -37,7 +34,6 @@ pub fn expand_acts(
     let now = Local::now();
     let horizon = now + Duration::days(days as i64);
 
-    // Collect all ICS entries, optionally filtered to one charter.
     let all_entries = collect_plan_files(&data_root)
         .map_err(|e| format!("Failed to discover ICS files: {}", e))?;
 
@@ -72,7 +68,6 @@ pub fn expand_acts(
             continue;
         }
 
-        // Derive the .actions path from the .ics path — same stem, same directory.
         let actions_path = entry.path.with_extension("actions");
 
         let mut action_list = match super::load_file_for_mutation(&actions_path, "expand acts") {
@@ -120,7 +115,6 @@ pub fn expand_acts(
                     new_count += 1;
                 }
             } else if dtstart >= now && dtstart <= horizon {
-                // One-off VEVENT within horizon
                 let occ_key = dtstart.to_rfc3339();
                 let act_id = occurrence_act_id(vevent_uid, &occ_key);
                 if !existing_ids.contains(&act_id) {
@@ -176,10 +170,10 @@ pub fn expand_acts(
 }
 
 // ============================================================================
-// Gap 6 — act state management
+// Act lifecycle — complete, cancel, update
 // ============================================================================
 
-/// Mark a planned act as completed (moves from open to closed file).
+/// Mark an open act as completed (moves to `.completed.actions`).
 pub fn complete_act(
     ctx: &CommandContext,
     query: &str,
@@ -187,45 +181,37 @@ pub fn complete_act(
     dry_run: bool,
 ) -> Result<(), String> {
     let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
-    let open_path = acts::open_acts_path(&actions_path);
-    let closed_path = acts::closed_acts_path(&actions_path);
 
-    // Scope the mutable borrow to extract the completed act
     let (act_id, completed_act) = {
         let act = find_act_mut(&mut open_acts, query)
             .ok_or_else(|| format!("No open act found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
-            act.phase = ActPhase::Completed;
-            act.completed_at = Some(Local::now());
+            act.state = ActionState::Completed;
+            act.completed_date_time = Some(Local::now());
         }
         (id, act.clone())
     };
 
     if dry_run {
-        println!(
-            "Would complete act {} ({})",
-            &act_id.to_string()[..8],
-            act_id
-        );
+        println!("Would complete act {}", &act_id.to_string()[..8]);
         return Ok(());
     }
 
-    // Remove from open
     open_acts.retain(|a| a.id != act_id);
-    acts::write_acts(&open_acts, &open_path).map_err(|e| e.to_string())?;
+    super::save_file(&actions_path, &open_acts)?;
 
-    // Append to closed
-    let mut closed_acts = acts::read_acts(&closed_path).map_err(|e| e.to_string())?;
-    closed_acts.push(completed_act);
-    acts::write_acts(&closed_acts, &closed_path).map_err(|e| e.to_string())?;
+    let completed_path = acts::completed_acts_path(&actions_path);
+    let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+    closed.push(completed_act);
+    acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Act marked completed");
     println!("Completed act {}", act_id);
     Ok(())
 }
 
-/// Update a planned act's scheduled time and/or duration (open acts only).
+/// Update an open act's scheduled time and/or duration.
 pub fn update_act(
     ctx: &CommandContext,
     query: &str,
@@ -235,9 +221,7 @@ pub fn update_act(
     dry_run: bool,
 ) -> Result<(), String> {
     let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
-    let open_path = acts::open_acts_path(&actions_path);
 
-    // Parse the new scheduled_at before mutating (avoids borrow issues)
     let new_scheduled = if let Some(dt_str) = scheduled_at {
         Some(
             chrono::DateTime::parse_from_rfc3339(dt_str)
@@ -248,17 +232,16 @@ pub fn update_act(
         None
     };
 
-    // Scope the mutable borrow
     let act_id = {
         let act = find_act_mut(&mut open_acts, query)
             .ok_or_else(|| format!("No open act found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
             if let Some(dt) = new_scheduled {
-                act.scheduled_at = Some(dt);
+                act.do_date_time = Some(dt);
             }
             if let Some(dur) = duration {
-                act.duration = Some(*dur);
+                act.do_duration = Some(*dur);
             }
         }
         id
@@ -269,13 +252,13 @@ pub fn update_act(
         return Ok(());
     }
 
-    acts::write_acts(&open_acts, &open_path).map_err(|e| e.to_string())?;
+    super::save_file(&actions_path, &open_acts)?;
     info!(%act_id, "Act updated");
     println!("Updated act {}", act_id);
     Ok(())
 }
 
-/// Cancel a planned act (moves from open to closed file with Cancelled phase).
+/// Cancel an open act (moves to `.completed.actions` with Cancelled state).
 pub fn cancel_act(
     ctx: &CommandContext,
     query: &str,
@@ -283,32 +266,29 @@ pub fn cancel_act(
     dry_run: bool,
 ) -> Result<(), String> {
     let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
-    let open_path = acts::open_acts_path(&actions_path);
-    let closed_path = acts::closed_acts_path(&actions_path);
 
     let (act_id, cancelled_act) = {
         let act = find_act_mut(&mut open_acts, query)
             .ok_or_else(|| format!("No open act found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
-            act.phase = ActPhase::Cancelled;
+            act.state = ActionState::Cancelled;
         }
         (id, act.clone())
     };
 
     if dry_run {
-        println!("Would cancel act {} ({})", &act_id.to_string()[..8], act_id);
+        println!("Would cancel act {}", &act_id.to_string()[..8]);
         return Ok(());
     }
 
-    // Remove from open
     open_acts.retain(|a| a.id != act_id);
-    acts::write_acts(&open_acts, &open_path).map_err(|e| e.to_string())?;
+    super::save_file(&actions_path, &open_acts)?;
 
-    // Append to closed
-    let mut closed_acts = acts::read_acts(&closed_path).map_err(|e| e.to_string())?;
-    closed_acts.push(cancelled_act);
-    acts::write_acts(&closed_acts, &closed_path).map_err(|e| e.to_string())?;
+    let completed_path = acts::completed_acts_path(&actions_path);
+    let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+    closed.push(cancelled_act);
+    acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Act cancelled");
     println!("Cancelled act {}", act_id);
@@ -316,10 +296,10 @@ pub fn cancel_act(
 }
 
 // ============================================================================
-// Gap 7 — read acts
+// read acts
 // ============================================================================
 
-/// List planned acts, optionally filtered and formatted.
+/// List acts, optionally filtered by plan name and formatted.
 pub fn read_acts_cmd(
     ctx: &CommandContext,
     format: Option<crate::argparser::ActFormat>,
@@ -329,14 +309,13 @@ pub fn read_acts_cmd(
 ) -> Result<(), String> {
     let acts = collect_all_acts(ctx, file, open_only)?;
 
-    // Filter by plan
-    let acts: Vec<&PlannedAct> = acts
+    let acts: Vec<&Action> = acts
         .iter()
         .filter(|a| {
             if let Some(filter) = plan_filter {
-                let id_str = a.plan_id.map(|id| id.to_string()).unwrap_or_default();
+                let id_str = a.id.to_string();
                 let short = &id_str[..8.min(id_str.len())];
-                id_str == filter || short == filter
+                id_str == filter || short == filter || a.name.contains(filter)
             } else {
                 true
             }
@@ -358,14 +337,10 @@ pub fn read_acts_cmd(
 }
 
 // ============================================================================
-// Gap 8 — archive acts
+// archive acts
 // ============================================================================
 
-/// Move completed/cancelled acts from `<charter>.open.ttl` to `<charter>.closed.ttl`.
-///
-/// If `file` is given, only that charter is processed. If `scope` is given, resolves a
-/// domain reference (e.g. `"health"` or `"health/exercise"`) to a charter file. Otherwise
-/// the whole workspace is scanned.
+/// Sweep completed/cancelled acts from `.actions` into `.completed.actions`.
 pub fn archive_acts(
     ctx: &CommandContext,
     scope: &Option<String>,
@@ -376,7 +351,6 @@ pub fn archive_acts(
         vec![f.clone()]
     } else if let Some(s) = scope {
         use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
-        // TODO: filter to matching plan tree only when scope is Plan variant
         match resolve_domain_ref(&ctx.data_dir, s)? {
             ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
                 vec![file_path]
@@ -391,12 +365,11 @@ pub fn archive_acts(
     let mut charters_touched = 0usize;
 
     for actions_path in &charter_paths {
-        let open_path = acts::open_acts_path(actions_path);
-        let all_open = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
+        let open_acts = acts::read_acts(actions_path).map_err(|e| e.to_string())?;
 
-        let (to_close, to_keep): (Vec<PlannedAct>, Vec<PlannedAct>) = all_open
+        let (to_close, to_keep): (Vec<Action>, Vec<Action>) = open_acts
             .into_iter()
-            .partition(|a| matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled));
+            .partition(|a| matches!(a.state, ActionState::Completed | ActionState::Cancelled));
 
         if to_close.is_empty() {
             continue;
@@ -406,20 +379,21 @@ pub fn archive_acts(
             println!(
                 "Would archive {} act(s) from {}",
                 to_close.len(),
-                open_path.display()
+                actions_path.display()
             );
         } else {
-            acts::write_acts(&to_keep, &open_path).map_err(|e| e.to_string())?;
+            super::save_file(actions_path, &to_keep)?;
 
-            let closed_path = acts::closed_acts_path(actions_path);
-            let mut existing_closed = acts::read_acts(&closed_path).map_err(|e| e.to_string())?;
+            let completed_path = acts::completed_acts_path(actions_path);
+            let mut existing_closed =
+                acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
             existing_closed.extend(to_close.iter().cloned());
-            acts::write_acts(&existing_closed, &closed_path).map_err(|e| e.to_string())?;
+            acts::write_acts(&existing_closed, &completed_path).map_err(|e| e.to_string())?;
 
             info!(
                 count = to_close.len(),
-                charter = %open_path.display(),
-                "Acts archived to closed file"
+                charter = %actions_path.display(),
+                "Acts archived"
             );
         }
 
@@ -448,68 +422,56 @@ pub fn archive_acts(
 // Private helpers
 // ============================================================================
 
-/// Find the actions file for a given query (by scanning open acts), and load open acts.
-///
-/// Returns `(actions_path, Vec<PlannedAct>)` where the acts are open only.
 fn find_and_load_open_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     query: &str,
-) -> Result<(PathBuf, Vec<PlannedAct>), String> {
+) -> Result<(PathBuf, ActionList), String> {
     if let Some(path) = file {
-        let open_path = acts::open_acts_path(path);
-        let acts = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
+        let acts = super::load_file_for_mutation(path, "act lifecycle")?;
         return Ok((path.clone(), acts));
     }
-
-    // Workspace search: scan all open.ttl files
     find_act_in_open_files(&ctx.data_dir, query)
 }
 
-/// Scan all `*.open.ttl` files in the workspace for an act matching `query`.
+/// Scan `.actions` files in the workspace for one containing an act matching `query`.
 fn find_act_in_open_files(
     data_dir: &Path,
     query: &str,
-) -> Result<(PathBuf, Vec<PlannedAct>), String> {
+) -> Result<(PathBuf, ActionList), String> {
     let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
     for actions_path in action_files {
-        let open_path = acts::open_acts_path(&actions_path);
-        if !open_path.exists() {
-            continue;
-        }
-        let acts = acts::read_acts(&open_path).map_err(|e| e.to_string())?;
-        if acts.iter().any(|a| act_matches(a, query)) {
-            return Ok((actions_path, acts));
+        let action_list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+        if action_list.iter().any(|a| act_matches(a, query)) {
+            return Ok((actions_path, action_list));
         }
     }
 
     Err(format!("No open act found matching '{}'", query))
 }
 
-fn act_matches(act: &PlannedAct, query: &str) -> bool {
+fn act_matches(act: &Action, query: &str) -> bool {
     let id_str = act.id.to_string();
     let short = &id_str[..8.min(id_str.len())];
     id_str == query || short == query
 }
 
-fn find_act_mut<'a>(acts: &'a mut Vec<PlannedAct>, query: &str) -> Option<&'a mut PlannedAct> {
+fn find_act_mut<'a>(acts: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {
     acts.iter_mut().find(|a| act_matches(a, query))
 }
 
-/// Collect acts from either a single charter or the whole workspace.
-///
-/// If `open_only` is true, only open acts are loaded; otherwise open + closed are combined.
 fn collect_all_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     open_only: bool,
-) -> Result<Vec<PlannedAct>, String> {
+) -> Result<Vec<Action>, String> {
     if let Some(path) = file {
-        let mut result = acts::read_acts(&acts::open_acts_path(path)).map_err(|e| e.to_string())?;
+        let mut result: Vec<Action> = acts::read_acts(path).map_err(|e| e.to_string())?;
         if !open_only {
-            result.extend(acts::read_acts(&acts::closed_acts_path(path)).map_err(|e| e.to_string())?);
+            let completed_path = acts::completed_acts_path(path);
+            result.extend(acts::read_acts(&completed_path).map_err(|e| e.to_string())?);
         }
         return Ok(result);
     }
@@ -519,38 +481,37 @@ fn collect_all_acts(
 
     let mut all = Vec::new();
     for actions_path in action_files {
-        all.extend(acts::read_acts(&acts::open_acts_path(&actions_path)).map_err(|e| e.to_string())?);
+        all.extend(acts::read_acts(&actions_path).map_err(|e| e.to_string())?);
         if !open_only {
-            all.extend(acts::read_acts(&acts::closed_acts_path(&actions_path)).map_err(|e| e.to_string())?);
+            let completed_path = acts::completed_acts_path(&actions_path);
+            all.extend(acts::read_acts(&completed_path).map_err(|e| e.to_string())?);
         }
     }
     Ok(all)
 }
 
-fn print_acts_table(acts: &[&PlannedAct]) {
+fn print_acts_table(acts: &[&Action]) {
     use comfy_table::{Cell, Table};
 
     let mut table = Table::new();
-    table.set_header(vec!["id", "plan_id", "phase", "scheduled_at", "duration"]);
+    table.set_header(vec!["id", "state", "name", "scheduled_at", "duration"]);
 
     for act in acts {
         let short_id = &act.id.to_string()[..8];
-        let plan_id_str = act.plan_id.map(|id| id.to_string()).unwrap_or_default();
-        let short_plan = &plan_id_str[..8.min(plan_id_str.len())];
-        let phase = format!("{:?}", act.phase);
+        let state = format!("{:?}", act.state);
         let scheduled = act
-            .scheduled_at
+            .do_date_time
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "—".to_string());
         let duration = act
-            .duration
+            .do_duration
             .map(|d| format!("{}m", d))
             .unwrap_or_else(|| "—".to_string());
 
         table.add_row(vec![
             Cell::new(short_id),
-            Cell::new(short_plan),
-            Cell::new(phase),
+            Cell::new(state),
+            Cell::new(&act.name),
             Cell::new(scheduled),
             Cell::new(duration),
         ]);
