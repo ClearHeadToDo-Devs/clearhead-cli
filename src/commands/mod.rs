@@ -71,13 +71,50 @@ impl CommandContext {
 
 /// Load actions from a .actions file on disk.
 pub fn load_file(path: &Path) -> Result<ActionList, String> {
-    if path.exists() {
-        let content = fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
-        clearhead_cli::parse_actions(&content)
-    } else {
-        Ok(ActionList::new())
+    load_file_for_read(path, "load-file")
+}
+
+/// Load actions for read-only operations using recoverable parse mode.
+pub fn load_file_for_read(path: &Path, command: &str) -> Result<ActionList, String> {
+    if !path.exists() {
+        return Ok(ActionList::new());
     }
+
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
+    let outcome = clearhead_cli::parse_actions_with_mode(&content, clearhead_cli::ParseMode::Recover)
+        .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
+
+    if !outcome.syntax_errors.is_empty() {
+        report_parse_recovered(path, command, &outcome.syntax_errors, outcome.recovery.recoverable_actions);
+    }
+
+    Ok(outcome.document.actions)
+}
+
+/// Load actions for mutating operations.
+///
+/// If syntax issues are present, this returns an error and callers must not write.
+pub fn load_file_for_mutation(path: &Path, command: &str) -> Result<ActionList, String> {
+    if !path.exists() {
+        return Ok(ActionList::new());
+    }
+
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
+    let outcome = clearhead_cli::parse_actions_with_mode(&content, clearhead_cli::ParseMode::Recover)
+        .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
+
+    if !outcome.syntax_errors.is_empty() {
+        report_mutation_parse_failure(path, command, &outcome.syntax_errors);
+        return Err(format!(
+            "Parse error in '{}': {} issue(s). File not modified.",
+            path.display(),
+            outcome.syntax_errors.len()
+        ));
+    }
+
+    Ok(outcome.document.actions)
 }
 
 /// Format actions and write to a .actions file on disk.
@@ -105,17 +142,36 @@ pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
     }
 }
 
+#[allow(dead_code)]
 /// Search all workspace .actions files for a plan matching `query`.
 ///
 /// Returns the resolved file path and the full ActionList from that file.
-/// Used by mutating commands (update, complete, delete) when no `-f` is given,
-/// so they operate on the correct file rather than silently defaulting to inbox.
+/// Uses recover-mode parsing for read-oriented lookup compatibility.
 pub fn find_plan_file(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionList), String> {
     let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
     for file_path in action_files {
-        let actions = load_file(&file_path)?;
+        let actions = load_file_for_read(&file_path, "find-plan-file")?;
+        if clearhead_cli::resolve_reference(&actions, query).is_some() {
+            return Ok((file_path, actions));
+        }
+    }
+
+    Err(format!("No plan found matching '{}'", query))
+}
+
+/// Search all workspace .actions files for a plan matching `query`, using mutation-safe parsing.
+pub fn find_plan_file_for_mutation(
+    data_dir: &Path,
+    query: &str,
+    command: &str,
+) -> Result<(PathBuf, ActionList), String> {
+    let action_files = clearhead_core::list_action_files(data_dir)
+        .map_err(|e| format!("Failed to list workspace: {}", e))?;
+
+    for file_path in action_files {
+        let actions = load_file_for_mutation(&file_path, command)?;
         if clearhead_cli::resolve_reference(&actions, query).is_some() {
             return Ok((file_path, actions));
         }
@@ -192,5 +248,82 @@ fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {
     match s.to_lowercase().as_str() {
         "tabs" => clearhead_cli::IndentStyle::Tabs,
         _ => clearhead_cli::IndentStyle::Spaces,
+    }
+}
+
+fn report_parse_recovered(
+    path: &Path,
+    command: &str,
+    syntax_errors: &[clearhead_cli::LintDiagnostic],
+    recoverable_actions: usize,
+) {
+    emit_event(
+        Tool::Cli,
+        None,
+        TelemetryEvent::ParseRecovered {
+            file_path: path.display().to_string(),
+            error_count: syntax_errors.len(),
+            recoverable_count: recoverable_actions,
+        },
+    )
+    .unwrap_or_else(|e| warn!(error = %e, "Failed to emit parse_recovered telemetry"));
+
+    eprintln!(
+        "warning: [{}] {} parsed with {} issue(s); proceeding with {} recoverable action(s)",
+        path.display(),
+        command,
+        syntax_errors.len(),
+        recoverable_actions
+    );
+    print_syntax_diagnostics(syntax_errors);
+}
+
+fn report_mutation_parse_failure(path: &Path, command: &str, syntax_errors: &[clearhead_cli::LintDiagnostic]) {
+    emit_event(
+        Tool::Cli,
+        None,
+        TelemetryEvent::ParseFailed {
+            file_path: path.display().to_string(),
+            error_count: syntax_errors.len(),
+            first_error_code: syntax_errors
+                .first()
+                .map(|d| d.code.clone())
+                .unwrap_or_else(|| "syntax-error".to_string()),
+        },
+    )
+    .unwrap_or_else(|e| warn!(error = %e, "Failed to emit parse_failed telemetry"));
+
+    emit_event(
+        Tool::Cli,
+        None,
+        TelemetryEvent::MutationSkippedDueToParse {
+            command: command.to_string(),
+            file_path: path.display().to_string(),
+            error_count: syntax_errors.len(),
+        },
+    )
+    .unwrap_or_else(|e| warn!(error = %e, "Failed to emit mutation_skipped_due_to_parse telemetry"));
+
+    eprintln!(
+        "error: [{}] {} skipped due to parse issues; file not modified",
+        path.display(),
+        command
+    );
+    print_syntax_diagnostics(syntax_errors);
+}
+
+fn print_syntax_diagnostics(syntax_errors: &[clearhead_cli::LintDiagnostic]) {
+    for diagnostic in syntax_errors.iter().take(5) {
+        eprintln!(
+            "  - line {}, col {}: {}",
+            diagnostic.range.start_row + 1,
+            diagnostic.range.start_col + 1,
+            diagnostic.message
+        );
+    }
+
+    let remaining = syntax_errors.len().saturating_sub(5);
+    if remaining > 0 {
+        eprintln!("  - ... and {} more issue(s)", remaining);
     }
 }

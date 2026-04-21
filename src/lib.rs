@@ -8,9 +8,10 @@ use tree_sitter::Tree;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
-    format, format_charter, implicit_charter, parse_actions, parse_charter, parse_document,
-    parse_tree, patch_action_list, ActPhase, Action, ActionList, ActionState, Charter, DomainModel,
-    OutputFormat, ParsedDocument, Plan, PlannedAct, SourceMetadata, SourceRange,
+    format, format_charter, implicit_charter, parse_actions, parse_actions_with_mode,
+    parse_charter, parse_document, parse_tree, patch_action_list, ActPhase, Action, ActionList,
+    ActionState, Charter, DomainModel, OutputFormat, ParseFailure, ParseMode, ParseOutcome,
+    ParsedDocument, Plan, PlannedAct, RecoveryReport, SourceMetadata, SourceRange,
 };
 
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};

@@ -46,6 +46,14 @@ impl TestEnv {
         fs::write(actions_path, content).expect("Failed to write actions file");
     }
 
+    fn write_text(&self, relative_path: &str, content: &str) {
+        let path = self.data_dir.join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create parent dirs");
+        }
+        fs::write(path, content).expect("Failed to write file");
+    }
+
     /// Get a Command with XDG env vars set to test directories and cwd in isolated work dir
     fn command(&self) -> Command {
         let bin = assert_cmd::cargo::cargo_bin!("clearhead_cli");
@@ -952,4 +960,63 @@ fn test_read_skips_hidden_directories() {
         .success()
         .stdout(predicate::str::contains("Visible task"))
         .stdout(predicate::str::contains("Hidden task").not());
+}
+
+#[test]
+fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
+    let env = TestEnv::new();
+
+    env.write_text(
+        "focus.ics",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20991201T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    );
+
+    let malformed = "not valid actions syntax !!!\n[ ] existing stable action\n";
+    env.write_text("focus.actions", malformed);
+
+    env.command()
+        .arg("expand")
+        .arg("acts")
+        .arg("--days")
+        .arg("36500")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("skipped due to parse issues"));
+
+    let after = fs::read_to_string(env.data_dir.join("focus.actions")).unwrap();
+    assert_eq!(after, malformed, "malformed file should be byte-stable");
+}
+
+#[test]
+fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
+    let env = TestEnv::new();
+
+    env.write_text(
+        "bad.ics",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20991201T090000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    );
+    let bad_content = "not valid actions syntax !!!\n[ ] preserve me\n";
+    env.write_text("bad.actions", bad_content);
+
+    env.write_text(
+        "good.ics",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20991201T110000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    );
+    env.write_text("good.actions", "[ ] already here\n");
+
+    env.command()
+        .arg("expand")
+        .arg("acts")
+        .arg("--days")
+        .arg("36500")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("expand acts failed for 1 charter file"));
+
+    let bad_after = fs::read_to_string(env.data_dir.join("bad.actions")).unwrap();
+    assert_eq!(bad_after, bad_content, "bad file must remain unchanged");
+
+    let good_after = fs::read_to_string(env.data_dir.join("good.actions")).unwrap();
+    assert!(good_after.contains("already here"));
+    assert!(good_after.contains("Good schedule"));
 }

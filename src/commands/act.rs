@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use tracing::info;
+use tracing::{info, warn};
 
 use clearhead_core::workspace::acts;
 use clearhead_core::{Action, ActionState, ActPhase, PlannedAct};
@@ -62,6 +62,7 @@ pub fn expand_acts(
 
     let mut total_added = 0usize;
     let mut charters_touched = 0usize;
+    let mut parse_failures: Vec<PathBuf> = Vec::new();
 
     for entry in &entries {
         let plans = parse_ics_file(&entry.path)
@@ -74,24 +75,14 @@ pub fn expand_acts(
         // Derive the .actions path from the .ics path — same stem, same directory.
         let actions_path = entry.path.with_extension("actions");
 
-        // Use parse_document so recoverable syntax errors don't block expansion.
-        let actions_content = if actions_path.exists() {
-            std::fs::read_to_string(&actions_path)
-                .map_err(|e| format!("Failed to read '{}': {}", actions_path.display(), e))?
-        } else {
-            String::new()
+        let mut action_list = match super::load_file_for_mutation(&actions_path, "expand acts") {
+            Ok(actions) => actions,
+            Err(err) => {
+                warn!(path = %actions_path.display(), error = %err, "Skipping charter due to parse issues");
+                parse_failures.push(actions_path.clone());
+                continue;
+            }
         };
-        let parsed = clearhead_core::parse_document(&actions_content)
-            .map_err(|e| format!("Failed to parse '{}': {}", actions_path.display(), e))?;
-        if !parsed.syntax_errors.is_empty() {
-            eprintln!(
-                "warning: [{}] parsed with {} issue(s); proceeding with {} recoverable act(s)",
-                actions_path.display(),
-                parsed.syntax_errors.len(),
-                parsed.actions.len()
-            );
-        }
-        let mut action_list = parsed.actions;
         let existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
 
         let mut new_count = 0usize;
@@ -165,6 +156,20 @@ pub fn expand_acts(
         println!("Nothing to expand.");
     } else if charters_touched > 1 {
         println!("Expanded {} act(s) across {} charter(s).", total_added, charters_touched);
+    }
+
+    if !parse_failures.is_empty() {
+        eprintln!(
+            "expand acts failed for {} charter file(s) due to parse errors",
+            parse_failures.len()
+        );
+        for path in &parse_failures {
+            eprintln!("  - {}", path.display());
+        }
+        return Err(format!(
+            "expand acts skipped {} file(s) due to parse errors",
+            parse_failures.len()
+        ));
     }
 
     Ok(())

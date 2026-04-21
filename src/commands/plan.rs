@@ -2,7 +2,10 @@ use std::fs;
 use tracing::{debug, info};
 
 use crate::argparser;
-use crate::commands::{load_file, parse_format, read_input, save_file, try_emit, CommandContext};
+use crate::commands::{
+    CommandContext, find_plan_file_for_mutation, load_file, load_file_for_mutation, parse_format,
+    read_input, save_file, try_emit,
+};
 use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
 
 /// Find the index at which to insert a child action so it appears immediately
@@ -345,7 +348,7 @@ pub fn add_plan(
         fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
     }
 
-    let mut actions = load_file(&input_file)?;
+    let mut actions = load_file_for_mutation(&input_file, "add plan")?;
 
     // Resolve parent reference if provided
     let parent_id: Option<Uuid> = if let Some(parent_ref) = parent {
@@ -436,10 +439,10 @@ pub fn update_plan(
 
     let (input_file, mut actions) = if let Some(path) = file {
         let f = ctx.resolve_action_file(Some(path));
-        let a = load_file(&f)?;
+        let a = load_file_for_mutation(&f, "update plan")?;
         (f, a)
     } else {
-        crate::commands::find_plan_file(&ctx.data_dir, query)?
+        find_plan_file_for_mutation(&ctx.data_dir, query, "update plan")?
     };
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Update Plan");
 
@@ -492,10 +495,10 @@ pub fn complete_plan(
 ) -> Result<(), String> {
     let (input_file, mut actions) = if let Some(path) = file {
         let f = ctx.resolve_action_file(Some(path));
-        let a = load_file(&f)?;
+        let a = load_file_for_mutation(&f, "complete plan")?;
         (f, a)
     } else {
-        crate::commands::find_plan_file(&ctx.data_dir, query)?
+        find_plan_file_for_mutation(&ctx.data_dir, query, "complete plan")?
     };
 
     let result = crate::commands::complete::complete_action(&mut actions, query)?;
@@ -525,10 +528,10 @@ pub fn delete_plan(
 ) -> Result<(), String> {
     let (input_file, mut actions) = if let Some(path) = file {
         let f = ctx.resolve_action_file(Some(path));
-        let a = load_file(&f)?;
+        let a = load_file_for_mutation(&f, "delete plan")?;
         (f, a)
     } else {
-        crate::commands::find_plan_file(&ctx.data_dir, query)?
+        find_plan_file_for_mutation(&ctx.data_dir, query, "delete plan")?
     };
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Delete Plan");
 
@@ -593,10 +596,7 @@ pub fn archive_plans(
             continue;
         }
 
-        let content = fs::read_to_string(source)
-            .map_err(|e| format!("Failed to read '{}': {}", source.display(), e))?;
-
-        let all_actions = clearhead_cli::parse_actions(&content)?;
+        let all_actions = load_file_for_mutation(source, "archive plans")?;
         let (active_actions, archived_actions) =
             clearhead_cli::archive::partition_actions_for_archive(&all_actions);
 
@@ -620,7 +620,7 @@ pub fn archive_plans(
             }
         } else {
             // Append archived actions to destination
-            let mut dest_actions = load_file(&dest)?;
+            let mut dest_actions = load_file_for_mutation(&dest, "archive plans")?;
             dest_actions.extend(archived_actions.iter().cloned());
             save_file(&dest, &dest_actions)?;
 
