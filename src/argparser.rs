@@ -656,7 +656,7 @@ pub enum ArchiveTarget {
         dry_run: bool,
     },
 
-    /// Move completed/cancelled acts from open.ttl to closed.ttl. Workspace-wide by default.
+    /// Move completed/cancelled acts from `.actions` to `.completed.actions`. Workspace-wide by default.
     Acts {
         /// Domain path to scope: "health", "health/exercise", etc. Workspace-wide if omitted.
         scope: Option<String>,
