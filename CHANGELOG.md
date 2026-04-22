@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 - **V4 Domain Model (`domain.rs`):** New module with CCO-aligned structs that separate task definition from execution:
-  - `Plan` - information content (cco:Plan) - holds name, description, priority, contexts, recurrence, hierarchy
+- `Plan` - information content (cco:Plan) - holds name, description, priority, contexts, and hierarchy (with schedule metadata sourced from `.ics`)
   - `PlannedAct` - occurrence (cco:PlannedAct) - holds phase, scheduled time, completion time
   - `ActPhase` - lifecycle state enum (NotStarted, InProgress, Completed, Blocked, Cancelled)
   - `DomainModel` - container with `from_actions()` conversion from ActionList
@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Refactored Tree-sitter Parsing (`entities.rs`, `treesitter.rs`):** Cleaner helper functions reduce boilerplate:
   - `get_prefixed_text(node, source, prefix)` - strips prefix char and trims
   - `SourceRange::from_node(node)` - extract range from any node
-  - `parse_date_field()`, `parse_duration_field()`, `parse_recurrence_field()` - focused helpers
+  - `parse_date_field()`, `parse_duration_field()` - focused helpers
   - Metadata parsing loop reduced from ~180 lines to ~65 lines
 
 ### Architecture Note
@@ -228,10 +228,10 @@ The following work remains to enable full Create/Read/Update/Delete operations v
 - **Entities:**
   - `Action` struct now derives `Reconcile` and `Hydrate` for seamless Automerge sync.
   - Changed `priority` field from `usize` to `u32` for better compatibility with Automerge types.
-  - Flattened `do_date_time`, `do_duration`, and `recurrence` fields in the `Action` struct (and Schema) to better match the flat-file format and simplfy sync logic.
+  - Flattened `do_date_time` and `do_duration` fields in the `Action` struct (and Schema) to better match the flat-file format and simplfy sync logic.
 - **Schema:** Updated `tree-sitter-actions/schema/actions.schema.json`:
   - Added `parent_id` to the allowed properties (supporting the Adjacency List model).
-  - Flattened the `doDate` object properties into top-level fields (`doDateTime`, `doDuration`, `recurrence`).
+  - Flattened the `doDate` object properties into top-level fields (`doDateTime`, `doDuration`).
 - **SQL:** Updated `src/sql.rs` to handle `priority` as `u32`.
 
 ### Fixed
