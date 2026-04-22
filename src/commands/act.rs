@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use chrono::Local;
 use tracing::{info, warn};
 
-use clearhead_core::workspace::acts;
+use clearhead_core::workspace::{acts, read_acts, templates};
 use clearhead_core::{Action, ActionList, ActionState};
 
 use super::CommandContext;
@@ -81,6 +81,7 @@ pub fn expand_acts(
         let existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
 
         let mut new_count = 0usize;
+        let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
 
         for plan in &plans {
             let vevent_uid = match &plan.external_id {
@@ -113,6 +114,9 @@ pub fn expand_acts(
                         ..Default::default()
                     });
                     new_count += 1;
+                    new_count += expand_template_children(
+                        plan, vevent_uid, &occ_key, act_id, charter_dir, &data_root, &mut action_list,
+                    );
                 }
             } else if dtstart >= now && dtstart <= horizon {
                 let occ_key = dtstart.to_rfc3339();
@@ -127,6 +131,9 @@ pub fn expand_acts(
                         ..Default::default()
                     });
                     new_count += 1;
+                    new_count += expand_template_children(
+                        plan, vevent_uid, &occ_key, act_id, charter_dir, &data_root, &mut action_list,
+                    );
                 }
             }
         }
@@ -450,6 +457,56 @@ fn find_act_in_open_files(
     }
 
     Err(format!("No open act found matching '{}'", query))
+}
+
+/// If the plan references a template, resolve and instantiate it as children of `root_id`.
+/// Returns the number of template children added.
+fn expand_template_children(
+    plan: &clearhead_core::domain::Plan,
+    vevent_uid: &str,
+    occ_key: &str,
+    root_id: uuid::Uuid,
+    charter_dir: &Path,
+    data_root: &Path,
+    action_list: &mut ActionList,
+) -> usize {
+    use clearhead_core::workspace::ics::occurrence_act_id;
+
+    let Some(ref tpl_name) = plan.template_name else {
+        return 0;
+    };
+
+    let tpl_path = match templates::resolve_template(charter_dir, data_root, tpl_name) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            warn!(template = %tpl_name, "Template not found, expanding flat act only");
+            return 0;
+        }
+        Err(e) => {
+            warn!(template = %tpl_name, error = %e, "Failed to resolve template");
+            return 0;
+        }
+    };
+
+    let tpl_acts = match read_acts(&tpl_path) {
+        Ok(acts) => acts,
+        Err(e) => {
+            warn!(template = %tpl_name, path = %tpl_path.display(), error = %e, "Failed to read template");
+            return 0;
+        }
+    };
+
+    let uid = vevent_uid.to_string();
+    let key = occ_key.to_string();
+    let children = templates::instantiate_template(
+        &tpl_acts,
+        |tid| occurrence_act_id(&format!("{}:tpl:{}", uid, tid), &key),
+        Some(root_id),
+    );
+
+    let count = children.len();
+    action_list.extend(children);
+    count
 }
 
 fn act_matches(act: &Action, query: &str) -> bool {

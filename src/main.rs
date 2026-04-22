@@ -103,8 +103,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 title,
                 alias,
                 parent,
+                template,
                 dry_run,
-            } => commands::charter::add_charter(&ctx, title, alias, parent, *dry_run),
+            } => commands::charter::add_charter(&ctx, title, alias, parent, template, *dry_run),
         },
         Verb::Update { target } => match target {
             argparser::UpdateTarget::Plan {
@@ -224,6 +225,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::act::cancel_act(&ctx, query, file, *dry_run),
+        },
+        Verb::Apply { target } => match target {
+            argparser::ApplyTarget::Template {
+                name,
+                charter,
+                file,
+                dry_run,
+            } => commands::template::apply_template(&ctx, name, charter, file, *dry_run),
         },
     }
 }

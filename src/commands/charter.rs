@@ -120,9 +120,11 @@ pub fn add_charter(
     title: &str,
     alias: &Option<String>,
     parent: &Option<String>,
+    template: &Option<String>,
     dry_run: bool,
 ) -> Result<(), String> {
     use clearhead_core::domain::Charter;
+    use clearhead_core::workspace::templates;
 
     let id = uuid::Uuid::now_v7();
     let charter = Charter {
@@ -139,25 +141,55 @@ pub fn add_charter(
     if dry_run {
         let formatted = clearhead_core::format_charter(&charter);
         println!("{}", formatted);
-    } else {
-        let filename = alias
-            .as_deref()
-            .unwrap_or(title)
-            .to_lowercase()
-            .replace(' ', "-")
-            .replace('&', "and");
-        let file_path = ctx.data_dir.join(format!("{}.md", filename));
-
-        if file_path.exists() {
-            return Err(format!("File already exists: {}", file_path.display()));
+        if let Some(tpl_name) = template {
+            println!("Would apply template '{}'", tpl_name);
         }
-
-        let content = clearhead_core::format_charter(&charter);
-        std::fs::write(&file_path, content)
-            .map_err(|e| format!("Failed to write charter: {}", e))?;
-
-        info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
-        println!("{}", id);
+        return Ok(());
     }
+
+    let filename = alias
+        .as_deref()
+        .unwrap_or(title)
+        .to_lowercase()
+        .replace(' ', "-")
+        .replace('&', "and");
+    let file_path = ctx.data_dir.join(format!("{}.md", filename));
+
+    if file_path.exists() {
+        return Err(format!("File already exists: {}", file_path.display()));
+    }
+
+    let content = clearhead_core::format_charter(&charter);
+    std::fs::write(&file_path, content)
+        .map_err(|e| format!("Failed to write charter: {}", e))?;
+
+    info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
+    println!("{}", id);
+
+    if let Some(tpl_name) = template {
+        let charter_dir = file_path.parent().unwrap_or(std::path::Path::new(""));
+        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
+
+        let tpl_path = templates::resolve_template(charter_dir, &data_root, tpl_name)
+            .map_err(|e| format!("Failed to resolve template: {}", e))?
+            .ok_or_else(|| format!("Template '{}' not found", tpl_name))?;
+
+        let tpl_acts = clearhead_core::workspace::read_acts(&tpl_path)
+            .map_err(|e| format!("Failed to read template: {}", e))?;
+
+        let instantiated =
+            templates::instantiate_template(&tpl_acts, |_| uuid::Uuid::now_v7(), None);
+
+        let actions_path = ctx.data_dir.join(format!("{}.actions", filename));
+        super::save_file(&actions_path, &instantiated)?;
+
+        println!(
+            "Applied template '{}': {} act(s) to {}",
+            tpl_name,
+            instantiated.len(),
+            actions_path.display()
+        );
+    }
+
     Ok(())
 }

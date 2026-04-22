@@ -7,6 +7,7 @@ pub mod plan;
 pub mod query;
 pub mod resolver;
 pub mod service;
+pub mod template;
 
 use std::fs;
 use std::io::{self, Read};

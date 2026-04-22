@@ -249,6 +249,12 @@ pub enum Verb {
         target: CancelTarget,
     },
 
+    /// Apply a template or pattern to a charter
+    Apply {
+        #[command(subcommand)]
+        target: ApplyTarget,
+    },
+
     /// Start a service
     Start {
         #[command(subcommand)]
@@ -457,6 +463,10 @@ pub enum AddTarget {
         /// Parent charter reference
         #[arg(short, long)]
         parent: Option<String>,
+
+        /// Scaffold from a template (name of .actions file in templates/)
+        #[arg(long)]
+        template: Option<String>,
 
         /// Preview what would be created without writing
         #[arg(long)]
@@ -687,6 +697,31 @@ pub enum ExpandTarget {
         days: u32,
 
         /// Preview what would be written without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+// =============================================================================
+// Apply targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum ApplyTarget {
+    /// Instantiate a template into a charter's .actions file
+    Template {
+        /// Template name (stem of the .actions file in templates/)
+        name: String,
+
+        /// Charter to apply to (name, alias, or UUID). Uses default charter if omitted.
+        #[arg(long, conflicts_with = "file")]
+        charter: Option<String>,
+
+        /// Explicit .actions file path
+        #[arg(long, conflicts_with = "charter")]
+        file: Option<PathBuf>,
+
+        /// Preview what would be applied without writing
         #[arg(long)]
         dry_run: bool,
     },
