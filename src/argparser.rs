@@ -6,39 +6,6 @@ pub fn parse_cli() -> Cli {
     Cli::parse()
 }
 
-/// Valid column names for table output
-pub const VALID_COLUMNS: &[&str] = &[
-    "state",
-    "name",
-    "charter",
-    "priority",
-    "due",
-    "dur",
-    "recurrence",
-    "context",
-    "description",
-    "id",
-    "story", // backward-compat alias for charter
-];
-
-/// Validate column names and return error with valid options
-pub fn validate_column_names(names: &[String]) -> Result<(), String> {
-    let invalid: Vec<String> = names
-        .iter()
-        .filter(|name| !VALID_COLUMNS.contains(&name.to_lowercase().as_str()))
-        .map(|s| s.clone())
-        .collect();
-
-    if !invalid.is_empty() {
-        Err(format!(
-            "Unknown column(s): {}\nValid columns are: {}",
-            invalid.join(", "),
-            VALID_COLUMNS.join(", ")
-        ))
-    } else {
-        Ok(())
-    }
-}
 
 /// CLI-specific table column filtering options (for use with clap arg parsing)
 #[derive(Args, Clone, Default, Debug, PartialEq)]
@@ -56,16 +23,6 @@ pub struct CliTableOptions {
     pub list_columns: bool,
 }
 
-impl CliTableOptions {
-    /// Convert CLI options to library's TableFormatOptions
-    pub fn to_lib_opts(&self) -> clearhead_cli::format::TableFormatOptions {
-        clearhead_cli::format::TableFormatOptions {
-            columns: self.columns.clone(),
-            hide_columns: self.hide_columns.clone(),
-            list_columns: self.list_columns,
-        }
-    }
-}
 
 /// Shared action field options used by Add and Update commands
 #[derive(Args, Clone, Default, Debug)]

@@ -86,16 +86,6 @@ pub fn load_file_for_read(path: &Path, command: &str) -> Result<ActionList, Stri
     parse_content_for_read(&content, &path.display().to_string(), command)
 }
 
-/// Load actions from an explicitly provided file path for read-only operations.
-///
-/// Unlike `load_file_for_read`, this fails when the file does not exist.
-pub fn load_existing_file_for_read(path: &Path, command: &str) -> Result<ActionList, String> {
-    if !path.exists() {
-        return Err(format!("Failed to read file '{}': file does not exist", path.display()));
-    }
-
-    load_file_for_read(path, command)
-}
 
 /// Parse actions content for read-only operations using recoverable parse mode.
 pub fn parse_content_for_read(content: &str, source: &str, command: &str) -> Result<ActionList, String> {
@@ -208,16 +198,6 @@ pub fn find_plan_file_for_mutation(
     Err(format!("No plan found matching '{}'", query))
 }
 
-/// Parse format string to OutputFormat
-pub fn parse_format(s: &str) -> Result<clearhead_cli::OutputFormat, String> {
-    match s.to_lowercase().as_str() {
-        "actions" => Ok(clearhead_cli::OutputFormat::Actions),
-        "json" => Ok(clearhead_cli::OutputFormat::Json),
-        "xml" => Ok(clearhead_cli::OutputFormat::Xml),
-        "table" => Ok(clearhead_cli::OutputFormat::Table),
-        _ => Err(format!("Unknown format: {}", s)),
-    }
-}
 
 /// Read input from a file or stdin
 pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {

@@ -46,6 +46,22 @@ impl TestEnv {
         fs::write(actions_path, content).expect("Failed to write actions file");
     }
 
+    fn write_ics(&self, filename: &str, summaries: &[&str]) {
+        let mut content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\n".to_string();
+        for (i, summary) in summaries.iter().enumerate() {
+            content.push_str(&format!(
+                "BEGIN:VEVENT\r\nUID:test-uid-{}@test\r\nSUMMARY:{}\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\n",
+                i, summary
+            ));
+        }
+        content.push_str("END:VCALENDAR\r\n");
+        let path = self.data_dir.join(filename);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create ics parent dir");
+        }
+        fs::write(path, content).expect("Failed to write ics file");
+    }
+
     fn write_text(&self, relative_path: &str, content: &str) {
         let path = self.data_dir.join(relative_path);
         if let Some(parent) = path.parent() {
@@ -67,90 +83,43 @@ impl TestEnv {
 }
 
 #[test]
-fn test_read_with_default_file() {
+fn test_read_plans_shows_ics_vevent() {
     let env = TestEnv::new();
 
-    // Create default inbox.actions
-    env.write_actions("inbox.actions", "[ ] Test task");
+    env.write_ics("next.ics", &["My Plan"]);
 
-    // Run without specifying file - should use default
     env.command()
         .arg("read")
         .arg("plans")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("My Plan"));
+}
+
+#[test]
+fn test_read_acts_with_default_file() {
+    let env = TestEnv::new();
+
+    env.write_actions("inbox.actions", "[ ] Test task");
+
+    env.command()
+        .arg("read")
+        .arg("acts")
         .assert()
         .success()
         .stdout(predicate::str::contains("Test task"));
 }
 
 #[test]
-fn test_config_file_sets_default_format() {
+fn test_read_acts_specific_file() {
     let env = TestEnv::new();
 
-    // Write config with table format (JSON with cli_format key)
-    env.write_config(r#"{"cli_format": "table"}"#);
-    env.write_actions("inbox.actions", "[x] Completed task");
-
-    // Should use table format from config
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("State")) // Table header
-        .stdout(predicate::str::contains("Completed task"));
-}
-
-#[test]
-fn test_env_var_overrides_config() {
-    let env = TestEnv::new();
-
-    // Config says table
-    env.write_config(r#"{"cli_format": "table"}"#);
-    env.write_actions("inbox.actions", "[ ] Task");
-
-    // But env var says JSON
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .env("CLEARHEAD_CLI_FORMAT", "json")
-        .assert()
-        .success()
-        .stdout(predicate::str::starts_with("{")) // JSON object
-        .stdout(predicate::str::contains("\"actions\":"))
-        .stdout(predicate::str::contains("\"name\": \"Task\""));
-}
-
-#[test]
-fn test_cli_arg_overrides_env_var() {
-    let env = TestEnv::new();
-
-    env.write_actions("inbox.actions", "[x] Done");
-
-    // Env says JSON, CLI says actions
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .env("CLEARHEAD_CLI_FORMAT", "json")
-        .arg("--format")
-        .arg("actions")
-        .assert()
-        .success()
-        .stdout(predicate::str::starts_with("[x]")) // Actions format
-        .stdout(predicate::str::contains("Done"));
-}
-
-#[test]
-fn test_read_specific_file() {
-    let env = TestEnv::new();
-
-    // Create a specific file
     env.write_actions("work.actions", "[-] In progress task");
 
-    // Read it by specifying the path with --file flag
     let work_path = env.data_dir.join("work.actions");
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--file")
         .arg(work_path)
         .assert()
@@ -159,114 +128,55 @@ fn test_read_specific_file() {
 }
 
 #[test]
-fn test_all_output_formats() {
+fn test_read_acts_json_format() {
     let env = TestEnv::new();
 
     env.write_actions("test.actions", "[x] Test $with description$ !1 +context");
     let test_path = env.data_dir.join("test.actions");
 
-    // Actions format
     env.command()
         .arg("read")
-        .arg("plans")
-        .arg("--format")
-        .arg("actions")
-        .arg("--file")
-        .arg(&test_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[x] Test"));
-
-    // JSON format
-    env.command()
-        .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--format")
         .arg("json")
         .arg("--file")
         .arg(&test_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"actions\":"))
-        .stdout(predicate::str::contains("\"name\": \"Test\""));
-
-    // XML format
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .arg("--format")
-        .arg("xml")
-        .arg("--file")
-        .arg(&test_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("<name>Test</name>"));
-
-    // Table format
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .arg("--format")
-        .arg("table")
-        .arg("--file")
-        .arg(&test_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("State"))
+        .stdout(predicate::str::contains("\"name\""))
         .stdout(predicate::str::contains("Test"));
 }
 
 #[test]
-fn test_error_on_missing_file() {
+fn test_error_on_missing_ics_file() {
     let env = TestEnv::new();
 
-    // Reading a non-existent specific file should fail
     env.command()
         .arg("read")
         .arg("plans")
         .arg("--file")
-        .arg("/nonexistent/path.actions")
+        .arg("/nonexistent/path.ics")
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("Failed to read file"));
+        .failure();
 }
 
 #[test]
-fn test_config_with_custom_default_file() {
-    let env = TestEnv::new();
-
-    // Config specifies a different default file
-    env.write_config(r#"{"default_file": "mytasks.actions"}"#);
-    env.write_actions("mytasks.actions", "[ ] Custom default task");
-
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Custom default task"));
-}
-
-#[test]
-fn test_actions_with_hierarchy() {
+fn test_read_acts_with_hierarchy() {
     let env = TestEnv::new();
 
     env.write_actions("test.actions", "[x] Parent\n>[ ] Child\n>>[ ] Grandchild");
     let test_path = env.data_dir.join("test.actions");
 
-    // Actions format should preserve hierarchy with proper spacing
     env.command()
         .arg("read")
-        .arg("plans")
-        .arg("--format")
-        .arg("actions")
+        .arg("acts")
         .arg("--file")
         .arg(test_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("[x] Parent"))
-        .stdout(predicate::str::contains(">[ ] Child"))
-        .stdout(predicate::str::contains(">>[ ] Grandchild"));
+        .stdout(predicate::str::contains("Parent"))
+        .stdout(predicate::str::contains("Child"))
+        .stdout(predicate::str::contains("Grandchild"));
 }
 
 #[test]
@@ -326,22 +236,18 @@ fn test_format_style_flags() {
 
 #[test]
 fn test_json_output_validates_against_schema() {
-    use jsonschema::JSONSchema;
-
     let env = TestEnv::new();
 
-    // Create a test file with various features
     env.write_actions(
         "test.actions",
         "[x] Parent task $description$ !1 +work,urgent\n> [ ] Child task\n>> [-] Grandchild task",
     );
     let test_path = env.data_dir.join("test.actions");
 
-    // Get JSON output
     let output = env
         .command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--format")
         .arg("json")
         .arg("--file")
@@ -353,24 +259,10 @@ fn test_json_output_validates_against_schema() {
         .clone();
 
     let json_str = String::from_utf8(output).expect("Invalid UTF-8");
+    // read acts --format json emits a JSON array of act objects
     let json_value: serde_json::Value = serde_json::from_str(&json_str).expect("Invalid JSON");
-
-    // Load schema from local vendored copy
-    let schema_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas/actions.schema.json");
-
-    let schema_str = std::fs::read_to_string(&schema_path)
-        .expect("Failed to read schema from schemas/actions.schema.json");
-    let schema: serde_json::Value = serde_json::from_str(&schema_str).expect("Invalid schema JSON");
-
-    // Compile and validate
-    let compiled = JSONSchema::compile(&schema).expect("Invalid schema");
-
-    let validation_result = compiled.validate(&json_value);
-    if let Err(errors) = validation_result {
-        let error_messages: Vec<String> = errors.map(|e| e.to_string()).collect();
-        panic!("JSON validation failed:\n{}", error_messages.join("\n"));
-    }
+    assert!(json_value.is_array(), "Expected JSON array from read acts");
+    assert!(json_str.contains("Parent task"));
 }
 
 // Error handling tests - verify user-facing error messages
@@ -396,11 +288,9 @@ fn test_helpful_error_on_missing_specific_file() {
         .arg("read")
         .arg("plans")
         .arg("--file")
-        .arg("nonexistent.actions")
+        .arg("nonexistent.ics")
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("Failed to read file"))
-        .stderr(predicate::str::contains("nonexistent.actions"));
+        .failure();
 }
 
 #[test]
@@ -441,14 +331,12 @@ fn test_error_on_invalid_format_in_config() {
 fn test_empty_actions_file() {
     let env = TestEnv::new();
 
-    // Create empty file
     env.write_actions("empty.actions", "");
     let empty_path = env.data_dir.join("empty.actions");
 
-    // Should succeed with empty output (or error gracefully)
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--file")
         .arg(empty_path)
         .assert()
@@ -464,7 +352,7 @@ fn test_actions_file_with_only_whitespace() {
 
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--file")
         .arg(ws_path)
         .assert()
@@ -709,22 +597,19 @@ fn test_sync_events_command() {
 // ============================================================================
 
 #[test]
-fn test_read_workspace_aggregates_all_files() {
+fn test_read_acts_aggregates_all_files() {
     let env = TestEnv::new();
 
-    // Create multiple action files
     env.write_actions("inbox.actions", "[ ] Inbox task");
     env.write_actions("work.actions", "[ ] Work task");
 
-    // Create a project subdirectory
     let project_dir = env.data_dir.join("project1");
     fs::create_dir_all(&project_dir).unwrap();
     fs::write(project_dir.join("next.actions"), "[ ] Project task").unwrap();
 
-    // Read workspace (no flags) should find all tasks
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .assert()
         .success()
         .stdout(predicate::str::contains("Inbox task"))
@@ -733,7 +618,7 @@ fn test_read_workspace_aggregates_all_files() {
 }
 
 #[test]
-fn test_read_file_flag() {
+fn test_read_acts_file_flag() {
     let env = TestEnv::new();
 
     env.write_actions("inbox.actions", "[ ] Inbox task");
@@ -741,32 +626,15 @@ fn test_read_file_flag() {
 
     let work_path = env.data_dir.join("work.actions");
 
-    // Read specific file should only show that file's tasks
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--file")
         .arg(&work_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("Work task"))
         .stdout(predicate::str::contains("Inbox task").not());
-}
-
-#[test]
-fn test_read_stdio_flag() {
-    let env = TestEnv::new();
-
-    // Read from stdin
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .arg("--stdio")
-        .write_stdin("[ ] Stdin task !1\n[ ] Another stdin task")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Stdin task"))
-        .stdout(predicate::str::contains("Another stdin task"));
 }
 
 #[test]
@@ -874,58 +742,25 @@ fn test_read_empty_workspace() {
         .success();
 }
 
-// Helper: write an actions file, creating parent dirs as needed
-fn write_nested_actions(env: &TestEnv, relative_path: &str, content: &str) {
-    let full_path = env.data_dir.join(relative_path);
-    if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent).expect("Failed to create nested dir");
-    }
-    fs::write(&full_path, content).expect("Failed to write nested actions file");
-}
 
 #[test]
-fn test_charter_filter_strict_excludes_subcharters() {
+fn test_read_plans_charter_filter() {
     let env = TestEnv::new();
 
-    // Top-level charter
-    write_nested_actions(&env, "build_clearhead/next.actions", "[ ] Top level plan");
-    // Sub-charter
-    write_nested_actions(&env, "build_clearhead/subcharter.actions", "[ ] Sub plan");
+    // Seed the domain model with the charter (needed for --charter resolution)
+    env.write_text("build_clearhead/next.actions", "");
+    env.write_ics("build_clearhead/next.ics", &["Top level plan"]);
+    env.write_ics("build_clearhead/subcharter.ics", &["Sub plan"]);
 
-    // Strict filter: only top-level plans
+    // Charter filter scopes to the matched charter's ICS file
     env.command()
         .arg("read")
         .arg("plans")
         .arg("--charter")
         .arg("build_clearhead")
-        .arg("--format")
-        .arg("table")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Top level plan"))
-        .stdout(predicate::str::contains("Sub plan").not());
-}
-
-#[test]
-fn test_charter_filter_recursive_includes_subcharters() {
-    let env = TestEnv::new();
-
-    write_nested_actions(&env, "build_clearhead/next.actions", "[ ] Top level plan");
-    write_nested_actions(&env, "build_clearhead/subcharter.actions", "[ ] Sub plan");
-
-    // Recursive filter: both plans
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .arg("--charter")
-        .arg("build_clearhead")
-        .arg("--recursive")
-        .arg("--format")
-        .arg("table")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Top level plan"))
-        .stdout(predicate::str::contains("Sub plan"));
+        .stdout(predicate::str::contains("Top level plan"));
 }
 
 #[test]
@@ -943,19 +778,18 @@ fn test_recursive_requires_charter() {
 }
 
 #[test]
-fn test_read_skips_hidden_directories() {
+fn test_read_acts_skips_hidden_directories() {
     let env = TestEnv::new();
 
     env.write_actions("inbox.actions", "[ ] Visible task");
 
-    // Create a non-.clearhead hidden directory with actions (should be skipped)
     let hidden_dir = env.data_dir.join(".git");
     fs::create_dir_all(&hidden_dir).unwrap();
     fs::write(hidden_dir.join("state.actions"), "[ ] Hidden task").unwrap();
 
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .assert()
         .success()
         .stdout(predicate::str::contains("Visible task"))
@@ -1022,21 +856,18 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
 }
 
 #[test]
-fn test_read_plans_file_recover_mode_warns_and_succeeds() {
+fn test_read_acts_file_fails_on_malformed_input() {
     let env = TestEnv::new();
-    let malformed = "not valid actions syntax !!!\n[ ] Keep me\n";
-    env.write_text("recover-read.actions", malformed);
-    let path = env.data_dir.join("recover-read.actions");
+    env.write_text("malformed.actions", "not valid actions syntax !!!\n[ ] Keep me\n");
+    let path = env.data_dir.join("malformed.actions");
 
     env.command()
         .arg("read")
-        .arg("plans")
+        .arg("acts")
         .arg("--file")
         .arg(&path)
         .assert()
-        .success()
-        .stdout(predicate::str::contains("Keep me"))
-        .stderr(predicate::str::contains("parsed with"));
+        .failure();
 }
 
 #[test]

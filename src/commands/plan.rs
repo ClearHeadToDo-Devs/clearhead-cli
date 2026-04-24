@@ -3,8 +3,8 @@ use tracing::{debug, info};
 
 use crate::argparser;
 use crate::commands::{
-    CommandContext, find_plan_file_for_mutation, load_file, load_file_for_mutation,
-    load_existing_file_for_read, load_file_for_read, parse_content_for_read, parse_format,
+    CommandContext, find_plan_file_for_mutation, load_file_for_mutation,
+    load_file_for_read, parse_content_for_read,
     read_input, save_file, try_emit,
 };
 use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
@@ -95,182 +95,94 @@ fn collect_charter_tree(
 
 pub fn read_plans(
     ctx: &CommandContext,
-    format: &Option<argparser::Format>,
+    _format: &Option<argparser::Format>,
     charter: &Option<String>,
     recursive: bool,
     file: &Option<std::path::PathBuf>,
-    stdio: bool,
-    table_options: &argparser::CliTableOptions,
+    _stdio: bool,
+    _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
-    use crate::environment_reader::resolve_file_path;
+    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::plans::collect_plan_files;
+    use comfy_table::{Cell, Table};
 
-    let output_format = format
-        .map(|f| f.into())
-        .or_else(|| parse_format(&ctx.config.cli_format).ok())
-        .unwrap_or(clearhead_cli::OutputFormat::Actions);
-
-    let lib_table_opts = if output_format == clearhead_cli::OutputFormat::Table {
-        if let Some(ref cols) = table_options.columns {
-            argparser::validate_column_names(cols)?;
-        }
-        if let Some(ref hide) = table_options.hide_columns {
-            argparser::validate_column_names(hide)?;
-        }
-        Some(table_options.to_lib_opts())
+    let plans: Vec<(String, clearhead_core::Plan)> = if let Some(path) = file {
+        let charter_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        parse_ics_file(path)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|p| (charter_name.clone(), p))
+            .collect()
     } else {
-        None
-    };
+        let entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
 
-    let actions = if let Some(path) = file {
-        let resolved = resolve_file_path(&path.to_string_lossy(), &ctx.data_dir);
-        debug!(file = %resolved.display(), "Reading file");
-        let action_list = load_existing_file_for_read(&resolved, "read plans")?;
-        if output_format == clearhead_cli::OutputFormat::Table {
-            let relative = resolved.strip_prefix(&ctx.data_dir).unwrap_or(&resolved);
-            let charter_name = clearhead_core::infer_charter_name(relative)
-                .unwrap_or_else(|| "unknown".to_string());
-            let charter = clearhead_core::workspace::actions::convert::from_actions_with_charter(
-                &action_list,
-                charter_name,
-            );
-            let model = clearhead_core::DomainModel {
-                objectives: vec![],
-                charters: vec![charter],
-            };
-            println!(
-                "{}",
-                clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
-            );
-            return Ok(());
-        }
-        action_list
-    } else if stdio {
-        debug!("Reading stdin");
-        let content = read_input(None)?;
-        parse_content_for_read(&content, "stdin", "read plans")?
-    } else if let Some(charter_query) = charter {
-        debug!(charter = %charter_query, recursive = recursive, "Filtering by charter");
-        let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
-
-        let (title, graph_name) = {
-            let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)
-                .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
-            (found.title.clone(), charter_graph_name(found))
-        };
-        debug!(charter_title = %title, graph_name = %graph_name, "Resolved charter");
-
-        // Table: filter the already-loaded DomainModel in memory
-        if output_format == clearhead_cli::OutputFormat::Table {
-            let graph_name_lower = graph_name.to_lowercase();
-            let filtered_charters = if recursive {
-                collect_charter_tree(&model.charters, &graph_name_lower)
-            } else {
-                model
-                    .charters
-                    .into_iter()
-                    .filter(|c| charter_key(c).to_lowercase() == graph_name_lower)
+        let allowed: Option<std::collections::HashSet<String>> = if let Some(query) = charter {
+            let model =
+                clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
+            let found = crate::commands::charter::resolve_charter(&model.charters, query)
+                .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+            let key = charter_graph_name(found);
+            let names = if recursive {
+                collect_charter_tree(&model.charters, &key)
+                    .iter()
+                    .map(|c| charter_key(c).to_lowercase())
                     .collect()
+            } else {
+                std::iter::once(key.to_lowercase()).collect()
             };
-            let combined_model = clearhead_core::DomainModel {
-                objectives: vec![],
-                charters: filtered_charters,
-            };
-            let plan_count = combined_model.all_plans().len();
-            info!(plan_count, "Loaded domain model for table");
-            if plan_count == 0 {
-                if recursive {
-                    println!("{}: no plans (searched sub-charters)", title);
-                } else {
-                    println!("{}: no plans", title);
-                }
-                return Ok(());
-            }
-            println!(
-                "{}",
-                clearhead_core::format_domain_as_table(&combined_model, lib_table_opts.as_ref())?
-            );
-            return Ok(());
-        }
-
-        // Non-table: SPARQL — strict (direct has_part) or recursive (transitive hasSubCharter+).
-        // The recursive case uses two self-contained UNION branches instead of BIND+UNION
-        // because BIND inside a sub-group with property paths behaves inconsistently in
-        // some SPARQL engines (Oxigraph included).
-        let query = if recursive {
-            format!(
-                "SELECT ?id WHERE {{ \
-                    {{ \
-                        ?charter a <{actions}Charter> . \
-                        ?charter <{rdfs}label> \"{title}\" . \
-                        ?charter <{bfo}BFO_0000051> ?plan . \
-                        ?plan <{actions}hasUUID> ?id \
-                    }} UNION {{ \
-                        ?root a <{actions}Charter> . \
-                        ?root <{rdfs}label> \"{title}\" . \
-                        ?root <{actions}hasSubCharter>+ ?charter . \
-                        ?charter <{bfo}BFO_0000051> ?plan . \
-                        ?plan <{actions}hasUUID> ?id \
-                    }} \
-                }}",
-                actions = "https://clearhead.us/vocab/actions/v4#",
-                rdfs = "http://www.w3.org/2000/01/rdf-schema#",
-                bfo = "http://purl.obolibrary.org/obo/",
-                title = title.replace('"', "\\\""),
-            )
+            Some(names)
         } else {
-            format!(
-                "SELECT ?id WHERE {{ \
-                    ?charter a <{actions}Charter> . \
-                    ?charter <{rdfs}label> \"{title}\" . \
-                    ?charter <{bfo}BFO_0000051> ?plan . \
-                    ?plan <{actions}hasUUID> ?id \
-                }}",
-                actions = "https://clearhead.us/vocab/actions/v4#",
-                rdfs = "http://www.w3.org/2000/01/rdf-schema#",
-                bfo = "http://purl.obolibrary.org/obo/",
-                title = title.replace('"', "\\\""),
-            )
+            None
         };
-        debug!(sparql = %query, recursive = recursive, "Querying plans by charter via SPARQL");
-        clearhead_cli::run_workspace_sql_query(&ctx.data_dir, &query)?
-    } else {
-        debug!(data_dir = %ctx.data_dir.display(), "Reading workspace");
 
-        if output_format == clearhead_cli::OutputFormat::Table {
-            let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
-            let plan_count = model.all_plans().len();
-            info!(plan_count, "Loaded workspace domain model for table");
-            if plan_count == 0 {
-                println!("workspace: no plans");
-                return Ok(());
+        let mut result = Vec::new();
+        for entry in entries {
+            if let Some(ref allowed) = allowed {
+                if !allowed.contains(&entry.charter_name.to_lowercase()) {
+                    continue;
+                }
             }
-            println!(
-                "{}",
-                clearhead_core::format_domain_as_table(&model, lib_table_opts.as_ref())?
-            );
-            return Ok(());
-        } else {
-            clearhead_cli::load_workspace_actions(&ctx.data_dir)?
+            match parse_ics_file(&entry.path) {
+                Ok(ps) => result.extend(ps.into_iter().map(|p| (entry.charter_name.clone(), p))),
+                Err(e) => eprintln!("Warning: skipping {}: {}", entry.path.display(), e),
+            }
         }
+        result
     };
 
-    info!(action_count = actions.len(), "Loaded actions");
-    if actions.is_empty() {
-        if let Some(charter_query) = charter {
-            println!(
-                "No plans found for charter '{}'. \
-                 Use `--format table` for a richer diagnostic, or \
-                 `clearhead query --where \"?s a <https://clearhead.us/vocab/actions/v4#Charter> ; \
-                 <http://www.w3.org/2000/01/rdf-schema#label> ?name\"` to inspect the graph.",
-                charter_query
-            );
-            return Ok(());
+    if plans.is_empty() {
+        if let Some(query) = charter {
+            println!("No plans found for charter '{}'.", query);
+        } else {
+            println!("No ICS plan files found in workspace.");
         }
+        return Ok(());
     }
-    println!(
-        "{}",
-        clearhead_cli::format(&actions, output_format, None, lib_table_opts.as_ref())?
-    );
+
+    let mut table = Table::new();
+    table.set_header(vec!["name", "charter", "dtstart", "recurrence"]);
+    for (charter_name, plan) in &plans {
+        let dtstart = plan
+            .dtstart
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "—".to_string());
+        let recurrence = plan
+            .recurrence
+            .as_ref()
+            .map(|r| r.frequency.to_lowercase())
+            .unwrap_or_else(|| "—".to_string());
+        table.add_row(vec![
+            Cell::new(&plan.name),
+            Cell::new(charter_name),
+            Cell::new(&dtstart),
+            Cell::new(&recurrence),
+        ]);
+    }
+    println!("{}", table);
     Ok(())
 }
 
@@ -278,46 +190,70 @@ pub fn show_plan(
     ctx: &CommandContext,
     query: &str,
     file: &Option<std::path::PathBuf>,
-    format: &Option<argparser::Format>,
-    table_options: &argparser::CliTableOptions,
+    _format: &Option<argparser::Format>,
+    _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
+    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::plans::collect_plan_files;
+
     debug!(query = %query, "Executing Show Plan");
 
-    let actions = if let Some(path) = file {
-        let input_file = ctx.resolve_action_file(Some(path));
-        debug!(input_file = %input_file.display(), "Searching file");
-        load_file(&input_file)?
+    let query_lower = query.to_lowercase();
+
+    let candidates: Vec<(String, clearhead_core::Plan)> = if let Some(path) = file {
+        let charter_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        parse_ics_file(path)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|p| (charter_name.clone(), p))
+            .collect()
     } else {
-        debug!(data_dir = %ctx.data_dir.display(), "Searching workspace");
-        clearhead_cli::load_workspace_actions(&ctx.data_dir)?
+        let entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
+        let mut result = Vec::new();
+        for entry in entries {
+            match parse_ics_file(&entry.path) {
+                Ok(ps) => result.extend(ps.into_iter().map(|p| (entry.charter_name.clone(), p))),
+                Err(e) => eprintln!("Warning: skipping {}: {}", entry.path.display(), e),
+            }
+        }
+        result
     };
 
-    let resolved = clearhead_cli::resolve_reference(&actions, query)
+    let (charter_name, plan) = candidates
+        .into_iter()
+        .find(|(_, p)| {
+            p.name.to_lowercase().contains(&query_lower)
+                || p.external_id
+                    .as_deref()
+                    .map(|uid| uid.to_lowercase().contains(&query_lower))
+                    .unwrap_or(false)
+                || p.id.to_string().starts_with(&query_lower)
+        })
         .ok_or_else(|| format!("No plan found matching '{}'", query))?;
 
-    let single = vec![actions[resolved.index].clone()];
+    println!("{}", plan.name);
+    println!("{}", "=".repeat(plan.name.len()));
+    println!("charter:    {}", charter_name);
+    if let Some(dt) = plan.dtstart {
+        println!("dtstart:    {}", dt.format("%Y-%m-%d %H:%M"));
+    }
+    if let Some(r) = &plan.recurrence {
+        println!("recurrence: {}", r.frequency.to_lowercase());
+    }
+    if let Some(tmpl) = &plan.template_name {
+        println!("template:   {}", tmpl);
+    }
+    if let Some(desc) = &plan.description {
+        println!("description:\n  {}", desc.replace('\n', "\n  "));
+    }
+    if let Some(uid) = &plan.external_id {
+        println!("uid:        {}", uid);
+    }
 
-    let output_format = format
-        .map(|f| f.into())
-        .or_else(|| parse_format(&ctx.config.cli_format).ok())
-        .unwrap_or(clearhead_cli::OutputFormat::Actions);
-
-    let lib_table_opts = if output_format == clearhead_cli::OutputFormat::Table {
-        if let Some(ref cols) = table_options.columns {
-            argparser::validate_column_names(cols)?;
-        }
-        if let Some(ref hide) = table_options.hide_columns {
-            argparser::validate_column_names(hide)?;
-        }
-        Some(table_options.to_lib_opts())
-    } else {
-        None
-    };
-
-    println!(
-        "{}",
-        clearhead_cli::format(&single, output_format, None, lib_table_opts.as_ref())?
-    );
     Ok(())
 }
 
