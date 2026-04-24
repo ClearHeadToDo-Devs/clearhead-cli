@@ -378,6 +378,10 @@ pub enum ReadTarget {
         #[arg(long)]
         plan: Option<String>,
 
+        /// Filter acts by charter (name, alias, or UUID)
+        #[arg(long)]
+        charter: Option<String>,
+
         /// Only show open acts (excludes Completed and Cancelled)
         #[arg(long)]
         open_only: bool,

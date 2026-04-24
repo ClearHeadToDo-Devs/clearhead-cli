@@ -306,15 +306,30 @@ pub fn cancel_act(
 // read acts
 // ============================================================================
 
-/// List acts, optionally filtered by plan name and formatted.
+/// List acts, optionally filtered by charter and/or plan name.
 pub fn read_acts_cmd(
     ctx: &CommandContext,
     format: Option<crate::argparser::ActFormat>,
     plan_filter: Option<&str>,
+    charter_filter: Option<&str>,
     open_only: bool,
     file: &Option<PathBuf>,
 ) -> Result<(), String> {
-    let acts = collect_all_acts(ctx, file, open_only)?;
+    let charter_acts_file: Option<PathBuf> = if let Some(query) = charter_filter {
+        let mcs = clearhead_core::load_markdown_charters(&ctx.data_dir)
+            .map_err(|e| e.to_string())?;
+        let mc = resolve_markdown_charter(&mcs, query)
+            .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+        let rel = mc
+            .acts_file
+            .as_ref()
+            .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
+        Some(ctx.data_dir.join(rel))
+    } else {
+        None
+    };
+    let effective_file = charter_acts_file.as_ref().or(file.as_ref()).cloned();
+    let acts = collect_all_acts(ctx, &effective_file, open_only)?;
 
     let acts: Vec<&Action> = acts
         .iter()
@@ -517,6 +532,32 @@ fn act_matches(act: &Action, query: &str) -> bool {
 
 fn find_act_mut<'a>(acts: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {
     acts.iter_mut().find(|a| act_matches(a, query))
+}
+
+fn resolve_markdown_charter<'a>(
+    charters: &'a [clearhead_core::MarkdownCharter],
+    query: &str,
+) -> Option<&'a clearhead_core::MarkdownCharter> {
+    let query_lower = query.to_lowercase();
+    if query.len() == 8 && query.chars().all(|c| c.is_ascii_hexdigit()) {
+        if let Some(c) = charters.iter().find(|c| c.id.to_string().starts_with(query)) {
+            return Some(c);
+        }
+    }
+    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
+        if let Some(c) = charters.iter().find(|c| c.id == uuid) {
+            return Some(c);
+        }
+    }
+    if let Some(c) = charters.iter().find(|c| {
+        c.alias
+            .as_deref()
+            .map(|a| a.to_lowercase() == query_lower)
+            .unwrap_or(false)
+    }) {
+        return Some(c);
+    }
+    charters.iter().find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
 fn collect_all_acts(

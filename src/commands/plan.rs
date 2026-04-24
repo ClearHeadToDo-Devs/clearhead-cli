@@ -168,7 +168,7 @@ pub fn read_plans(
                 model
                     .charters
                     .into_iter()
-                    .filter(|c| c.title.to_lowercase() == graph_name_lower)
+                    .filter(|c| charter_key(c).to_lowercase() == graph_name_lower)
                     .collect()
             };
             let combined_model = clearhead_core::DomainModel {
@@ -201,12 +201,12 @@ pub fn read_plans(
                 "SELECT ?id WHERE {{ \
                     {{ \
                         ?charter a <{actions}Charter> . \
-                        ?charter <{rdfs}label> \"{graph_name}\" . \
+                        ?charter <{rdfs}label> \"{title}\" . \
                         ?charter <{bfo}BFO_0000051> ?plan . \
                         ?plan <{actions}hasUUID> ?id \
                     }} UNION {{ \
                         ?root a <{actions}Charter> . \
-                        ?root <{rdfs}label> \"{graph_name}\" . \
+                        ?root <{rdfs}label> \"{title}\" . \
                         ?root <{actions}hasSubCharter>+ ?charter . \
                         ?charter <{bfo}BFO_0000051> ?plan . \
                         ?plan <{actions}hasUUID> ?id \
@@ -215,20 +215,20 @@ pub fn read_plans(
                 actions = "https://clearhead.us/vocab/actions/v4#",
                 rdfs = "http://www.w3.org/2000/01/rdf-schema#",
                 bfo = "http://purl.obolibrary.org/obo/",
-                graph_name = graph_name.replace('"', "\\\""),
+                title = title.replace('"', "\\\""),
             )
         } else {
             format!(
                 "SELECT ?id WHERE {{ \
                     ?charter a <{actions}Charter> . \
-                    ?charter <{rdfs}label> \"{graph_name}\" . \
+                    ?charter <{rdfs}label> \"{title}\" . \
                     ?charter <{bfo}BFO_0000051> ?plan . \
                     ?plan <{actions}hasUUID> ?id \
                 }}",
                 actions = "https://clearhead.us/vocab/actions/v4#",
                 rdfs = "http://www.w3.org/2000/01/rdf-schema#",
                 bfo = "http://purl.obolibrary.org/obo/",
-                graph_name = graph_name.replace('"', "\\\""),
+                title = title.replace('"', "\\\""),
             )
         };
         debug!(sparql = %query, recursive = recursive, "Querying plans by charter via SPARQL");

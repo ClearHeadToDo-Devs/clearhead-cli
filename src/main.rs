@@ -75,9 +75,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::ReadTarget::Acts {
                 format,
                 plan,
+                charter,
                 open_only,
                 file,
-            } => commands::act::read_acts_cmd(&ctx, *format, plan.as_deref(), *open_only, file),
+            } => commands::act::read_acts_cmd(&ctx, *format, plan.as_deref(), charter.as_deref(), *open_only, file),
         },
         Verb::Show { target } => match target {
             argparser::ShowTarget::Plan {
