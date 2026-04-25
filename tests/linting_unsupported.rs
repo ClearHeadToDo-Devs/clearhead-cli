@@ -17,13 +17,13 @@ fn test_unsupported_grammar_rules() {
 >>>>>[ ] D5
 >>>>>>[ ] D6";
     let e009_result = clearhead_cli::get_parsed_document(e009_source);
-    
+
     if let Ok(doc) = e009_result {
         // If it parses, ensure depth 6 is NOT present as a child
         let depth_6 = doc.actions.iter().find(|a| a.name.contains("D6"));
         if let Some(d6) = depth_6 {
-             let depth = d6.depth(&doc.actions);
-             assert!(depth <= 5, "Grammar allowed depth > 5!");
+            let depth = d6.depth(&doc.actions);
+            assert!(depth <= 5, "Grammar allowed depth > 5!");
         }
     }
 
@@ -46,11 +46,15 @@ fn test_unsupported_grammar_rules() {
 >>[ ] Skipped";
     let e011_result = clearhead_cli::get_parsed_document(e011_source);
     if let Ok(doc) = e011_result {
-         let skipped = doc.actions.iter().find(|a| a.name == "Skipped");
-         if let Some(s) = skipped {
-             // It shouldn't be a child of Root
-             let root = doc.actions.iter().find(|a| a.name == "Root").unwrap();
-             assert_ne!(s.parent_id, Some(root.id), "Grammar allowed skipping depth levels!");
-         }
+        let skipped = doc.actions.iter().find(|a| a.name == "Skipped");
+        if let Some(s) = skipped {
+            // It shouldn't be a child of Root
+            let root = doc.actions.iter().find(|a| a.name == "Root").unwrap();
+            assert_ne!(
+                s.parent_id,
+                Some(root.id),
+                "Grammar allowed skipping depth levels!"
+            );
+        }
     }
 }

@@ -1,7 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use chrono::{DateTime, Local, Utc};
 use icalendar::{Calendar, Component, Event, EventLike};
+use std::fs;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 use crate::argparser;
@@ -17,7 +17,10 @@ use clearhead_cli::telemetry::TelemetryEvent;
 /// ancestor chain leads back to `parent_id`. Returns the index after the last
 /// one, or `actions.len()` if the parent is not found.
 #[cfg(test)]
-fn insert_index_after_descendants(actions: &[clearhead_cli::Action], parent_id: uuid::Uuid) -> usize {
+fn insert_index_after_descendants(
+    actions: &[clearhead_cli::Action],
+    parent_id: uuid::Uuid,
+) -> usize {
     let parent_idx = match actions.iter().position(|a| a.id == parent_id) {
         Some(idx) => idx,
         None => return actions.len(),
@@ -28,7 +31,10 @@ fn insert_index_after_descendants(actions: &[clearhead_cli::Action], parent_id: 
     let mut last = parent_idx;
 
     for (offset, action) in actions[parent_idx + 1..].iter().enumerate() {
-        if action.parent_id.map_or(false, |pid| descendant_ids.contains(&pid)) {
+        if action
+            .parent_id
+            .map_or(false, |pid| descendant_ids.contains(&pid))
+        {
             descendant_ids.insert(action.id);
             last = parent_idx + 1 + offset;
         }
@@ -269,8 +275,8 @@ fn resolve_plan_file(
     }
 
     if let Some(query) = charter {
-        let charters = clearhead_core::load_markdown_charters(&ctx.data_dir)
-            .map_err(|e| e.to_string())?;
+        let charters =
+            clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
         let charter = resolve_markdown_charter(&charters, query)
             .ok_or_else(|| format!("No charter found matching '{}'", query))?;
 
@@ -319,7 +325,10 @@ fn format_plans_as_ics(plans: &[clearhead_core::Plan]) -> String {
 
 fn plan_to_event(plan: &clearhead_core::Plan) -> Event {
     let mut event = Event::new();
-    let uid = plan.external_id.clone().unwrap_or_else(|| plan.id.to_string());
+    let uid = plan
+        .external_id
+        .clone()
+        .unwrap_or_else(|| plan.id.to_string());
     event.uid(&uid);
     event.summary(&plan.name);
 
@@ -369,8 +378,9 @@ fn parse_local_datetime(value: Option<&str>) -> Result<Option<DateTime<Local>>, 
 fn parse_rrule(value: Option<&str>) -> Result<Option<clearhead_core::Recurrence>, String> {
     value
         .map(|value| {
-            clearhead_core::Recurrence::from_rrule_str(value)
-                .ok_or_else(|| format!("Invalid --rrule '{}': expected RFC5545 RRULE fields", value))
+            clearhead_core::Recurrence::from_rrule_str(value).ok_or_else(|| {
+                format!("Invalid --rrule '{}': expected RFC5545 RRULE fields", value)
+            })
         })
         .transpose()
 }
@@ -410,7 +420,8 @@ fn find_plan_for_mutation(
 fn plan_matches(plan: &clearhead_core::Plan, query: &str) -> bool {
     let query_lower = query.to_lowercase();
     let id = plan.id.to_string();
-    id == query || id.starts_with(query)
+    id == query
+        || id.starts_with(query)
         || plan
             .external_id
             .as_deref()
@@ -435,7 +446,10 @@ fn resolve_markdown_charter<'a>(
         }
     }
     if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit()) {
-        if let Some(c) = charters.iter().find(|c| c.id.to_string().starts_with(query)) {
+        if let Some(c) = charters
+            .iter()
+            .find(|c| c.id.to_string().starts_with(query))
+        {
             return Some(c);
         }
     }
@@ -447,7 +461,9 @@ fn resolve_markdown_charter<'a>(
     }) {
         return Some(c);
     }
-    charters.iter().find(|c| c.title.to_lowercase().contains(&query_lower))
+    charters
+        .iter()
+        .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
 fn slug(value: &str) -> String {
@@ -567,7 +583,10 @@ pub fn complete_plan(
     dry_run: bool,
 ) -> Result<(), String> {
     let _ = (ctx, query, file, dry_run);
-    Err("Plans are schedules and do not have completion state; use `complete act` for planned acts".to_string())
+    Err(
+        "Plans are schedules and do not have completion state; use `complete act` for planned acts"
+            .to_string(),
+    )
 }
 
 pub fn delete_plan(
@@ -619,8 +638,8 @@ pub fn export_plans(
 ) -> Result<(), String> {
     use crate::environment_reader::resolve_file_path;
     use clearhead_core::reference::{
-        filter_model_for_act, filter_model_for_charter, filter_model_for_plan, resolve_reference,
-        ReferenceOptions, ReferenceTarget,
+        ReferenceOptions, ReferenceTarget, filter_model_for_act, filter_model_for_charter,
+        filter_model_for_plan, resolve_reference,
     };
 
     debug!(reference = ?reference, output = ?output, open_only = open_only, recursive = recursive, "Executing Export Plans");
@@ -685,7 +704,12 @@ mod tests {
     use uuid::Uuid;
 
     fn action(id: Uuid, parent_id: Option<Uuid>) -> Action {
-        Action { id, parent_id, name: id.to_string(), ..Default::default() }
+        Action {
+            id,
+            parent_id,
+            name: id.to_string(),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -734,6 +758,9 @@ mod tests {
     fn insert_after_last_descendant_unknown_parent_appends() {
         let unknown = Uuid::new_v4();
         let actions = vec![action(Uuid::new_v4(), None)];
-        assert_eq!(insert_index_after_descendants(&actions, unknown), actions.len());
+        assert_eq!(
+            insert_index_after_descendants(&actions, unknown),
+            actions.len()
+        );
     }
 }

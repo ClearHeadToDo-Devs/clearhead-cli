@@ -144,7 +144,8 @@ pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<Strin
 
     for charter in &model.charters {
         for plan in &charter.plans {
-            let plan_acts: Vec<&PlannedAct> = charter.acts
+            let plan_acts: Vec<&PlannedAct> = charter
+                .acts
                 .iter()
                 .filter(|a| a.plan_id == Some(plan.id))
                 .collect();

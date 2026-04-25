@@ -11,8 +11,7 @@ pub fn read_charters(
 ) -> Result<(), String> {
     use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
-    let model = clearhead_core::load_domain_model(&ctx.data_dir)
-        .map_err(|e| e.to_string())?;
+    let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
 
     let mut charters: Vec<&Charter> = model.charters.iter().collect();
 
@@ -65,8 +64,7 @@ pub fn read_charters(
 }
 
 pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
-    let model = clearhead_core::load_domain_model(&ctx.data_dir)
-        .map_err(|e| e.to_string())?;
+    let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
 
     let found = resolve_charter(&model.charters, query)
         .ok_or_else(|| format!("No charter found matching '{}'", query))?;
@@ -95,7 +93,10 @@ pub fn resolve_charter<'a>(charters: &'a [Charter], query: &str) -> Option<&'a C
 
     // 2. Short UUID prefix (8 hex chars)
     if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        if let Some(c) = charters.iter().find(|c| c.id.to_string().starts_with(query)) {
+        if let Some(c) = charters
+            .iter()
+            .find(|c| c.id.to_string().starts_with(query))
+        {
             return Some(c);
         }
     }
@@ -160,8 +161,7 @@ pub fn add_charter(
     }
 
     let content = clearhead_core::format_charter(&charter);
-    std::fs::write(&file_path, content)
-        .map_err(|e| format!("Failed to write charter: {}", e))?;
+    std::fs::write(&file_path, content).map_err(|e| format!("Failed to write charter: {}", e))?;
 
     info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
     println!("{}", id);

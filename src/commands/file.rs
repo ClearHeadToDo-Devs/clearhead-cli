@@ -141,18 +141,29 @@ pub fn patch_file(
     use std::fs;
 
     debug!(primary = %primary.display(), secondary = %secondary.display(), write = write, "Executing Patch File");
-    let primary_content = fs::read_to_string(primary)
-        .map_err(|e| format!("Failed to read primary file: {}", e))?;
+    let primary_content =
+        fs::read_to_string(primary).map_err(|e| format!("Failed to read primary file: {}", e))?;
     let secondary_content = fs::read_to_string(secondary)
         .map_err(|e| format!("Failed to read secondary file: {}", e))?;
 
     let mut primary_actions = if write {
-        parse_content_for_mutation(&primary_content, &primary.display().to_string(), "patch file")?
+        parse_content_for_mutation(
+            &primary_content,
+            &primary.display().to_string(),
+            "patch file",
+        )?
     } else {
-        parse_content_for_read(&primary_content, &primary.display().to_string(), "patch file")?
+        parse_content_for_read(
+            &primary_content,
+            &primary.display().to_string(),
+            "patch file",
+        )?
     };
-    let secondary_actions =
-        parse_content_for_read(&secondary_content, &secondary.display().to_string(), "patch file")?;
+    let secondary_actions = parse_content_for_read(
+        &secondary_content,
+        &secondary.display().to_string(),
+        "patch file",
+    )?;
 
     clearhead_cli::patch_action_list(&mut primary_actions, &secondary_actions);
 

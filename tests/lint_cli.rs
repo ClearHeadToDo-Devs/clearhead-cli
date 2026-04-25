@@ -1,6 +1,6 @@
-use std::fs;
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::fs;
 
 /// Helper to get the binary path using the non-deprecated macro
 fn get_cmd() -> Command {
@@ -10,16 +10,15 @@ fn get_cmd() -> Command {
 #[test]
 fn test_lint_cli_info_diagnostics() -> Result<(), Box<dyn std::error::Error>> {
     // Test with info-level diagnostic: completed action missing completion date (I001)
-    let file_content = "[x] Completed action with no completion date #01942d99-4c27-77f6-9316-107024843939";
+    let file_content =
+        "[x] Completed action with no completion date #01942d99-4c27-77f6-9316-107024843939";
     let file_path = "test_lint_info.actions";
 
     fs::write(file_path, file_content)?;
 
     let mut cmd = get_cmd();
 
-    cmd.arg("lint")
-        .arg("file")
-        .arg(file_path);
+    cmd.arg("lint").arg("file").arg(file_path);
 
     cmd.assert()
         .success()
@@ -40,13 +39,9 @@ fn test_lint_cli_success() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cmd = get_cmd();
 
-    cmd.arg("lint")
-        .arg("file")
-        .arg(file_path);
+    cmd.arg("lint").arg("file").arg(file_path);
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::is_empty());
+    cmd.assert().success().stdout(predicate::str::is_empty());
 
     fs::remove_file(file_path)?;
 

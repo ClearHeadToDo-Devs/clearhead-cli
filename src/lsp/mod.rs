@@ -77,8 +77,6 @@ impl Backend {
                 .await;
         }
     }
-
-
 }
 
 pub async fn start_lsp() {

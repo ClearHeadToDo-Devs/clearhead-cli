@@ -10,8 +10,7 @@ fn get_linting_examples() -> Vec<(String, String, String)> {
     let linting_dir = manifest_dir.join("examples").join("linting");
 
     // Read all rule directories
-    let entries = fs::read_dir(&linting_dir)
-        .expect("Failed to read linting examples directory");
+    let entries = fs::read_dir(&linting_dir).expect("Failed to read linting examples directory");
 
     for entry in entries {
         let entry = entry.expect("Failed to read directory entry");
@@ -57,10 +56,9 @@ fn test_linting_error_detection() {
     // W002-W006: Warnings (temporal/semantic issues)
     let implemented_rules = vec![
         "E003", "E006", "E010", "E011", // Errors (E001, E002 tested via unit tests only)
-        "W002", "W003", "W004", "W005", "W006",  // Warnings
+        "W002", "W003", "W004", "W005", "W006", // Warnings
         "I001", "I002", "I003", "I004", "I008", "I010", // Info
     ];
-
 
     let examples = get_linting_examples();
 
@@ -112,7 +110,7 @@ fn test_linting_fixed_version_passes() {
     // List of currently implemented rules (same as above)
     let implemented_rules = vec![
         "E003", "E006", "E010", "E011", // Errors (E001, E002 tested via unit tests only)
-        "W002", "W003", "W004", "W005", "W006",  // Warnings
+        "W002", "W003", "W004", "W005", "W006", // Warnings
         "I001", "I002", "I003", "I004", "I008", "I010", // Info
     ];
 
@@ -140,9 +138,7 @@ fn test_linting_fixed_version_passes() {
         assert!(
             !has_rule_diagnostic,
             "Rule {}/fixed.actions should not produce diagnostic with code '{}', but got: {:?}",
-            rule_name,
-            rule_code,
-            diagnostics
+            rule_name, rule_code, diagnostics
         );
     }
 }

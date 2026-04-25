@@ -6,7 +6,6 @@ pub fn parse_cli() -> Cli {
     Cli::parse()
 }
 
-
 /// CLI-specific table column filtering options (for use with clap arg parsing)
 #[derive(Args, Clone, Default, Debug, PartialEq)]
 pub struct CliTableOptions {
@@ -22,7 +21,6 @@ pub struct CliTableOptions {
     #[arg(long)]
     pub list_columns: bool,
 }
-
 
 /// Shared action field options used by Add and Update commands
 #[derive(Args, Clone, Default, Debug)]
@@ -103,9 +101,9 @@ impl ActionStateArg {
         match self {
             ActionStateArg::NotStarted => "<https://clearhead.us/vocab/actions/v4#NotStarted>",
             ActionStateArg::InProgress => "<https://clearhead.us/vocab/actions/v4#InProgress>",
-            ActionStateArg::Blocked    => "<https://clearhead.us/vocab/actions/v4#Blocked>",
-            ActionStateArg::Completed  => "<https://clearhead.us/vocab/actions/v4#Completed>",
-            ActionStateArg::Cancelled  => "<https://clearhead.us/vocab/actions/v4#Cancelled>",
+            ActionStateArg::Blocked => "<https://clearhead.us/vocab/actions/v4#Blocked>",
+            ActionStateArg::Completed => "<https://clearhead.us/vocab/actions/v4#Completed>",
+            ActionStateArg::Cancelled => "<https://clearhead.us/vocab/actions/v4#Cancelled>",
         }
     }
 }
@@ -246,6 +244,9 @@ pub enum Verb {
         #[command(subcommand)]
         target: QueryTarget,
     },
+
+    /// Show resolved config and workspace diagnostics
+    Debug,
 }
 
 // =============================================================================

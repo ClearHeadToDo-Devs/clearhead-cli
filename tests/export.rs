@@ -56,7 +56,6 @@ fn test_export_basic_action_with_date() {
         .stdout(predicate::str::contains("END:VCALENDAR"));
 }
 
-
 #[test]
 fn test_export_with_description_and_priority() {
     let env = TestEnv::new();
@@ -234,7 +233,6 @@ fn test_export_from_stdin() {
         .stdout(predicate::str::contains("BEGIN:VCALENDAR"))
         .stdout(predicate::str::contains("SUMMARY:Standup"));
 }
-
 
 #[test]
 fn test_export_default_duration() {

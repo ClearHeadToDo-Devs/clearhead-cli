@@ -310,10 +310,9 @@ impl Backend {
 
         // Run blocking file I/O on a dedicated thread so the async executor stays
         // free to process the workspace/applyEdit round-trip with the client
-        let result =
-            tokio::task::spawn_blocking(move || archive_actions(&content, &source_path))
-                .await
-                .map_err(|e| internal_error(format!("Archive task panicked: {e}")))?;
+        let result = tokio::task::spawn_blocking(move || archive_actions(&content, &source_path))
+            .await
+            .map_err(|e| internal_error(format!("Archive task panicked: {e}")))?;
 
         match result {
             Ok((new_content, archive_result)) => {

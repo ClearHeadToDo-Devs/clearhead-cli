@@ -32,12 +32,13 @@ pub fn resolve_domain_ref(data_dir: &Path, ref_str: &str) -> Result<ResolvedScop
 
     // 2 segments: resolve the plan and extract its UUID
     let actions = crate::commands::load_file(&file_path)?;
-    let resolved = clearhead_cli::resolve_reference(&actions, segments[1])
-        .ok_or_else(|| format!("No plan found matching '{}' in charter '{}'", segments[1], segments[0]))?;
+    let resolved = clearhead_cli::resolve_reference(&actions, segments[1]).ok_or_else(|| {
+        format!(
+            "No plan found matching '{}' in charter '{}'",
+            segments[1], segments[0]
+        )
+    })?;
     let plan_id = actions[resolved.index].id;
 
-    Ok(ResolvedScope::Plan {
-        file_path,
-        plan_id,
-    })
+    Ok(ResolvedScope::Plan { file_path, plan_id })
 }

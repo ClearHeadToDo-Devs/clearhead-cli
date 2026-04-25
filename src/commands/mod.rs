@@ -2,6 +2,7 @@ pub mod act;
 pub mod agenda;
 pub mod charter;
 pub mod complete;
+pub mod debug;
 pub mod file;
 pub mod plan;
 pub mod query;
@@ -16,7 +17,8 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::environment_reader::{
-    Config, ensure_dir_exists, find_project_data_dir, get_data_dir, load_config, resolve_file_path,
+    Config, ensure_dir_exists, find_project_data_dir, get_data_dir, load_config,
+    resolve_config_path, resolve_file_path,
 };
 use clearhead_cli::ActionList;
 use clearhead_cli::telemetry::{TelemetryEvent, Tool, emit_event};
@@ -27,15 +29,20 @@ pub struct CommandContext {
     pub data_dir: PathBuf,
     #[allow(dead_code)]
     pub config_dir: PathBuf,
+    pub config_path: PathBuf,
+    pub project_root: Option<PathBuf>,
 }
 
 impl CommandContext {
     pub fn new(cli: &crate::argparser::Cli) -> Result<Self, String> {
+        let config_path = resolve_config_path(cli.config.clone());
         let config =
             load_config(cli.config.clone()).map_err(|e| format!("Failed to load config: {}", e))?;
 
+        let project_root = find_project_data_dir();
+
         let data_dir = if config.data_dir.is_empty() {
-            find_project_data_dir().unwrap_or_else(get_data_dir)
+            project_root.clone().unwrap_or_else(get_data_dir)
         } else {
             resolve_file_path(&config.data_dir, &get_data_dir())
         };
@@ -52,6 +59,8 @@ impl CommandContext {
             config,
             data_dir,
             config_dir,
+            config_path,
+            project_root,
         })
     }
 
@@ -86,14 +95,23 @@ pub fn load_file_for_read(path: &Path, command: &str) -> Result<ActionList, Stri
     parse_content_for_read(&content, &path.display().to_string(), command)
 }
 
-
 /// Parse actions content for read-only operations using recoverable parse mode.
-pub fn parse_content_for_read(content: &str, source: &str, command: &str) -> Result<ActionList, String> {
-    let outcome = clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
-        .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
+pub fn parse_content_for_read(
+    content: &str,
+    source: &str,
+    command: &str,
+) -> Result<ActionList, String> {
+    let outcome =
+        clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
+            .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
 
     if !outcome.syntax_errors.is_empty() {
-        report_parse_recovered(source, command, &outcome.syntax_errors, outcome.recovery.recoverable_actions);
+        report_parse_recovered(
+            source,
+            command,
+            &outcome.syntax_errors,
+            outcome.recovery.recoverable_actions,
+        );
     }
 
     Ok(outcome.document.actions)
@@ -107,8 +125,9 @@ pub fn parse_content_for_mutation(
     source: &str,
     command: &str,
 ) -> Result<ActionList, String> {
-    let outcome = clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
-        .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
+    let outcome =
+        clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
+            .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
 
     if !outcome.syntax_errors.is_empty() {
         report_mutation_parse_failure(Path::new(source), command, &outcome.syntax_errors);
@@ -199,7 +218,6 @@ pub fn find_plan_file_for_mutation(
     Err(format!("No plan found matching '{}'", query))
 }
 
-
 /// Read input from a file or stdin
 pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
     match file {
@@ -227,7 +245,9 @@ pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<Path
     let query_lower = charter_query.to_lowercase();
 
     for file_path in &action_files {
-        let relative = file_path.strip_prefix(&data_root).unwrap_or(file_path.as_path());
+        let relative = file_path
+            .strip_prefix(&data_root)
+            .unwrap_or(file_path.as_path());
         let inferred = clearhead_core::infer_charter_name(relative).unwrap_or_default();
         if inferred.to_lowercase() == query_lower {
             return Ok(file_path.clone());
@@ -243,14 +263,19 @@ pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<Path
     let key_lower = key.to_lowercase();
 
     for file_path in &action_files {
-        let relative = file_path.strip_prefix(&data_root).unwrap_or(file_path.as_path());
+        let relative = file_path
+            .strip_prefix(&data_root)
+            .unwrap_or(file_path.as_path());
         let inferred = clearhead_core::infer_charter_name(relative).unwrap_or_default();
         if inferred.to_lowercase() == key_lower {
             return Ok(file_path.clone());
         }
     }
 
-    Err(format!("No actions file found for charter '{}'", charter_query))
+    Err(format!(
+        "No actions file found for charter '{}'",
+        charter_query
+    ))
 }
 
 fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {
@@ -287,7 +312,11 @@ fn report_parse_recovered(
     print_syntax_diagnostics(syntax_errors);
 }
 
-fn report_mutation_parse_failure(path: &Path, command: &str, syntax_errors: &[clearhead_cli::LintDiagnostic]) {
+fn report_mutation_parse_failure(
+    path: &Path,
+    command: &str,
+    syntax_errors: &[clearhead_cli::LintDiagnostic],
+) {
     emit_event(
         Tool::Cli,
         None,
@@ -311,7 +340,9 @@ fn report_mutation_parse_failure(path: &Path, command: &str, syntax_errors: &[cl
             error_count: syntax_errors.len(),
         },
     )
-    .unwrap_or_else(|e| warn!(error = %e, "Failed to emit mutation_skipped_due_to_parse telemetry"));
+    .unwrap_or_else(
+        |e| warn!(error = %e, "Failed to emit mutation_skipped_due_to_parse telemetry"),
+    );
 
     eprintln!(
         "error: [{}] {} skipped due to parse issues; file not modified",

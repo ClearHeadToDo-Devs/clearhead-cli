@@ -47,7 +47,8 @@ impl TestEnv {
     }
 
     fn write_ics(&self, filename: &str, summaries: &[&str]) {
-        let mut content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\n".to_string();
+        let mut content =
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\n".to_string();
         for (i, summary) in summaries.iter().enumerate() {
             content.push_str(&format!(
                 "BEGIN:VEVENT\r\nUID:test-uid-{}@test\r\nSUMMARY:{}\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\n",
@@ -131,7 +132,10 @@ fn test_read_acts_specific_file() {
 fn test_read_acts_open_only_filters_closed_states_in_open_file() {
     let env = TestEnv::new();
 
-    env.write_actions("work.actions", "[ ] Open task\n[x] Done task\n[_] Cancelled task");
+    env.write_actions(
+        "work.actions",
+        "[ ] Open task\n[x] Done task\n[_] Cancelled task",
+    );
     let work_path = env.data_dir.join("work.actions");
 
     env.command()
@@ -312,11 +316,7 @@ fn test_workspace_read_succeeds_when_empty() {
     // Don't create any files - empty workspace
 
     // Workspace read succeeds even when empty (just returns no results)
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success();
+    env.command().arg("read").arg("plans").assert().success();
 }
 
 #[test]
@@ -359,11 +359,7 @@ fn test_error_on_invalid_format_in_config() {
     env.write_actions("inbox.actions", "[ ] Task");
 
     // Should use default format (actions) since config format is invalid
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success(); // Falls back to default
+    env.command().arg("read").arg("plans").assert().success(); // Falls back to default
 }
 
 #[test]
@@ -636,7 +632,10 @@ fn test_sync_events_command() {
     let uuid2 = "019baaec-00b6-7991-be34-94b68212619b";
 
     // Create file with two actions
-    env.write_actions("inbox.actions", &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}", uuid1, uuid2));
+    env.write_actions(
+        "inbox.actions",
+        &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}", uuid1, uuid2),
+    );
 
     // 1. First sync - should sync both
     env.command()
@@ -648,21 +647,19 @@ fn test_sync_events_command() {
 
     // 2. Second sync - should skip both (TODO: idempotency not implemented yet)
     // This test documents the current behavior (re-syncs all)
-    env.command()
-        .arg("sync")
-        .arg("events")
-        .assert()
-        .success();
+    env.command().arg("sync").arg("events").assert().success();
 
     // 3. Add a third action and sync again
     let uuid3 = "019baaec-00b6-7991-be34-94b68212619c";
-    env.write_actions("inbox.actions", &format!("[ ] Task 1 #{}\n[ ] Task 2 #{}\n[ ] Task 3 #{}", uuid1, uuid2, uuid3));
+    env.write_actions(
+        "inbox.actions",
+        &format!(
+            "[ ] Task 1 #{}\n[ ] Task 2 #{}\n[ ] Task 3 #{}",
+            uuid1, uuid2, uuid3
+        ),
+    );
 
-    env.command()
-        .arg("sync")
-        .arg("events")
-        .assert()
-        .success();
+    env.command().arg("sync").arg("events").assert().success();
 }
 
 // ============================================================================
@@ -808,13 +805,8 @@ fn test_read_empty_workspace() {
     let env = TestEnv::new();
 
     // Empty workspace should succeed (may output just a newline)
-    env.command()
-        .arg("read")
-        .arg("plans")
-        .assert()
-        .success();
+    env.command().arg("read").arg("plans").assert().success();
 }
-
 
 #[test]
 fn test_read_plans_charter_filter() {
@@ -918,7 +910,9 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
         .arg("36500")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("expand acts failed for 1 charter file"));
+        .stderr(predicate::str::contains(
+            "expand acts failed for 1 charter file",
+        ));
 
     let bad_after = fs::read_to_string(env.data_dir.join("bad.actions")).unwrap();
     assert_eq!(bad_after, bad_content, "bad file must remain unchanged");
@@ -931,7 +925,10 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
 #[test]
 fn test_read_acts_file_fails_on_malformed_input() {
     let env = TestEnv::new();
-    env.write_text("malformed.actions", "not valid actions syntax !!!\n[ ] Keep me\n");
+    env.write_text(
+        "malformed.actions",
+        "not valid actions syntax !!!\n[ ] Keep me\n",
+    );
     let path = env.data_dir.join("malformed.actions");
 
     env.command()

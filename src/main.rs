@@ -82,7 +82,14 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 charter,
                 open_only,
                 file,
-            } => commands::act::read_acts_cmd(&ctx, *format, plan.as_deref(), charter.as_deref(), *open_only, file),
+            } => commands::act::read_acts_cmd(
+                &ctx,
+                *format,
+                plan.as_deref(),
+                charter.as_deref(),
+                *open_only,
+                file,
+            ),
         },
         Verb::Show { target } => match target {
             argparser::ShowTarget::Plan {
@@ -107,7 +114,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 fields,
                 schedule,
                 dry_run,
-            } => commands::plan::add_plan(&ctx, name, file, charter, parent, fields, schedule, *dry_run),
+            } => commands::plan::add_plan(
+                &ctx, name, file, charter, parent, fields, schedule, *dry_run,
+            ),
             argparser::AddTarget::Charter {
                 title,
                 alias,
@@ -217,11 +226,19 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 where_clause.as_deref(),
                 *format,
             ),
-            argparser::QueryTarget::NamedRun { name, status, format } => {
-                commands::query::run_named_query(&ctx, name, status.map(|s| s.to_sparql_iri()), *format)
-            }
+            argparser::QueryTarget::NamedRun {
+                name,
+                status,
+                format,
+            } => commands::query::run_named_query(
+                &ctx,
+                name,
+                status.map(|s| s.to_sparql_iri()),
+                *format,
+            ),
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },
+        Verb::Debug => commands::debug::run(&ctx),
         Verb::Expand { target } => match target {
             argparser::ExpandTarget::Acts {
                 file,

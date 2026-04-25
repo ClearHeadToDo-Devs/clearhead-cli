@@ -181,6 +181,11 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
         .try_deserialize()
 }
 
+/// Resolve the config file path that would be loaded for this invocation.
+pub fn resolve_config_path(custom_config_path: Option<PathBuf>) -> PathBuf {
+    custom_config_path.unwrap_or_else(|| get_config_dir().join("config.json"))
+}
+
 /// Ensure a directory exists, creating it if necessary
 pub fn ensure_dir_exists(path: &Path) -> std::io::Result<()> {
     if !path.exists() {

@@ -1,7 +1,7 @@
 #[test]
 fn test_json_output_includes_context() {
-    use clearhead_cli::format::{format, OutputFormat};
     use clearhead_cli::Action;
+    use clearhead_cli::format::{OutputFormat, format};
 
     let actions = vec![Action {
         priority: Some(1),

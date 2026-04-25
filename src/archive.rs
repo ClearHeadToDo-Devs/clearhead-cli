@@ -1,4 +1,4 @@
-use clearhead_core::{format, ActionList, ActionState, OutputFormat};
+use clearhead_core::{ActionList, ActionState, OutputFormat, format};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;

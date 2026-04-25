@@ -41,8 +41,12 @@ pub fn expand_acts(
         let relative = actions_path
             .strip_prefix(&data_root)
             .unwrap_or(actions_path.as_path());
-        let charter_name = clearhead_core::infer_charter_name(relative)
-            .ok_or_else(|| format!("Cannot infer charter name from '{}'", actions_path.display()))?;
+        let charter_name = clearhead_core::infer_charter_name(relative).ok_or_else(|| {
+            format!(
+                "Cannot infer charter name from '{}'",
+                actions_path.display()
+            )
+        })?;
         all_entries
             .into_iter()
             .filter(|e| e.charter_name == charter_name)
@@ -88,7 +92,9 @@ pub fn expand_acts(
                 Some(uid) => uid.as_str(),
                 None => continue,
             };
-            let Some(dtstart) = plan.dtstart else { continue };
+            let Some(dtstart) = plan.dtstart else {
+                continue;
+            };
 
             if plan.recurrence.is_some() {
                 let occurrences = plan.expand_occurrences(dtstart, 1000);
@@ -115,7 +121,13 @@ pub fn expand_acts(
                     });
                     new_count += 1;
                     new_count += expand_template_children(
-                        plan, vevent_uid, &occ_key, act_id, charter_dir, &data_root, &mut action_list,
+                        plan,
+                        vevent_uid,
+                        &occ_key,
+                        act_id,
+                        charter_dir,
+                        &data_root,
+                        &mut action_list,
                     );
                 }
             } else if dtstart >= now && dtstart <= horizon {
@@ -132,7 +144,13 @@ pub fn expand_acts(
                     });
                     new_count += 1;
                     new_count += expand_template_children(
-                        plan, vevent_uid, &occ_key, act_id, charter_dir, &data_root, &mut action_list,
+                        plan,
+                        vevent_uid,
+                        &occ_key,
+                        act_id,
+                        charter_dir,
+                        &data_root,
+                        &mut action_list,
                     );
                 }
             }
@@ -143,7 +161,11 @@ pub fn expand_acts(
         }
 
         if dry_run {
-            println!("Would add {} act(s) to {}", new_count, actions_path.display());
+            println!(
+                "Would add {} act(s) to {}",
+                new_count,
+                actions_path.display()
+            );
         } else {
             super::save_file(&actions_path, &action_list)?;
             info!(count = new_count, path = %actions_path.display(), "Acts expanded");
@@ -156,7 +178,10 @@ pub fn expand_acts(
     if total_added == 0 && !dry_run {
         println!("Nothing to expand.");
     } else if charters_touched > 1 {
-        println!("Expanded {} act(s) across {} charter(s).", total_added, charters_touched);
+        println!(
+            "Expanded {} act(s) across {} charter(s).",
+            total_added, charters_touched
+        );
     }
 
     if !parse_failures.is_empty() {
@@ -316,8 +341,8 @@ pub fn read_acts_cmd(
     file: &Option<PathBuf>,
 ) -> Result<(), String> {
     let charter_acts_file: Option<PathBuf> = if let Some(query) = charter_filter {
-        let mcs = clearhead_core::load_markdown_charters(&ctx.data_dir)
-            .map_err(|e| e.to_string())?;
+        let mcs =
+            clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
         let mc = resolve_markdown_charter(&mcs, query)
             .ok_or_else(|| format!("No charter found matching '{}'", query))?;
         let rel = mc
@@ -359,11 +384,7 @@ pub fn read_acts_cmd(
 }
 
 /// Show details for one planned act from open and completed act stores.
-pub fn show_act(
-    ctx: &CommandContext,
-    query: &str,
-    file: &Option<PathBuf>,
-) -> Result<(), String> {
+pub fn show_act(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Result<(), String> {
     let acts = collect_all_acts(ctx, file, false)?;
     let act = acts
         .iter()
@@ -504,16 +525,16 @@ fn find_and_load_open_acts(
 }
 
 /// Scan `.actions` files in the workspace for one containing an act matching `query`.
-fn find_act_in_open_files(
-    data_dir: &Path,
-    query: &str,
-) -> Result<(PathBuf, ActionList), String> {
+fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionList), String> {
     let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
     for actions_path in action_files {
         let action_list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
-        if action_list.iter().any(|a| is_open_act(a) && act_matches(a, query)) {
+        if action_list
+            .iter()
+            .any(|a| is_open_act(a) && act_matches(a, query))
+        {
             return Ok((actions_path, action_list));
         }
     }
@@ -575,7 +596,8 @@ fn act_matches(act: &Action, query: &str) -> bool {
     let query_lower = query.to_lowercase();
     let id_str = act.id.to_string();
     let short = &id_str[..8.min(id_str.len())];
-    id_str == query || short == query
+    id_str == query
+        || short == query
         || act
             .alias
             .as_deref()
@@ -585,7 +607,8 @@ fn act_matches(act: &Action, query: &str) -> bool {
 }
 
 fn find_act_mut<'a>(acts: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {
-    acts.iter_mut().find(|a| is_open_act(a) && act_matches(a, query))
+    acts.iter_mut()
+        .find(|a| is_open_act(a) && act_matches(a, query))
 }
 
 fn resolve_markdown_charter<'a>(
@@ -594,7 +617,10 @@ fn resolve_markdown_charter<'a>(
 ) -> Option<&'a clearhead_core::MarkdownCharter> {
     let query_lower = query.to_lowercase();
     if query.len() == 8 && query.chars().all(|c| c.is_ascii_hexdigit()) {
-        if let Some(c) = charters.iter().find(|c| c.id.to_string().starts_with(query)) {
+        if let Some(c) = charters
+            .iter()
+            .find(|c| c.id.to_string().starts_with(query))
+        {
             return Some(c);
         }
     }
@@ -611,7 +637,9 @@ fn resolve_markdown_charter<'a>(
     }) {
         return Some(c);
     }
-    charters.iter().find(|c| c.title.to_lowercase().contains(&query_lower))
+    charters
+        .iter()
+        .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
 fn collect_all_acts(

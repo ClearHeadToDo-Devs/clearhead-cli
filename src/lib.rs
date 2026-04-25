@@ -8,17 +8,17 @@ use tree_sitter::Tree;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
-    format, format_charter, implicit_charter, parse_actions, parse_actions_with_mode,
-    parse_charter, parse_document, parse_tree, patch_action_list, ActPhase, Action, ActionList,
-    ActionState, Charter, DomainModel, OutputFormat, ParseFailure, ParseMode, ParseOutcome,
-    ParsedDocument, Plan, PlannedAct, RecoveryReport, SourceMetadata, SourceRange,
+    ActPhase, Action, ActionList, ActionState, Charter, DomainModel, OutputFormat, ParseFailure,
+    ParseMode, ParseOutcome, ParsedDocument, Plan, PlannedAct, RecoveryReport, SourceMetadata,
+    SourceRange, format, format_charter, implicit_charter, parse_actions, parse_actions_with_mode,
+    parse_charter, parse_document, parse_tree, patch_action_list,
 };
 
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
 pub use clearhead_core::workspace::actions::TableFormatOptions;
 
 pub use clearhead_core::workspace::actions::{
-    lint_document, LintDiagnostic, LintResults, LintSeverity,
+    LintDiagnostic, LintResults, LintSeverity, lint_document,
 };
 
 pub mod export;
@@ -27,15 +27,15 @@ pub use export::format_as_icalendar;
 pub mod archive;
 
 pub mod mutations;
-pub use mutations::{apply_updates, resolve_reference, ActionUpdate, MatchType, ResolvedAction};
+pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
 
 pub mod environment_reader;
-pub use environment_reader::{get_config_dir, get_data_dir, load_config, Config};
+pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
 
 pub mod telemetry;
 pub use telemetry::{
-    emit, emit_event, event_from_field_change, event_from_state_change, get_telemetry_dir,
-    TelemetryEvent, TelemetryRecord, Tool,
+    TelemetryEvent, TelemetryRecord, Tool, emit, emit_event, event_from_field_change,
+    event_from_state_change, get_telemetry_dir,
 };
 
 /// Merge two JSON hashmaps (right overwrites left on key conflicts)

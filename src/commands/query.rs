@@ -35,12 +35,13 @@ pub fn query_workspace(
             return Err("Provide a SPARQL query or --where clause.\n\
              Usage: clearhead query \"SELECT ?name WHERE { ... }\"\n\
              Usage: clearhead query --where \"?s rdfs:label ?name\""
-                .to_string())
+                .to_string());
         }
         (Some(_), Some(_)) => return Err("Cannot combine positional query and --where".to_string()),
     };
 
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None))?;
+    let rows =
+        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -82,18 +83,45 @@ struct NamedQuery {
 
 // Vendored v4 queries embedded at compile time.
 const BUILT_IN_QUERIES: &[(&str, &str)] = &[
-    ("acts-by-phase",       include_str!("../queries/acts-by-phase.sparql")),
-    ("agenda",              include_str!("../queries/agenda.sparql")),
-    ("all-plans",           include_str!("../queries/all-plans.sparql")),
-    ("all-plans-simple",    include_str!("../queries/all-plans-simple.sparql")),
-    ("completion-velocity", include_str!("../queries/completion-velocity.sparql")),
-    ("dependency-chain",    include_str!("../queries/dependency-chain.sparql")),
-    ("high-priority",       include_str!("../queries/high-priority.sparql")),
-    ("next-actions",        include_str!("../queries/next-actions.sparql")),
-    ("orphaned-acts",       include_str!("../queries/orphaned-acts.sparql")),
-    ("overdue-tasks",       include_str!("../queries/overdue-tasks.sparql")),
-    ("open-plans",          include_str!("../queries/open-plans.sparql")),
-    ("plans-with-contexts", include_str!("../queries/plans-with-contexts.sparql")),
+    (
+        "acts-by-phase",
+        include_str!("../queries/acts-by-phase.sparql"),
+    ),
+    ("agenda", include_str!("../queries/agenda.sparql")),
+    ("all-plans", include_str!("../queries/all-plans.sparql")),
+    (
+        "all-plans-simple",
+        include_str!("../queries/all-plans-simple.sparql"),
+    ),
+    (
+        "completion-velocity",
+        include_str!("../queries/completion-velocity.sparql"),
+    ),
+    (
+        "dependency-chain",
+        include_str!("../queries/dependency-chain.sparql"),
+    ),
+    (
+        "high-priority",
+        include_str!("../queries/high-priority.sparql"),
+    ),
+    (
+        "next-actions",
+        include_str!("../queries/next-actions.sparql"),
+    ),
+    (
+        "orphaned-acts",
+        include_str!("../queries/orphaned-acts.sparql"),
+    ),
+    (
+        "overdue-tasks",
+        include_str!("../queries/overdue-tasks.sparql"),
+    ),
+    ("open-plans", include_str!("../queries/open-plans.sparql")),
+    (
+        "plans-with-contexts",
+        include_str!("../queries/plans-with-contexts.sparql"),
+    ),
 ];
 
 /// Build the query map. Priority: project > user > built-in.
@@ -102,10 +130,13 @@ fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
 
     // Built-ins first (lowest priority)
     for (name, sparql) in BUILT_IN_QUERIES {
-        queries.insert(name.to_string(), NamedQuery {
-            sparql: sparql.to_string(),
-            source: QuerySource::BuiltIn,
-        });
+        queries.insert(
+            name.to_string(),
+            NamedQuery {
+                sparql: sparql.to_string(),
+                source: QuerySource::BuiltIn,
+            },
+        );
     }
 
     // User-global: ~/.clearhead/queries/
@@ -121,8 +152,14 @@ fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
     queries
 }
 
-fn scan_query_dir(dir: &std::path::Path, source: QuerySource, out: &mut HashMap<String, NamedQuery>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+fn scan_query_dir(
+    dir: &std::path::Path,
+    source: QuerySource,
+    out: &mut HashMap<String, NamedQuery>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("sparql") {
@@ -149,7 +186,10 @@ pub fn run_named_query(
         )
     })?;
 
-    let rows = clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&named.sparql, status))?;
+    let rows = clearhead_cli::run_workspace_raw_query(
+        &ctx.data_dir,
+        &inject_params(&named.sparql, status),
+    )?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -163,7 +203,7 @@ pub fn run_named_query(
 }
 
 pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
-    use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
+    use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
     let queries = resolve_named_queries(ctx);
 
@@ -184,7 +224,9 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
     }
 
     println!("{}", table);
-    println!("Custom queries: add .sparql files to ~/.clearhead/queries/ or <workspace>/.clearhead/queries/");
+    println!(
+        "Custom queries: add .sparql files to ~/.clearhead/queries/ or <workspace>/.clearhead/queries/"
+    );
     Ok(())
 }
 
@@ -196,7 +238,7 @@ fn format_as_json(rows: &[HashMap<String, String>]) -> Result<(), String> {
 }
 
 fn format_as_table(rows: &[HashMap<String, String>]) -> Result<(), String> {
-    use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
+    use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
     use std::collections::BTreeSet;
 
     // BTreeSet for stable alphabetical column order (HashMap order is undefined)
