@@ -117,6 +117,21 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::add_plan(
                 &ctx, name, file, charter, parent, fields, schedule, *dry_run,
             ),
+            argparser::AddTarget::Act {
+                name,
+                charter,
+                file,
+                parent,
+                priority,
+                state,
+                alias,
+                scheduled_at,
+                duration,
+                dry_run,
+            } => commands::act::add_act(
+                &ctx, name, charter, file, parent, *priority, *state, alias,
+                scheduled_at, *duration, *dry_run,
+            ),
             argparser::AddTarget::Charter {
                 title,
                 alias,
@@ -136,11 +151,16 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::update_plan(&ctx, query, file, name, fields, schedule, *dry_run),
             argparser::UpdateTarget::Act {
                 query,
+                name,
+                priority,
+                state,
                 scheduled_at,
                 duration,
                 file,
                 dry_run,
-            } => commands::act::update_act(&ctx, query, scheduled_at, duration, file, *dry_run),
+            } => commands::act::update_act(
+                &ctx, query, name, *priority, *state, scheduled_at, duration, file, *dry_run,
+            ),
         },
         Verb::Complete { target } => match target {
             argparser::CompleteTarget::Plan {
@@ -160,6 +180,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::plan::delete_plan(&ctx, query, file, *dry_run),
+            argparser::DeleteTarget::Act {
+                query,
+                file,
+                dry_run,
+            } => commands::act::delete_act(&ctx, query, file, *dry_run),
         },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {

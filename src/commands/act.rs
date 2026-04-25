@@ -15,6 +15,91 @@ use super::CommandContext;
 // expand acts — ICS schedule → .actions file
 // ============================================================================
 
+/// Add a new standalone planned act to a charter's `.actions` file.
+pub fn add_act(
+    ctx: &CommandContext,
+    name: &str,
+    charter: &Option<String>,
+    file: &Option<PathBuf>,
+    parent: &Option<String>,
+    priority: Option<u32>,
+    state: Option<crate::argparser::ActionStateArg>,
+    alias: &Option<String>,
+    scheduled_at: &Option<String>,
+    duration: Option<u32>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let actions_path = resolve_acts_file(ctx, charter, file)?;
+
+    let parent_id = parent
+        .as_deref()
+        .map(|q| {
+            let mut list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+            find_act_mut(&mut list, q)
+                .map(|a| a.id)
+                .ok_or_else(|| format!("No act found matching parent '{}'", q))
+        })
+        .transpose()?;
+
+    let new_scheduled = scheduled_at
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map(|dt| dt.with_timezone(&Local))
+                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", s, e))
+        })
+        .transpose()?;
+
+    let act = Action {
+        name: name.to_string(),
+        parent_id,
+        priority,
+        state: state.map(Into::into).unwrap_or(ActionState::NotStarted),
+        alias: alias.clone(),
+        do_date_time: new_scheduled,
+        do_duration: duration,
+        created_date_time: Some(Local::now()),
+        ..Default::default()
+    };
+
+    if dry_run {
+        println!("Would add act '{}' to {}", name, actions_path.display());
+        return Ok(());
+    }
+
+    let mut list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+    list.push(act.clone());
+    super::save_file(&actions_path, &list)?;
+
+    info!(id = %act.id, name = %name, "Act added");
+    println!("Added act {} ({})", &act.id.to_string()[..8], name);
+    Ok(())
+}
+
+/// Resolve the `.actions` file path from a charter query or explicit file path.
+fn resolve_acts_file(
+    ctx: &CommandContext,
+    charter: &Option<String>,
+    file: &Option<PathBuf>,
+) -> Result<PathBuf, String> {
+    if let Some(path) = file {
+        return Ok(path.clone());
+    }
+    if let Some(query) = charter {
+        let mcs =
+            clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
+        let mc = resolve_markdown_charter(&mcs, query)
+            .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+        let rel = mc
+            .acts_file
+            .as_ref()
+            .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
+        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
+        return Ok(data_root.join(rel));
+    }
+    Err("Specify --charter <name> or --file <path> to target a charter's acts file".to_string())
+}
+
 /// Expand ICS schedule VEVENTs into planned acts in the charter's `.actions` file.
 ///
 /// Acts are written to `<charter>.actions`. Expansion is idempotent: act UUIDs
@@ -243,10 +328,13 @@ pub fn complete_act(
     Ok(())
 }
 
-/// Update an open act's scheduled time and/or duration.
+/// Update an open act's fields.
 pub fn update_act(
     ctx: &CommandContext,
     query: &str,
+    name: &Option<String>,
+    priority: Option<u32>,
+    state: Option<crate::argparser::ActionStateArg>,
     scheduled_at: &Option<String>,
     duration: &Option<u32>,
     file: &Option<PathBuf>,
@@ -254,21 +342,29 @@ pub fn update_act(
 ) -> Result<(), String> {
     let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
 
-    let new_scheduled = if let Some(dt_str) = scheduled_at {
-        Some(
-            chrono::DateTime::parse_from_rfc3339(dt_str)
+    let new_scheduled = scheduled_at
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
                 .map(|dt| dt.with_timezone(&Local))
-                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", dt_str, e))?,
-        )
-    } else {
-        None
-    };
+                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", s, e))
+        })
+        .transpose()?;
 
     let act_id = {
         let act = find_act_mut(&mut open_acts, query)
             .ok_or_else(|| format!("No open act found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
+            if let Some(n) = name {
+                act.name = n.clone();
+            }
+            if let Some(p) = priority {
+                act.priority = Some(p);
+            }
+            if let Some(s) = state {
+                act.state = s.into();
+            }
             if let Some(dt) = new_scheduled {
                 act.do_date_time = Some(dt);
             }
@@ -288,6 +384,60 @@ pub fn update_act(
     info!(%act_id, "Act updated");
     println!("Updated act {}", act_id);
     Ok(())
+}
+
+/// Delete an act from the workspace (open or closed).
+pub fn delete_act(
+    ctx: &CommandContext,
+    query: &str,
+    file: &Option<PathBuf>,
+    dry_run: bool,
+) -> Result<(), String> {
+    // Try open acts first, then completed.
+    let action_files: Vec<PathBuf> = if let Some(path) = file {
+        vec![path.clone()]
+    } else {
+        clearhead_core::list_action_files(&ctx.data_dir)
+            .map_err(|e| format!("Failed to list workspace: {}", e))?
+    };
+
+    for actions_path in &action_files {
+        let mut open = acts::read_acts(actions_path).map_err(|e| e.to_string())?;
+        if let Some(pos) = open.iter().position(|a| act_matches(a, query)) {
+            let act = &open[pos];
+            let act_id = act.id;
+            let act_name = act.name.clone();
+            if dry_run {
+                println!("Would delete act {} ({})", &act_id.to_string()[..8], act_name);
+                return Ok(());
+            }
+            open.remove(pos);
+            super::save_file(actions_path, &open)?;
+            info!(%act_id, "Act deleted");
+            println!("Deleted act {} ({})", &act_id.to_string()[..8], act_name);
+            return Ok(());
+        }
+
+        // Check completed file too
+        let completed_path = acts::completed_acts_path(actions_path);
+        let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+        if let Some(pos) = closed.iter().position(|a| act_matches(a, query)) {
+            let act = &closed[pos];
+            let act_id = act.id;
+            let act_name = act.name.clone();
+            if dry_run {
+                println!("Would delete act {} ({})", &act_id.to_string()[..8], act_name);
+                return Ok(());
+            }
+            closed.remove(pos);
+            acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
+            info!(%act_id, "Act deleted from completed");
+            println!("Deleted act {} ({})", &act_id.to_string()[..8], act_name);
+            return Ok(());
+        }
+    }
+
+    Err(format!("No act found matching '{}'", query))
 }
 
 /// Cancel an open act (moves to `.completed.actions` with Cancelled state).
@@ -349,7 +499,8 @@ pub fn read_acts_cmd(
             .acts_file
             .as_ref()
             .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
-        Some(ctx.data_dir.join(rel))
+        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
+        Some(data_root.join(rel))
     } else {
         None
     };

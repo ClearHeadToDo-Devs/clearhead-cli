@@ -433,6 +433,48 @@ pub enum AddTarget {
         dry_run: bool,
     },
 
+    /// Add a new planned act to a charter's .actions file
+    Act {
+        /// Name of the act
+        name: String,
+
+        /// Charter to add the act to (name, alias, or UUID). Routes to the charter's .actions file.
+        #[arg(long, conflicts_with = "file")]
+        charter: Option<String>,
+
+        /// .actions file to add to. If not provided, uses the default file.
+        #[arg(short, long, conflicts_with = "charter")]
+        file: Option<PathBuf>,
+
+        /// Parent act UUID or short UUID
+        #[arg(long)]
+        parent: Option<String>,
+
+        /// Priority (1-9)
+        #[arg(short, long)]
+        priority: Option<u32>,
+
+        /// Initial state
+        #[arg(short, long, value_enum)]
+        state: Option<ActionStateArg>,
+
+        /// Alias for referencing this act
+        #[arg(short, long)]
+        alias: Option<String>,
+
+        /// Scheduled datetime (RFC 3339, e.g. "2026-04-28T09:00:00-07:00")
+        #[arg(long)]
+        scheduled_at: Option<String>,
+
+        /// Duration in minutes
+        #[arg(short, long)]
+        duration: Option<u32>,
+
+        /// Preview what would be added without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Create a new charter
     Charter {
         /// Title of the charter
@@ -488,10 +530,22 @@ pub enum UpdateTarget {
         dry_run: bool,
     },
 
-    /// Update a planned act's scheduled time or duration
+    /// Update a planned act's fields
     Act {
         /// UUID or 8-char prefix of the act
         query: String,
+
+        /// New name
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// New priority (1-9)
+        #[arg(short, long)]
+        priority: Option<u32>,
+
+        /// New state
+        #[arg(short, long, value_enum)]
+        state: Option<ActionStateArg>,
 
         /// New scheduled datetime (RFC 3339, e.g. "2026-04-01T09:00:00+00:00")
         #[arg(long)]
@@ -550,6 +604,20 @@ pub enum DeleteTarget {
         query: String,
 
         /// .ics file containing the plan. If not provided, searches the workspace
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Preview what would be deleted without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Delete a planned act from the workspace
+    Act {
+        /// UUID, short UUID, alias, or name of the act to delete
+        query: String,
+
+        /// File containing the .actions file. If not provided, searches the workspace.
         #[arg(short, long)]
         file: Option<PathBuf>,
 
