@@ -22,46 +22,28 @@ pub struct CliTableOptions {
     pub list_columns: bool,
 }
 
-/// Shared action field options used by Add and Update commands
+/// Editable fields shared by `add plan` and `update plan` commands.
 #[derive(Args, Clone, Default, Debug)]
-pub struct ActionFields {
-    /// Priority of the action (1-9)
+pub struct PlanFields {
+    /// Priority (1-9)
     #[arg(short, long)]
     pub priority: Option<u32>,
 
-    /// Contexts for the action (can be specified multiple times)
+    /// Contexts (can be specified multiple times)
     #[arg(short, long)]
     pub context: Vec<String>,
 
-    /// Description of the action
+    /// Description
     #[arg(short, long)]
     pub description: Option<String>,
 
-    /// Alias for referencing this action
+    /// Alias for referencing this plan
     #[arg(short, long)]
     pub alias: Option<String>,
 
-    /// State of the action
+    /// State — plans do not have state; use `update act --state` for planned acts
     #[arg(short, long, value_enum)]
     pub state: Option<ActionStateArg>,
-}
-
-/// Convert CLI ActionFields to library ActionUpdate
-impl From<ActionFields> for clearhead_cli::ActionUpdate {
-    fn from(f: ActionFields) -> Self {
-        clearhead_cli::ActionUpdate {
-            name: None, // name is handled separately
-            priority: f.priority,
-            description: f.description,
-            context: if f.context.is_empty() {
-                None
-            } else {
-                Some(f.context)
-            },
-            alias: f.alias,
-            state: f.state.map(|s| s.into()),
-        }
-    }
 }
 
 /// Schedule fields used by plan commands. Plans live in `.ics` files and
@@ -247,6 +229,13 @@ pub enum Verb {
 
     /// Show resolved config and workspace diagnostics
     Debug,
+
+    /// Generate shell completion script
+    #[command(hide = true)]
+    Completion {
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
+    },
 }
 
 // =============================================================================
@@ -433,7 +422,7 @@ pub enum AddTarget {
 
         /// Plan fields (priority, context, description, alias; state is act-only and rejected)
         #[command(flatten)]
-        fields: ActionFields,
+        fields: PlanFields,
 
         /// Schedule fields (DTSTART, RRULE, template binding)
         #[command(flatten)]
@@ -488,7 +477,7 @@ pub enum UpdateTarget {
 
         /// Plan fields to update (priority, context, description, alias; state is act-only and rejected)
         #[command(flatten)]
-        fields: ActionFields,
+        fields: PlanFields,
 
         /// Schedule fields to update (DTSTART, RRULE, template binding)
         #[command(flatten)]

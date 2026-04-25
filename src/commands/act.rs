@@ -34,7 +34,7 @@ pub fn expand_acts(
     let now = Local::now();
     let horizon = now + Duration::days(days as i64);
 
-    let all_entries = collect_plan_files(&data_root)
+    let all_entries = collect_plan_files(&ctx.data_dir)
         .map_err(|e| format!("Failed to discover ICS files: {}", e))?;
 
     let entries: Vec<_> = if let Some(actions_path) = file {

@@ -385,7 +385,7 @@ fn parse_rrule(value: Option<&str>) -> Result<Option<clearhead_core::Recurrence>
         .transpose()
 }
 
-fn reject_act_only_plan_fields(fields: &argparser::ActionFields) -> Result<(), String> {
+fn reject_act_only_plan_fields(fields: &argparser::PlanFields) -> Result<(), String> {
     if fields.state.is_some() {
         return Err("Plan state is stored on planned acts; use `update act --state` once act state editing exists".to_string());
     }
@@ -476,7 +476,7 @@ pub fn add_plan(
     file: &Option<PathBuf>,
     charter: &Option<String>,
     parent: &Option<String>,
-    fields: &argparser::ActionFields,
+    fields: &argparser::PlanFields,
     schedule: &argparser::PlanScheduleFields,
     dry_run: bool,
 ) -> Result<(), String> {
@@ -514,7 +514,7 @@ pub fn add_plan(
 
         try_emit(
             &new_id,
-            TelemetryEvent::ActionCreated {
+            TelemetryEvent::PlanCreated {
                 name: name.to_string(),
                 file_path: input_file.display().to_string(),
             },
@@ -531,7 +531,7 @@ pub fn update_plan(
     query: &str,
     file: &Option<PathBuf>,
     name: &Option<String>,
-    fields: &argparser::ActionFields,
+    fields: &argparser::PlanFields,
     schedule: &argparser::PlanScheduleFields,
     dry_run: bool,
 ) -> Result<(), String> {
@@ -607,7 +607,7 @@ pub fn delete_plan(
 
         try_emit(
             &plan.id,
-            TelemetryEvent::ActionDeleted {
+            TelemetryEvent::PlanDeleted {
                 name: plan.name.clone(),
             },
         );

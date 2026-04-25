@@ -239,6 +239,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },
         Verb::Debug => commands::debug::run(&ctx),
+        Verb::Completion { shell } => {
+            use clap::CommandFactory;
+            use clap_complete::generate;
+            generate(*shell, &mut argparser::Cli::command(), "clearhead", &mut io::stdout());
+            Ok(())
+        }
         Verb::Expand { target } => match target {
             argparser::ExpandTarget::Acts {
                 file,
