@@ -238,7 +238,7 @@ pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
 /// Scans all workspace action files and matches the inferred charter name against
 /// the query (by UUID prefix, alias, or inferred file stem / directory name).
 pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<PathBuf, String> {
-    let data_root = clearhead_core::workspace_data_root(data_dir);
+    let data_root = clearhead_core::charter_root(data_dir);
     let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 

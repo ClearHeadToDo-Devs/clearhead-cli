@@ -1,6 +1,6 @@
 //! Handlers for act commands (expand, complete, cancel, update, read, archive).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
@@ -94,8 +94,8 @@ fn resolve_acts_file(
             .acts_file
             .as_ref()
             .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
-        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
-        return Ok(data_root.join(rel));
+        let root = clearhead_core::charter_root(&ctx.data_dir);
+        return Ok(root.join(rel));
     }
     Err("Specify --charter <name> or --file <path> to target a charter's acts file".to_string())
 }
@@ -115,7 +115,7 @@ pub fn expand_acts(
     use clearhead_core::workspace::ics::{occurrence_act_id, parse_ics_file};
     use clearhead_core::workspace::plans::collect_plan_files;
 
-    let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
+    let data_root = clearhead_core::charter_root(&ctx.data_dir);
     let now = Local::now();
     let horizon = now + Duration::days(days as i64);
 
@@ -499,8 +499,8 @@ pub fn read_acts_cmd(
             .acts_file
             .as_ref()
             .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
-        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
-        Some(data_root.join(rel))
+        let root = clearhead_core::charter_root(&ctx.data_dir);
+        Some(root.join(rel))
     } else {
         None
     };
@@ -526,9 +526,8 @@ pub fn read_acts_cmd(
                 .map_err(|e| format!("JSON serialization failed: {}", e))?;
             println!("{}", json);
         }
-        _ => {
-            print_acts_table(&acts);
-        }
+        Some(crate::argparser::ActFormat::Table) => print_acts_table(&acts),
+        None => print_acts_tree(&acts),
     }
 
     Ok(())
@@ -830,6 +829,55 @@ fn collect_all_acts(
 
 fn is_open_act(act: &Action) -> bool {
     !matches!(act.state, ActionState::Completed | ActionState::Cancelled)
+}
+
+fn print_acts_tree(acts: &[&Action]) {
+    let mut by_parent: HashMap<uuid::Uuid, Vec<&Action>> = HashMap::new();
+    let mut roots: Vec<&Action> = Vec::new();
+
+    for &act in acts {
+        match act.parent_id {
+            Some(pid) => by_parent.entry(pid).or_default().push(act),
+            None => roots.push(act),
+        }
+    }
+
+    for (i, root) in roots.iter().enumerate() {
+        print_act_node(root, &by_parent, "", true, i == roots.len() - 1);
+    }
+}
+
+fn print_act_node(
+    act: &Action,
+    by_parent: &HashMap<uuid::Uuid, Vec<&Action>>,
+    prefix: &str,
+    is_root: bool,
+    is_last: bool,
+) {
+    let connector = if is_root { "" } else if is_last { "└── " } else { "├── " };
+    println!("{}{}{} {}", prefix, connector, state_sigil(&act.state), act.name);
+
+    let child_prefix = if is_root {
+        String::new()
+    } else {
+        format!("{}{}", prefix, if is_last { "    " } else { "│   " })
+    };
+
+    if let Some(kids) = by_parent.get(&act.id) {
+        for (i, kid) in kids.iter().enumerate() {
+            print_act_node(kid, by_parent, &child_prefix, false, i == kids.len() - 1);
+        }
+    }
+}
+
+fn state_sigil(state: &ActionState) -> &'static str {
+    match state {
+        ActionState::NotStarted => "[ ]",
+        ActionState::Completed => "[x]",
+        ActionState::InProgress => "[-]",
+        ActionState::BlockedorAwaiting => "[=]",
+        ActionState::Cancelled => "[_]",
+    }
 }
 
 fn print_acts_table(acts: &[&Action]) {
