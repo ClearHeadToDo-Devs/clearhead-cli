@@ -1,13 +1,14 @@
 use std::fs;
+use std::path::{Path, PathBuf};
+use chrono::{DateTime, Local, Utc};
+use icalendar::{Calendar, Component, Event, EventLike};
 use tracing::{debug, info};
 
 use crate::argparser;
 use crate::commands::{
-    CommandContext, find_plan_file_for_mutation, load_file_for_mutation,
-    load_file_for_read, parse_content_for_read,
-    read_input, save_file, try_emit,
+    CommandContext, load_file_for_read, parse_content_for_read, read_input, try_emit,
 };
-use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
+use clearhead_cli::telemetry::TelemetryEvent;
 
 /// Find the index at which to insert a child action so it appears immediately
 /// after the last existing descendant of `parent_id`.
@@ -15,6 +16,7 @@ use clearhead_cli::telemetry::{event_from_field_change, TelemetryEvent};
 /// Walks forward from the parent's position, collecting all actions whose
 /// ancestor chain leads back to `parent_id`. Returns the index after the last
 /// one, or `actions.len()` if the parent is not found.
+#[cfg(test)]
 fn insert_index_after_descendants(actions: &[clearhead_cli::Action], parent_id: uuid::Uuid) -> usize {
     let parent_idx = match actions.iter().position(|a| a.id == parent_id) {
         Some(idx) => idx,
@@ -257,97 +259,242 @@ pub fn show_plan(
     Ok(())
 }
 
+fn resolve_plan_file(
+    ctx: &CommandContext,
+    file: &Option<PathBuf>,
+    charter: &Option<String>,
+) -> Result<PathBuf, String> {
+    if let Some(path) = file {
+        return Ok(ctx.resolve_action_file(Some(path)));
+    }
+
+    if let Some(query) = charter {
+        let charters = clearhead_core::load_markdown_charters(&ctx.data_dir)
+            .map_err(|e| e.to_string())?;
+        let charter = resolve_markdown_charter(&charters, query)
+            .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+
+        if let Some(path) = &charter.ics_file {
+            return Ok(ctx.data_dir.join(path));
+        }
+        if let Some(path) = &charter.md_file {
+            return Ok(ctx.data_dir.join(path).with_extension("ics"));
+        }
+
+        let key = charter.alias.as_deref().unwrap_or(&charter.title);
+        return Ok(ctx.data_dir.join(format!("{}.ics", slug(key))));
+    }
+
+    Ok(ctx.resolve_action_file(None).with_extension("ics"))
+}
+
+fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
+    if path.exists() {
+        clearhead_core::workspace::ics::parse_ics_file(path).map_err(|e| e.to_string())
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+fn save_plan_file(path: &Path, plans: &[clearhead_core::Plan]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    fs::write(path, format_plans_as_ics(plans))
+        .map_err(|e| format!("Failed to write plan file '{}': {}", path.display(), e))
+}
+
+fn format_plans_as_ics(plans: &[clearhead_core::Plan]) -> String {
+    let mut calendar = Calendar::new()
+        .name("ClearHead Plans")
+        .description("Schedules managed by ClearHead")
+        .done();
+
+    for plan in plans {
+        calendar.push(plan_to_event(plan));
+    }
+
+    calendar.to_string()
+}
+
+fn plan_to_event(plan: &clearhead_core::Plan) -> Event {
+    let mut event = Event::new();
+    let uid = plan.external_id.clone().unwrap_or_else(|| plan.id.to_string());
+    event.uid(&uid);
+    event.summary(&plan.name);
+
+    if let Some(dtstart) = plan.dtstart {
+        event.starts(dtstart.with_timezone(&Utc));
+    }
+    if let Some(priority) = plan.priority {
+        event.priority(priority);
+    }
+    if let Some(contexts) = &plan.contexts {
+        if !contexts.is_empty() {
+            event.add_property("CATEGORIES", &contexts.join(","));
+        }
+    }
+    if let Some(alias) = &plan.alias {
+        event.add_property("X-CLEARHEAD-ALIAS", alias);
+    }
+    if let Some(recurrence) = &plan.recurrence {
+        let rrule = recurrence.to_string();
+        event.add_property("RRULE", rrule.strip_prefix("R:").unwrap_or(&rrule));
+    }
+
+    let mut description = Vec::new();
+    if let Some(template) = &plan.template_name {
+        description.push(format!("template: {}", template));
+    }
+    if let Some(text) = &plan.description {
+        description.push(text.clone());
+    }
+    if !description.is_empty() {
+        event.description(&description.join("\n"));
+    }
+
+    event
+}
+
+fn parse_local_datetime(value: Option<&str>) -> Result<Option<DateTime<Local>>, String> {
+    value
+        .map(|value| {
+            DateTime::parse_from_rfc3339(value)
+                .map(|dt| dt.with_timezone(&Local))
+                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", value, e))
+        })
+        .transpose()
+}
+
+fn parse_rrule(value: Option<&str>) -> Result<Option<clearhead_core::Recurrence>, String> {
+    value
+        .map(|value| {
+            clearhead_core::Recurrence::from_rrule_str(value)
+                .ok_or_else(|| format!("Invalid --rrule '{}': expected RFC5545 RRULE fields", value))
+        })
+        .transpose()
+}
+
+fn reject_act_only_plan_fields(fields: &argparser::ActionFields) -> Result<(), String> {
+    if fields.state.is_some() {
+        return Err("Plan state is stored on planned acts; use `update act --state` once act state editing exists".to_string());
+    }
+    Ok(())
+}
+
+fn find_plan_for_mutation(
+    ctx: &CommandContext,
+    file: &Option<PathBuf>,
+    query: &str,
+) -> Result<(PathBuf, Vec<clearhead_core::Plan>, usize), String> {
+    let files = if let Some(path) = file {
+        vec![ctx.resolve_action_file(Some(path))]
+    } else {
+        clearhead_core::workspace::plans::collect_plan_files(&ctx.data_dir)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect()
+    };
+
+    for path in files {
+        let plans = load_plan_file(&path)?;
+        if let Some(idx) = plans.iter().position(|plan| plan_matches(plan, query)) {
+            return Ok((path, plans, idx));
+        }
+    }
+
+    Err(format!("No plan found matching '{}'", query))
+}
+
+fn plan_matches(plan: &clearhead_core::Plan, query: &str) -> bool {
+    let query_lower = query.to_lowercase();
+    let id = plan.id.to_string();
+    id == query || id.starts_with(query)
+        || plan
+            .external_id
+            .as_deref()
+            .map(|uid| uid.eq_ignore_ascii_case(query) || uid.to_lowercase().contains(&query_lower))
+            .unwrap_or(false)
+        || plan
+            .alias
+            .as_deref()
+            .map(|alias| alias.eq_ignore_ascii_case(query))
+            .unwrap_or(false)
+        || plan.name.to_lowercase().contains(&query_lower)
+}
+
+fn resolve_markdown_charter<'a>(
+    charters: &'a [clearhead_core::MarkdownCharter],
+    query: &str,
+) -> Option<&'a clearhead_core::MarkdownCharter> {
+    let query_lower = query.to_lowercase();
+    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
+        if let Some(c) = charters.iter().find(|c| c.id == uuid) {
+            return Some(c);
+        }
+    }
+    if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit()) {
+        if let Some(c) = charters.iter().find(|c| c.id.to_string().starts_with(query)) {
+            return Some(c);
+        }
+    }
+    if let Some(c) = charters.iter().find(|c| {
+        c.alias
+            .as_deref()
+            .map(|alias| alias.eq_ignore_ascii_case(query))
+            .unwrap_or(false)
+    }) {
+        return Some(c);
+    }
+    charters.iter().find(|c| c.title.to_lowercase().contains(&query_lower))
+}
+
+fn slug(value: &str) -> String {
+    value.to_lowercase().replace(' ', "-").replace('&', "and")
+}
+
 pub fn add_plan(
     ctx: &CommandContext,
     name: &str,
-    file: &Option<std::path::PathBuf>,
+    file: &Option<PathBuf>,
     charter: &Option<String>,
     parent: &Option<String>,
     fields: &argparser::ActionFields,
+    schedule: &argparser::PlanScheduleFields,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_cli::Action;
-    use uuid::Uuid;
-
-    let input_file = if let Some(charter_query) = charter {
-        crate::commands::charter_to_file_path(&ctx.data_dir, charter_query)?
-    } else {
-        ctx.resolve_action_file(file.as_ref())
-    };
-    debug!(name = %name, input_file = %input_file.display(), dry_run = dry_run, "Executing Add Plan");
-
-    if !dry_run && !input_file.exists() {
-        info!(input_file = %input_file.display(), "Creating new actions file");
-        if let Some(parent_dir) = input_file.parent() {
-            fs::create_dir_all(parent_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
-        }
-        fs::write(&input_file, "").map_err(|e| format!("Failed to create file: {}", e))?;
+    reject_act_only_plan_fields(fields)?;
+    if parent.is_some() {
+        return Err("Plan hierarchy in ICS files is not implemented yet".to_string());
     }
 
-    let mut actions = load_file_for_mutation(&input_file, "add plan")?;
+    let input_file = resolve_plan_file(ctx, file, charter)?;
+    debug!(name = %name, input_file = %input_file.display(), dry_run = dry_run, "Executing Add Plan");
 
-    // Resolve parent reference if provided
-    let parent_id: Option<Uuid> = if let Some(parent_ref) = parent {
-        if parent_ref.contains('/') {
-            // Cross-charter: charter/plan path
-            use crate::commands::resolver::{resolve_domain_ref, ResolvedScope};
-            let resolved_file = match resolve_domain_ref(&ctx.data_dir, parent_ref)? {
-                ResolvedScope::Plan { file_path, plan_id } => {
-                    // If --charter was also given, the resolved file must agree
-                    if let Some(charter_query) = charter {
-                        let charter_file = crate::commands::charter_to_file_path(&ctx.data_dir, charter_query)?;
-                        if file_path != charter_file {
-                            return Err(format!(
-                                "--parent '{}' resolves to a different charter than --charter '{}'",
-                                parent_ref, charter_query
-                            ));
-                        }
-                    }
-                    Some(plan_id)
-                }
-                ResolvedScope::Charter { .. } => {
-                    return Err(format!("'{}' resolves to a charter, not a plan", parent_ref));
-                }
-            };
-            resolved_file
-        } else {
-            // Same-file: alias, name, or short UUID
-            let resolved = clearhead_cli::resolve_reference(&actions, parent_ref)
-                .ok_or_else(|| format!("No plan found matching '{}'", parent_ref))?;
-            Some(actions[resolved.index].id)
-        }
-    } else {
-        None
-    };
-
-    let new_id = Uuid::now_v7();
-    let new_action = Action {
+    let uid = uuid::Uuid::now_v7().to_string();
+    let new_id = clearhead_core::workspace::ics::plan_id_from_ics_uid(&uid);
+    let new_plan = clearhead_core::Plan {
         id: new_id,
-        parent_id,
-        state: fields.state.map(|s| s.into()).unwrap_or_default(),
         name: name.to_string(),
         description: fields.description.clone(),
         priority: fields.priority,
-        context_list: (!fields.context.is_empty()).then(|| fields.context.clone()),
+        contexts: (!fields.context.is_empty()).then(|| fields.context.clone()),
         alias: fields.alias.clone(),
+        recurrence: parse_rrule(schedule.rrule.as_deref())?,
+        dtstart: parse_local_datetime(schedule.scheduled_at.as_deref())?,
+        external_id: Some(uid),
+        template_name: schedule.template.clone(),
         ..Default::default()
     };
 
-    let insert_idx = parent_id
-        .map(|pid| insert_index_after_descendants(&actions, pid))
-        .unwrap_or(actions.len());
-    actions.insert(insert_idx, new_action.clone());
+    let mut plans = load_plan_file(&input_file)?;
+    plans.push(new_plan.clone());
 
     if dry_run {
-        let preview = clearhead_cli::format(
-            &vec![new_action],
-            clearhead_cli::OutputFormat::Actions,
-            None,
-            None,
-        )?;
-        println!("{}", preview);
+        println!("{}", format_plans_as_ics(&[new_plan]));
     } else {
-        save_file(&input_file, &actions)?;
+        save_plan_file(&input_file, &plans)?;
 
         try_emit(
             &new_id,
@@ -357,7 +504,7 @@ pub fn add_plan(
             },
         );
 
-        info!(name = %name, id = %new_id, "Action added successfully");
+        info!(name = %name, id = %new_id, "Plan added successfully");
         println!("{}", new_id);
     }
     Ok(())
@@ -366,59 +513,49 @@ pub fn add_plan(
 pub fn update_plan(
     ctx: &CommandContext,
     query: &str,
-    file: &Option<std::path::PathBuf>,
+    file: &Option<PathBuf>,
     name: &Option<String>,
     fields: &argparser::ActionFields,
+    schedule: &argparser::PlanScheduleFields,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_cli::{apply_updates, resolve_reference, ActionUpdate};
+    reject_act_only_plan_fields(fields)?;
 
-    let (input_file, mut actions) = if let Some(path) = file {
-        let f = ctx.resolve_action_file(Some(path));
-        let a = load_file_for_mutation(&f, "update plan")?;
-        (f, a)
-    } else {
-        find_plan_file_for_mutation(&ctx.data_dir, query, "update plan")?
-    };
+    let (input_file, mut plans, idx) = find_plan_for_mutation(ctx, file, query)?;
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Update Plan");
 
-    let resolved = resolve_reference(&actions, query)
-        .ok_or_else(|| format!("No action found matching '{}'", query))?;
+    if let Some(name) = name {
+        plans[idx].name = name.clone();
+    }
+    if let Some(priority) = fields.priority {
+        plans[idx].priority = Some(priority);
+    }
+    if !fields.context.is_empty() {
+        plans[idx].contexts = Some(fields.context.clone());
+    }
+    if let Some(description) = &fields.description {
+        plans[idx].description = Some(description.clone());
+    }
+    if let Some(alias) = &fields.alias {
+        plans[idx].alias = Some(alias.clone());
+    }
+    if schedule.scheduled_at.is_some() {
+        plans[idx].dtstart = parse_local_datetime(schedule.scheduled_at.as_deref())?;
+    }
+    if schedule.rrule.is_some() {
+        plans[idx].recurrence = parse_rrule(schedule.rrule.as_deref())?;
+    }
+    if let Some(template) = &schedule.template {
+        plans[idx].template_name = Some(template.clone());
+    }
 
-    debug!(index = resolved.index, match_type = ?resolved.match_type, "Resolved action reference");
-
-    let mut updates: ActionUpdate = fields.clone().into();
-    updates.name = name.clone();
-
-    let old_action = actions[resolved.index].clone();
-    let action_id = old_action.id;
-
-    apply_updates(&mut actions[resolved.index], updates);
-
-    let new_action = actions[resolved.index].clone();
+    let updated = plans[idx].clone();
 
     if dry_run {
-        let preview = clearhead_cli::format(
-            &vec![new_action],
-            clearhead_cli::OutputFormat::Actions,
-            None,
-            None,
-        )?;
-        println!("{}", preview);
+        println!("{}", format_plans_as_ics(&[updated]));
     } else {
-        save_file(&input_file, &actions)?;
-
-        use clearhead_core::diff_actions;
-        let changes = diff_actions(&vec![old_action], &vec![new_action.clone()]);
-        if let Some(action_diff) = changes.modified.first() {
-            for change in &action_diff.changes {
-                if let Some(evt) = event_from_field_change(change) {
-                    try_emit(&action_id, evt);
-                }
-            }
-        }
-
-        info!(name = %new_action.name, id = %action_id, "Action updated successfully");
+        save_plan_file(&input_file, &plans)?;
+        info!(name = %updated.name, id = %updated.id, "Plan updated successfully");
     }
     Ok(())
 }
@@ -429,72 +566,34 @@ pub fn complete_plan(
     file: &Option<std::path::PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (input_file, mut actions) = if let Some(path) = file {
-        let f = ctx.resolve_action_file(Some(path));
-        let a = load_file_for_mutation(&f, "complete plan")?;
-        (f, a)
-    } else {
-        find_plan_file_for_mutation(&ctx.data_dir, query, "complete plan")?
-    };
-
-    let result = crate::commands::complete::complete_action(&mut actions, query)?;
-
-    if dry_run {
-        let completed = &actions[result.action_index];
-        let preview = clearhead_cli::format(
-            &vec![completed.clone()],
-            clearhead_cli::OutputFormat::Actions,
-            None,
-            None,
-        )?;
-        println!("{}", preview);
-    } else {
-        save_file(&input_file, &actions)?;
-        try_emit(&result.action_id, result.event);
-        info!(name = %result.action_name, id = %result.action_id, "Action completed successfully");
-    }
-    Ok(())
+    let _ = (ctx, query, file, dry_run);
+    Err("Plans are schedules and do not have completion state; use `complete act` for planned acts".to_string())
 }
 
 pub fn delete_plan(
     ctx: &CommandContext,
     query: &str,
-    file: &Option<std::path::PathBuf>,
+    file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (input_file, mut actions) = if let Some(path) = file {
-        let f = ctx.resolve_action_file(Some(path));
-        let a = load_file_for_mutation(&f, "delete plan")?;
-        (f, a)
-    } else {
-        find_plan_file_for_mutation(&ctx.data_dir, query, "delete plan")?
-    };
+    let (input_file, mut plans, idx) = find_plan_for_mutation(ctx, file, query)?;
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Delete Plan");
 
-    let resolved = clearhead_cli::resolve_reference(&actions, query)
-        .ok_or_else(|| format!("No plan found matching '{}'", query))?;
-
-    let action = actions.remove(resolved.index);
+    let plan = plans.remove(idx);
 
     if dry_run {
-        let preview = clearhead_cli::format(
-            &vec![action],
-            clearhead_cli::OutputFormat::Actions,
-            None,
-            None,
-        )?;
-        println!("{}", preview);
+        println!("{}", format_plans_as_ics(&[plan]));
     } else {
-        save_file(&input_file, &actions)?;
+        save_plan_file(&input_file, &plans)?;
 
         try_emit(
-            &action.id,
+            &plan.id,
             TelemetryEvent::ActionDeleted {
-                name: action.name.clone(),
+                name: plan.name.clone(),
             },
         );
 
-        info!(name = %action.name, id = %action.id, "Action deleted successfully");
+        info!(name = %plan.name, id = %plan.id, "Plan deleted successfully");
     }
     Ok(())
 }
@@ -502,107 +601,13 @@ pub fn delete_plan(
 pub fn archive_plans(
     ctx: &CommandContext,
     scope: &Option<String>,
-    file: &Option<std::path::PathBuf>,
+    file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    use std::path::PathBuf;
-
-    let charter_files: Vec<PathBuf> = if let Some(f) = file {
-        vec![f.clone()]
-    } else if let Some(s) = scope {
-        use crate::commands::resolver::{resolve_domain_ref, ResolvedScope};
-        // TODO: filter to matching plan tree only when scope is Plan variant
-        match resolve_domain_ref(&ctx.data_dir, s)? {
-            ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
-                vec![file_path]
-            }
-        }
-    } else {
-        clearhead_core::list_action_files(&ctx.data_dir)
-            .map_err(|e| format!("Failed to list workspace: {}", e))?
-    };
-
-    debug!(dry_run = dry_run, "Executing Archive Plans");
-
-    let mut total_archived = 0usize;
-    let mut charters_touched = 0usize;
-
-    for source in &charter_files {
-        if !source.exists() {
-            continue;
-        }
-
-        let all_actions = load_file_for_mutation(source, "archive plans")?;
-        let (active_actions, archived_actions) =
-            clearhead_cli::archive::partition_actions_for_archive(&all_actions);
-
-        if archived_actions.is_empty() {
-            continue;
-        }
-
-        let dest = completed_archive_path(source);
-
-        if dry_run {
-            println!(
-                "Would archive {} action(s) from {} to {}",
-                archived_actions.len(),
-                source.display(),
-                dest.display()
-            );
-            for action in &archived_actions {
-                if action.parent_id.is_none() {
-                    println!("  - {} (tree)", action.name);
-                }
-            }
-        } else {
-            // Append archived actions to destination
-            let mut dest_actions = load_file_for_mutation(&dest, "archive plans")?;
-            dest_actions.extend(archived_actions.iter().cloned());
-            save_file(&dest, &dest_actions)?;
-
-            // Write active actions back to source
-            save_file(source, &active_actions)?;
-
-            info!(
-                count = archived_actions.len(),
-                source = %source.display(),
-                dest = %dest.display(),
-                "Plans archived"
-            );
-            println!(
-                "Archived {} plan(s) to {}",
-                archived_actions.len(),
-                dest.display()
-            );
-        }
-
-        total_archived += archived_actions.len();
-        charters_touched += 1;
-    }
-
-    if total_archived == 0 {
-        println!("Nothing to archive.");
-    } else if dry_run && charters_touched > 1 {
-        println!(
-            "Would archive {} plan(s) across {} charter(s).",
-            total_archived, charters_touched
-        );
-    } else if !dry_run && charters_touched > 1 {
-        println!(
-            "Archived {} plan(s) across {} charter(s).",
-            total_archived, charters_touched
-        );
-    }
-
-    Ok(())
-}
-
-fn completed_archive_path(source: &std::path::Path) -> std::path::PathBuf {
-    let stem = source.file_stem().unwrap_or_default().to_string_lossy();
-    source
-        .parent()
-        .unwrap_or(std::path::Path::new(""))
-        .join(format!("{}.completed.actions", stem))
+    let _ = (ctx, scope, file, dry_run);
+    Err(
+        "Plan archival is not implemented yet: plans are schedules in .ics files, and recurring schedule completion needs separate lifecycle semantics. Use `archive acts` to move completed/cancelled planned acts.".to_string(),
+    )
 }
 
 pub fn export_plans(

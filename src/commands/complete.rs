@@ -3,6 +3,7 @@ use clearhead_cli::telemetry::TelemetryEvent;
 use clearhead_cli::{ActionList, ActionState};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 pub struct CompletionResult {
     pub action_id: Uuid,
     pub action_name: String,
@@ -13,6 +14,7 @@ pub struct CompletionResult {
 
 /// Find and complete an action by query (ID prefix or name substring).
 /// Mutates `actions` in place.
+#[allow(dead_code)]
 pub fn complete_action(actions: &mut ActionList, query: &str) -> Result<CompletionResult, String> {
     let target_index = actions
         .iter()

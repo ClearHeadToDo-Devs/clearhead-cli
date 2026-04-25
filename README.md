@@ -158,26 +158,26 @@ clearhead_cli read --format calendar # iCalendar format (for actions with due da
 
 ### Add
 
-Add a new action to a file. If the file doesn't exist, it will be created.
+Add a new schedule plan to an `.ics` file. Generated or manually managed planned acts live in `.actions` files.
 
 ```bash
-# Add a simple task
-clearhead_cli add plan "Buy groceries" --write
+# Add a one-off scheduled plan
+clearhead_cli add plan "Buy groceries" --scheduled-at "2026-04-28T10:00:00-07:00"
 
 # Add with metadata
-clearhead_cli add plan "Fix critical bug" --priority 1 --context work --description "Check logs" --write
+clearhead_cli add plan "Weekly review" --scheduled-at "2026-04-28T10:00:00-07:00" --rrule "FREQ=WEEKLY" --context work --description "Check logs"
 ```
 
 ### Complete
 
-Mark an action as completed. Can match by name or UUID prefix.
+Mark a planned act as completed. Plans are schedules and do not have completion state.
 
 ```bash
 # Complete by name
-clearhead_cli complete "Buy groceries" --write
+clearhead_cli complete act "Buy groceries"
 
 # Complete by UUID prefix
-clearhead_cli complete 019baae --write
+clearhead_cli complete act 019baae
 ```
 
 **Schedule-Generated Acts:**

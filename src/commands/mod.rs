@@ -180,6 +180,7 @@ pub fn find_plan_file(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionLi
 }
 
 /// Search all workspace .actions files for a plan matching `query`, using mutation-safe parsing.
+#[allow(dead_code)]
 pub fn find_plan_file_for_mutation(
     data_dir: &Path,
     query: &str,

@@ -37,7 +37,11 @@ fn main() {
     }
 
     if let Err(e) = run_command(&cli) {
-        error!(error = %e, "Command failed");
+        if cli.debug > 0 {
+            error!(error = %e, "Command failed");
+        } else {
+            eprintln!("{}", e);
+        }
         process::exit(1);
     }
 }
@@ -87,6 +91,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 table_options,
             } => commands::plan::show_plan(&ctx, query, file, format, table_options),
+            argparser::ShowTarget::Act { query, file } => {
+                commands::act::show_act(&ctx, query, file)
+            }
             argparser::ShowTarget::Charter { query } => {
                 commands::charter::show_charter(&ctx, query)
             }
@@ -98,8 +105,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 charter,
                 parent,
                 fields,
+                schedule,
                 dry_run,
-            } => commands::plan::add_plan(&ctx, name, file, charter, parent, fields, *dry_run),
+            } => commands::plan::add_plan(&ctx, name, file, charter, parent, fields, schedule, *dry_run),
             argparser::AddTarget::Charter {
                 title,
                 alias,
@@ -114,8 +122,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 name,
                 fields,
+                schedule,
                 dry_run,
-            } => commands::plan::update_plan(&ctx, query, file, name, fields, *dry_run),
+            } => commands::plan::update_plan(&ctx, query, file, name, fields, schedule, *dry_run),
             argparser::UpdateTarget::Act {
                 query,
                 scheduled_at,

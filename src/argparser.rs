@@ -66,6 +66,23 @@ impl From<ActionFields> for clearhead_cli::ActionUpdate {
     }
 }
 
+/// Schedule fields used by plan commands. Plans live in `.ics` files and
+/// describe when planned acts should be generated.
+#[derive(Args, Clone, Default, Debug)]
+pub struct PlanScheduleFields {
+    /// Schedule anchor datetime (RFC3339, e.g. 2026-04-28T10:00:00-07:00)
+    #[arg(long)]
+    pub scheduled_at: Option<String>,
+
+    /// RFC5545 recurrence rule, e.g. FREQ=WEEKLY;BYDAY=MO
+    #[arg(long)]
+    pub rrule: Option<String>,
+
+    /// Template name to bind through VEVENT DESCRIPTION
+    #[arg(long)]
+    pub template: Option<String>,
+}
+
 /// Action state values for CLI
 #[derive(Clone, Copy, ValueEnum, Debug)]
 pub enum ActionStateArg {
@@ -194,7 +211,7 @@ pub enum Verb {
         target: ExportTarget,
     },
 
-    /// Expand recurring plans into PlannedAct instances
+    /// Expand schedule plans into planned act instances
     Expand {
         #[command(subcommand)]
         target: ExpandTarget,
@@ -373,6 +390,16 @@ pub enum ShowTarget {
         table_options: CliTableOptions,
     },
 
+    /// Show details of a specific planned act
+    Act {
+        /// UUID, short UUID, alias, or name of the planned act
+        query: String,
+
+        /// File containing the .actions file. If not provided, workspace search.
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+    },
+
     /// Show details of a specific charter
     Charter {
         /// UUID, alias, or name of the charter
@@ -386,26 +413,30 @@ pub enum ShowTarget {
 
 #[derive(Subcommand)]
 pub enum AddTarget {
-    /// Add a new plan
+    /// Add a new schedule plan (.ics VEVENT)
     Plan {
         /// Name of the plan
         name: String,
 
-        /// File to add to. If not provided, uses the default file
+        /// .ics file to add to. If not provided, uses the default plan file
         #[arg(short, long, conflicts_with = "charter")]
         file: Option<PathBuf>,
 
-        /// Charter to add the plan to (name, alias, or UUID). Routes to the charter's primary file.
+        /// Charter to add the plan to (name, alias, or UUID). Routes to the charter's .ics file.
         #[arg(long, conflicts_with = "file")]
         charter: Option<String>,
 
-        /// Parent plan reference: alias/name (same-file) or charter/plan (cross-charter)
+        /// Parent plan reference. Plan hierarchy in ICS storage is not implemented yet.
         #[arg(long)]
         parent: Option<String>,
 
-        /// Action fields (priority, context, description, alias, state)
+        /// Plan fields (priority, context, description, alias; state is act-only and rejected)
         #[command(flatten)]
         fields: ActionFields,
+
+        /// Schedule fields (DTSTART, RRULE, template binding)
+        #[command(flatten)]
+        schedule: PlanScheduleFields,
 
         /// Preview what would be added without writing
         #[arg(long)]
@@ -441,12 +472,12 @@ pub enum AddTarget {
 
 #[derive(Subcommand)]
 pub enum UpdateTarget {
-    /// Update an existing plan
+    /// Update an existing schedule plan (.ics VEVENT)
     Plan {
         /// UUID, short UUID, alias, or name of the plan to update
         query: String,
 
-        /// File containing the plan. If not provided, uses the default file
+        /// .ics file containing the plan. If not provided, searches the workspace
         #[arg(short, long)]
         file: Option<PathBuf>,
 
@@ -454,9 +485,13 @@ pub enum UpdateTarget {
         #[arg(short, long)]
         name: Option<String>,
 
-        /// Action fields to update (priority, context, description, alias, state)
+        /// Plan fields to update (priority, context, description, alias; state is act-only and rejected)
         #[command(flatten)]
         fields: ActionFields,
+
+        /// Schedule fields to update (DTSTART, RRULE, template binding)
+        #[command(flatten)]
+        schedule: PlanScheduleFields,
 
         /// Preview what would be updated without writing
         #[arg(long)]
@@ -488,12 +523,12 @@ pub enum UpdateTarget {
 
 #[derive(Subcommand)]
 pub enum CompleteTarget {
-    /// Mark a plan as completed
+    /// Deprecated: plans are schedules; complete planned acts instead
     Plan {
-        /// UUID or name of the plan to complete
+        /// UUID or name of the plan
         query: String,
 
-        /// File containing the plan. If not provided, uses the default file
+        /// .ics file containing the plan
         #[arg(short, long)]
         file: Option<PathBuf>,
 
@@ -519,12 +554,12 @@ pub enum CompleteTarget {
 
 #[derive(Subcommand)]
 pub enum DeleteTarget {
-    /// Delete a plan
+    /// Delete a schedule plan (.ics VEVENT)
     Plan {
         /// UUID or name of the plan to delete
         query: String,
 
-        /// File containing the plan. If not provided, uses the default file
+        /// .ics file containing the plan. If not provided, searches the workspace
         #[arg(short, long)]
         file: Option<PathBuf>,
 
@@ -613,16 +648,16 @@ pub enum PatchTarget {
 
 #[derive(Subcommand)]
 pub enum ArchiveTarget {
-    /// Move completed plans to a <charter>.completed.actions file. Workspace-wide by default.
+    /// Not implemented: schedule/plan archival needs separate lifecycle semantics.
     Plans {
-        /// Domain path to scope: "health", "health/exercise", etc. Workspace-wide if omitted.
+        /// Domain path to scope: "health", "health/exercise", etc.
         scope: Option<String>,
 
-        /// Escape hatch: explicit file path for out-of-workspace use.
+        /// Escape hatch: explicit .ics file path for out-of-workspace use.
         #[arg(long, conflicts_with = "scope")]
         file: Option<PathBuf>,
 
-        /// Dry run: show what would be archived without moving
+        /// Dry run
         #[arg(long)]
         dry_run: bool,
     },

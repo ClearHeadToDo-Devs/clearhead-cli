@@ -7,6 +7,7 @@ pub enum ResolvedScope {
     },
     Plan {
         file_path: PathBuf,
+        #[allow(dead_code)]
         plan_id: Uuid,
     },
 }

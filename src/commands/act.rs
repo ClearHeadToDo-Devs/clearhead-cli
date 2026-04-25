@@ -358,6 +358,53 @@ pub fn read_acts_cmd(
     Ok(())
 }
 
+/// Show details for one planned act from open and completed act stores.
+pub fn show_act(
+    ctx: &CommandContext,
+    query: &str,
+    file: &Option<PathBuf>,
+) -> Result<(), String> {
+    let acts = collect_all_acts(ctx, file, false)?;
+    let act = acts
+        .iter()
+        .find(|act| act_matches(act, query))
+        .ok_or_else(|| format!("No act found matching '{}'", query))?;
+
+    println!("{}", act.name);
+    println!("{}", "=".repeat(act.name.len()));
+    println!("id:          {}", act.id);
+    println!("state:       {:?}", act.state);
+    if let Some(alias) = &act.alias {
+        println!("alias:       {}", alias);
+    }
+    if let Some(parent_id) = act.parent_id {
+        println!("parent:      {}", parent_id);
+    }
+    if let Some(dt) = act.do_date_time {
+        println!("scheduled:   {}", dt.format("%Y-%m-%d %H:%M"));
+    }
+    if let Some(duration) = act.do_duration {
+        println!("duration:    {}m", duration);
+    }
+    if let Some(priority) = act.priority {
+        println!("priority:    {}", priority);
+    }
+    if let Some(contexts) = &act.context_list {
+        println!("contexts:    {}", contexts.join(", "));
+    }
+    if let Some(created) = act.created_date_time {
+        println!("created:     {}", created.format("%Y-%m-%d %H:%M"));
+    }
+    if let Some(completed) = act.completed_date_time {
+        println!("completed:   {}", completed.format("%Y-%m-%d %H:%M"));
+    }
+    if let Some(description) = &act.description {
+        println!("description:\n  {}", description.replace('\n', "\n  "));
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // archive acts
 // ============================================================================
@@ -466,7 +513,7 @@ fn find_act_in_open_files(
 
     for actions_path in action_files {
         let action_list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
-        if action_list.iter().any(|a| act_matches(a, query)) {
+        if action_list.iter().any(|a| is_open_act(a) && act_matches(a, query)) {
             return Ok((actions_path, action_list));
         }
     }
@@ -525,13 +572,20 @@ fn expand_template_children(
 }
 
 fn act_matches(act: &Action, query: &str) -> bool {
+    let query_lower = query.to_lowercase();
     let id_str = act.id.to_string();
     let short = &id_str[..8.min(id_str.len())];
     id_str == query || short == query
+        || act
+            .alias
+            .as_deref()
+            .map(|alias| alias.eq_ignore_ascii_case(query))
+            .unwrap_or(false)
+        || act.name.to_lowercase().contains(&query_lower)
 }
 
 fn find_act_mut<'a>(acts: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {
-    acts.iter_mut().find(|a| act_matches(a, query))
+    acts.iter_mut().find(|a| is_open_act(a) && act_matches(a, query))
 }
 
 fn resolve_markdown_charter<'a>(
@@ -567,6 +621,9 @@ fn collect_all_acts(
 ) -> Result<Vec<Action>, String> {
     if let Some(path) = file {
         let mut result: Vec<Action> = acts::read_acts(path).map_err(|e| e.to_string())?;
+        if open_only {
+            result.retain(is_open_act);
+        }
         if !open_only {
             let completed_path = acts::completed_acts_path(path);
             result.extend(acts::read_acts(&completed_path).map_err(|e| e.to_string())?);
@@ -579,13 +636,21 @@ fn collect_all_acts(
 
     let mut all = Vec::new();
     for actions_path in action_files {
-        all.extend(acts::read_acts(&actions_path).map_err(|e| e.to_string())?);
+        let mut open = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+        if open_only {
+            open.retain(is_open_act);
+        }
+        all.extend(open);
         if !open_only {
             let completed_path = acts::completed_acts_path(&actions_path);
             all.extend(acts::read_acts(&completed_path).map_err(|e| e.to_string())?);
         }
     }
     Ok(all)
+}
+
+fn is_open_act(act: &Action) -> bool {
+    !matches!(act.state, ActionState::Completed | ActionState::Cancelled)
 }
 
 fn print_acts_table(acts: &[&Action]) {

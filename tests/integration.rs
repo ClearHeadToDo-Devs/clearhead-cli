@@ -128,6 +128,45 @@ fn test_read_acts_specific_file() {
 }
 
 #[test]
+fn test_read_acts_open_only_filters_closed_states_in_open_file() {
+    let env = TestEnv::new();
+
+    env.write_actions("work.actions", "[ ] Open task\n[x] Done task\n[_] Cancelled task");
+    let work_path = env.data_dir.join("work.actions");
+
+    env.command()
+        .arg("read")
+        .arg("acts")
+        .arg("--open-only")
+        .arg("--file")
+        .arg(work_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Open task"))
+        .stdout(predicate::str::contains("Done task").not())
+        .stdout(predicate::str::contains("Cancelled task").not());
+}
+
+#[test]
+fn test_show_act_resolves_by_name() {
+    let env = TestEnv::new();
+
+    env.write_actions("work.actions", "[ ] Inspect CLI $Useful detail$ +cli");
+    let work_path = env.data_dir.join("work.actions");
+
+    env.command()
+        .arg("show")
+        .arg("act")
+        .arg("Inspect")
+        .arg("--file")
+        .arg(work_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Inspect CLI"))
+        .stdout(predicate::str::contains("description:"));
+}
+
+#[test]
 fn test_read_acts_json_format() {
     let env = TestEnv::new();
 
@@ -473,13 +512,16 @@ fn test_add_command() {
         .arg("add")
         .arg("plan")
         .arg("New Task")
+        .arg("--scheduled-at")
+        .arg("2026-04-28T10:00:00Z")
         .assert()
         .success(); // outputs UUID to stdout
 
     // Check file content
-    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
-    assert!(content.contains("[ ] New Task"));
-    assert!(content.contains("#")); // UUID should be there
+    let content = fs::read_to_string(env.data_dir.join("inbox.ics")).unwrap();
+    assert!(content.contains("SUMMARY:New Task"));
+    assert!(content.contains("UID:"));
+    assert!(content.contains("DTSTART"));
 }
 
 #[test]
@@ -498,14 +540,17 @@ fn test_add_command_with_options() {
         .arg("urgent")
         .arg("--description")
         .arg("Do it now")
+        .arg("--rrule")
+        .arg("FREQ=WEEKLY;BYDAY=MO")
         .assert()
         .success();
 
-    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
-    assert!(content.contains("[ ] High Priority Task"));
-    assert!(content.contains("!1"));
-    assert!(content.contains("+work,urgent"));
-    assert!(content.contains("$ Do it now"));
+    let content = fs::read_to_string(env.data_dir.join("inbox.ics")).unwrap();
+    assert!(content.contains("SUMMARY:High Priority Task"));
+    assert!(content.contains("PRIORITY:1"));
+    assert!(content.contains("CATEGORIES:work\\,urgent"));
+    assert!(content.contains("DESCRIPTION:Do it now"));
+    assert!(content.contains("RRULE:FREQ=WEEKLY;BYDAY=MO"));
 }
 
 #[test]
@@ -516,12 +561,12 @@ fn test_complete_command() {
 
     env.command()
         .arg("complete")
-        .arg("plan")
+        .arg("act")
         .arg(uuid)
         .assert()
         .success(); // completion logged via tracing, no stdout output
 
-    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
+    let content = fs::read_to_string(env.data_dir.join("inbox.completed.actions")).unwrap();
     assert!(content.contains("[x] Task to complete"));
     assert!(content.contains("%")); // Completed date
 }
@@ -533,12 +578,12 @@ fn test_complete_command_by_name() {
 
     env.command()
         .arg("complete")
-        .arg("plan")
+        .arg("act")
         .arg("Unique Task")
         .assert()
         .success();
 
-    let content = fs::read_to_string(env.data_dir.join("inbox.actions")).unwrap();
+    let content = fs::read_to_string(env.data_dir.join("inbox.completed.actions")).unwrap();
     assert!(content.contains("[x] Unique Task Name"));
 }
 
@@ -549,11 +594,39 @@ fn test_complete_command_idempotent_fail() {
 
     env.command()
         .arg("complete")
-        .arg("plan")
+        .arg("act")
         .arg("Already Done")
         .assert()
         .failure() // Should fail as no *open* action found
-        .stderr(predicate::str::contains("No open action found"));
+        .stderr(predicate::str::contains("No open act found"));
+}
+
+#[test]
+fn test_complete_plan_explains_state_lives_on_acts() {
+    let env = TestEnv::new();
+    env.write_ics("inbox.ics", &["Scheduled Plan"]);
+
+    env.command()
+        .arg("complete")
+        .arg("plan")
+        .arg("Scheduled Plan")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("use `complete act`"));
+}
+
+#[test]
+fn test_archive_plans_explains_schedule_archival_is_unresolved() {
+    let env = TestEnv::new();
+    env.write_ics("inbox.ics", &["Scheduled Plan"]);
+
+    env.command()
+        .arg("archive")
+        .arg("plans")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Plan archival is not implemented"))
+        .stderr(predicate::str::contains("archive acts"));
 }
 
 #[test]
