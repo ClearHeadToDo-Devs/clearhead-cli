@@ -66,8 +66,9 @@ impl CommandContext {
 
     /// Resolve an optional file arg against the default file from config.
     pub fn resolve_action_file(&self, file: Option<&PathBuf>) -> PathBuf {
+        let charter_root = clearhead_core::charter_root(&self.data_dir);
         file.cloned()
-            .unwrap_or_else(|| resolve_file_path(&self.config.default_file, &self.data_dir))
+            .unwrap_or_else(|| resolve_file_path(&self.config.default_file, &charter_root))
     }
 
     /// Resolve indent style and width from config.

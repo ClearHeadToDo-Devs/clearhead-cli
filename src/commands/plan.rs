@@ -265,14 +265,24 @@ pub fn show_plan(
     Ok(())
 }
 
-fn resolve_plan_file(
+fn plan_file_name(plan: &clearhead_core::Plan) -> String {
+    let uid = plan
+        .external_id
+        .clone()
+        .unwrap_or_else(|| plan.id.to_string());
+    format!("{}.ics", slug(&uid))
+}
+
+fn resolve_plans_dir(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     charter: &Option<String>,
 ) -> Result<PathBuf, String> {
     if let Some(path) = file {
-        return Ok(ctx.resolve_action_file(Some(path)));
+        return Ok(path.clone());
     }
+
+    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
 
     if let Some(query) = charter {
         let charters =
@@ -280,18 +290,21 @@ fn resolve_plan_file(
         let charter = resolve_markdown_charter(&charters, query)
             .ok_or_else(|| format!("No charter found matching '{}'", query))?;
 
-        if let Some(path) = &charter.ics_file {
-            return Ok(ctx.data_dir.join(path));
-        }
-        if let Some(path) = &charter.md_file {
-            return Ok(ctx.data_dir.join(path).with_extension("ics"));
+        if let Some(path) = &charter.plans_dir {
+            return Ok(charter_root.join(path));
         }
 
         let key = charter.alias.as_deref().unwrap_or(&charter.title);
-        return Ok(ctx.data_dir.join(format!("{}.ics", slug(key))));
+        return Ok(charter_root.join(slug(key)).join("plans"));
     }
 
-    Ok(ctx.resolve_action_file(None).with_extension("ics"))
+    let default_actions = ctx.resolve_action_file(None);
+    let relative = default_actions
+        .strip_prefix(&charter_root)
+        .unwrap_or(default_actions.as_path());
+    let charter_name = clearhead_core::infer_charter_name(relative)
+        .ok_or_else(|| format!("Cannot infer charter name from '{}'", default_actions.display()))?;
+    Ok(charter_root.join(charter_name).join("plans"))
 }
 
 fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
@@ -302,11 +315,11 @@ fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
     }
 }
 
-fn save_plan_file(path: &Path, plans: &[clearhead_core::Plan]) -> Result<(), String> {
+fn save_plan_file(path: &Path, plan: &clearhead_core::Plan) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
-    fs::write(path, format_plans_as_ics(plans))
+    fs::write(path, format_plans_as_ics(std::slice::from_ref(plan)))
         .map_err(|e| format!("Failed to write plan file '{}': {}", path.display(), e))
 }
 
@@ -396,9 +409,9 @@ fn find_plan_for_mutation(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     query: &str,
-) -> Result<(PathBuf, Vec<clearhead_core::Plan>, usize), String> {
+) -> Result<(PathBuf, clearhead_core::Plan), String> {
     let files = if let Some(path) = file {
-        vec![ctx.resolve_action_file(Some(path))]
+        vec![path.clone()]
     } else {
         clearhead_core::workspace::plans::collect_plan_files(&ctx.data_dir)
             .map_err(|e| e.to_string())?
@@ -409,8 +422,8 @@ fn find_plan_for_mutation(
 
     for path in files {
         let plans = load_plan_file(&path)?;
-        if let Some(idx) = plans.iter().position(|plan| plan_matches(plan, query)) {
-            return Ok((path, plans, idx));
+        if let Some(plan) = plans.into_iter().find(|plan| plan_matches(plan, query)) {
+            return Ok((path, plan));
         }
     }
 
@@ -485,8 +498,8 @@ pub fn add_plan(
         return Err("Plan hierarchy in ICS files is not implemented yet".to_string());
     }
 
-    let input_file = resolve_plan_file(ctx, file, charter)?;
-    debug!(name = %name, input_file = %input_file.display(), dry_run = dry_run, "Executing Add Plan");
+    let plans_dir = resolve_plans_dir(ctx, file, charter)?;
+    debug!(name = %name, plans_dir = %plans_dir.display(), dry_run = dry_run, "Executing Add Plan");
 
     let uid = uuid::Uuid::now_v7().to_string();
     let new_id = clearhead_core::workspace::ics::plan_id_from_ics_uid(&uid);
@@ -504,13 +517,12 @@ pub fn add_plan(
         ..Default::default()
     };
 
-    let mut plans = load_plan_file(&input_file)?;
-    plans.push(new_plan.clone());
+    let input_file = plans_dir.join(plan_file_name(&new_plan));
 
     if dry_run {
         println!("{}", format_plans_as_ics(&[new_plan]));
     } else {
-        save_plan_file(&input_file, &plans)?;
+        save_plan_file(&input_file, &new_plan)?;
 
         try_emit(
             &new_id,
@@ -537,40 +549,40 @@ pub fn update_plan(
 ) -> Result<(), String> {
     reject_act_only_plan_fields(fields)?;
 
-    let (input_file, mut plans, idx) = find_plan_for_mutation(ctx, file, query)?;
+    let (input_file, mut plan) = find_plan_for_mutation(ctx, file, query)?;
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Update Plan");
 
     if let Some(name) = name {
-        plans[idx].name = name.clone();
+        plan.name = name.clone();
     }
     if let Some(priority) = fields.priority {
-        plans[idx].priority = Some(priority);
+        plan.priority = Some(priority);
     }
     if !fields.context.is_empty() {
-        plans[idx].contexts = Some(fields.context.clone());
+        plan.contexts = Some(fields.context.clone());
     }
     if let Some(description) = &fields.description {
-        plans[idx].description = Some(description.clone());
+        plan.description = Some(description.clone());
     }
     if let Some(alias) = &fields.alias {
-        plans[idx].alias = Some(alias.clone());
+        plan.alias = Some(alias.clone());
     }
     if schedule.scheduled_at.is_some() {
-        plans[idx].dtstart = parse_local_datetime(schedule.scheduled_at.as_deref())?;
+        plan.dtstart = parse_local_datetime(schedule.scheduled_at.as_deref())?;
     }
     if schedule.rrule.is_some() {
-        plans[idx].recurrence = parse_rrule(schedule.rrule.as_deref())?;
+        plan.recurrence = parse_rrule(schedule.rrule.as_deref())?;
     }
     if let Some(template) = &schedule.template {
-        plans[idx].template_name = Some(template.clone());
+        plan.template_name = Some(template.clone());
     }
 
-    let updated = plans[idx].clone();
+    let updated = plan.clone();
 
     if dry_run {
         println!("{}", format_plans_as_ics(&[updated]));
     } else {
-        save_plan_file(&input_file, &plans)?;
+        save_plan_file(&input_file, &updated)?;
         info!(name = %updated.name, id = %updated.id, "Plan updated successfully");
     }
     Ok(())
@@ -595,15 +607,14 @@ pub fn delete_plan(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (input_file, mut plans, idx) = find_plan_for_mutation(ctx, file, query)?;
+    let (input_file, plan) = find_plan_for_mutation(ctx, file, query)?;
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Delete Plan");
-
-    let plan = plans.remove(idx);
 
     if dry_run {
         println!("{}", format_plans_as_ics(&[plan]));
     } else {
-        save_plan_file(&input_file, &plans)?;
+        fs::remove_file(&input_file)
+            .map_err(|e| format!("Failed to delete plan file '{}': {}", input_file.display(), e))?;
 
         try_emit(
             &plan.id,

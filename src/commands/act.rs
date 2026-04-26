@@ -145,19 +145,20 @@ pub fn expand_acts(
         return Ok(());
     }
 
+    let mut by_charter: HashMap<String, Vec<_>> = HashMap::new();
+    for entry in entries {
+        by_charter
+            .entry(entry.charter_name.clone())
+            .or_default()
+            .push(entry);
+    }
+
     let mut total_added = 0usize;
     let mut charters_touched = 0usize;
     let mut parse_failures: Vec<PathBuf> = Vec::new();
 
-    for entry in &entries {
-        let plans = parse_ics_file(&entry.path)
-            .map_err(|e| format!("Failed to parse {}: {}", entry.path.display(), e))?;
-
-        if plans.is_empty() {
-            continue;
-        }
-
-        let actions_path = entry.path.with_extension("actions");
+    for (charter_name, charter_entries) in by_charter {
+        let actions_path = resolve_acts_file(ctx, &Some(charter_name.clone()), &None)?;
 
         let mut action_list = match super::load_file_for_mutation(&actions_path, "expand acts") {
             Ok(actions) => actions,
@@ -167,76 +168,83 @@ pub fn expand_acts(
                 continue;
             }
         };
-        let existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
+        let mut existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
 
         let mut new_count = 0usize;
         let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
 
-        for plan in &plans {
-            let vevent_uid = match &plan.external_id {
-                Some(uid) => uid.as_str(),
-                None => continue,
-            };
-            let Some(dtstart) = plan.dtstart else {
-                continue;
-            };
+        for entry in charter_entries {
+            let plans = parse_ics_file(&entry.path)
+                .map_err(|e| format!("Failed to parse {}: {}", entry.path.display(), e))?;
 
-            if plan.recurrence.is_some() {
-                let occurrences = plan.expand_occurrences(dtstart, 1000);
-                for occ in occurrences {
-                    let occ_local = occ.with_timezone(&Local);
-                    if occ_local > horizon {
-                        break;
+            for plan in &plans {
+                let vevent_uid = match &plan.external_id {
+                    Some(uid) => uid.as_str(),
+                    None => continue,
+                };
+                let Some(dtstart) = plan.dtstart else {
+                    continue;
+                };
+
+                if plan.recurrence.is_some() {
+                    let occurrences = plan.expand_occurrences(dtstart, 1000);
+                    for occ in occurrences {
+                        let occ_local = occ.with_timezone(&Local);
+                        if occ_local > horizon {
+                            break;
+                        }
+                        if occ_local < now {
+                            continue;
+                        }
+                        let occ_key = occ_local.to_rfc3339();
+                        let act_id = occurrence_act_id(vevent_uid, &occ_key);
+                        if existing_ids.contains(&act_id) {
+                            continue;
+                        }
+                        action_list.push(Action {
+                            id: act_id,
+                            state: ActionState::NotStarted,
+                            name: plan.name.clone(),
+                            do_date_time: Some(occ_local),
+                            created_date_time: Some(now),
+                            ..Default::default()
+                        });
+                        existing_ids.insert(act_id);
+                        new_count += 1;
+                        new_count += expand_template_children(
+                            plan,
+                            vevent_uid,
+                            &occ_key,
+                            act_id,
+                            charter_dir,
+                            &data_root,
+                            &mut action_list,
+                        );
                     }
-                    if occ_local < now {
-                        continue;
-                    }
-                    let occ_key = occ_local.to_rfc3339();
+                } else if dtstart >= now && dtstart <= horizon {
+                    let occ_key = dtstart.to_rfc3339();
                     let act_id = occurrence_act_id(vevent_uid, &occ_key);
-                    if existing_ids.contains(&act_id) {
-                        continue;
+                    if !existing_ids.contains(&act_id) {
+                        action_list.push(Action {
+                            id: act_id,
+                            state: ActionState::NotStarted,
+                            name: plan.name.clone(),
+                            do_date_time: Some(dtstart),
+                            created_date_time: Some(now),
+                            ..Default::default()
+                        });
+                        existing_ids.insert(act_id);
+                        new_count += 1;
+                        new_count += expand_template_children(
+                            plan,
+                            vevent_uid,
+                            &occ_key,
+                            act_id,
+                            charter_dir,
+                            &data_root,
+                            &mut action_list,
+                        );
                     }
-                    action_list.push(Action {
-                        id: act_id,
-                        state: ActionState::NotStarted,
-                        name: plan.name.clone(),
-                        do_date_time: Some(occ_local),
-                        created_date_time: Some(now),
-                        ..Default::default()
-                    });
-                    new_count += 1;
-                    new_count += expand_template_children(
-                        plan,
-                        vevent_uid,
-                        &occ_key,
-                        act_id,
-                        charter_dir,
-                        &data_root,
-                        &mut action_list,
-                    );
-                }
-            } else if dtstart >= now && dtstart <= horizon {
-                let occ_key = dtstart.to_rfc3339();
-                let act_id = occurrence_act_id(vevent_uid, &occ_key);
-                if !existing_ids.contains(&act_id) {
-                    action_list.push(Action {
-                        id: act_id,
-                        state: ActionState::NotStarted,
-                        name: plan.name.clone(),
-                        do_date_time: Some(dtstart),
-                        created_date_time: Some(now),
-                        ..Default::default()
-                    });
-                    new_count += 1;
-                    new_count += expand_template_children(
-                        plan,
-                        vevent_uid,
-                        &occ_key,
-                        act_id,
-                        charter_dir,
-                        &data_root,
-                        &mut action_list,
-                    );
                 }
             }
         }

@@ -42,7 +42,10 @@ impl TestEnv {
 
     /// Write an actions file to the test data directory
     fn write_actions(&self, filename: &str, content: &str) {
-        let actions_path = self.data_dir.join(filename);
+        let actions_path = self.data_dir.join("charters").join(filename);
+        if let Some(parent) = actions_path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create actions parent dir");
+        }
         fs::write(actions_path, content).expect("Failed to write actions file");
     }
 
@@ -56,7 +59,7 @@ impl TestEnv {
             ));
         }
         content.push_str("END:VCALENDAR\r\n");
-        let path = self.data_dir.join(filename);
+        let path = self.data_dir.join("charters").join(filename);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("Failed to create ics parent dir");
         }
@@ -87,7 +90,7 @@ impl TestEnv {
 fn test_read_plans_shows_ics_vevent() {
     let env = TestEnv::new();
 
-    env.write_ics("next.ics", &["My Plan"]);
+    env.write_ics("inbox/plans/root.ics", &["My Plan"]);
 
     env.command()
         .arg("read")
@@ -117,7 +120,7 @@ fn test_read_acts_specific_file() {
 
     env.write_actions("work.actions", "[-] In progress task");
 
-    let work_path = env.data_dir.join("work.actions");
+    let work_path = env.data_dir.join("charters").join("work.actions");
     env.command()
         .arg("read")
         .arg("acts")
@@ -136,7 +139,7 @@ fn test_read_acts_open_only_filters_closed_states_in_open_file() {
         "work.actions",
         "[ ] Open task\n[x] Done task\n[_] Cancelled task",
     );
-    let work_path = env.data_dir.join("work.actions");
+    let work_path = env.data_dir.join("charters").join("work.actions");
 
     env.command()
         .arg("read")
@@ -156,7 +159,7 @@ fn test_show_act_resolves_by_name() {
     let env = TestEnv::new();
 
     env.write_actions("work.actions", "[ ] Inspect CLI $Useful detail$ +cli");
-    let work_path = env.data_dir.join("work.actions");
+    let work_path = env.data_dir.join("charters").join("work.actions");
 
     env.command()
         .arg("show")
@@ -175,7 +178,7 @@ fn test_read_acts_json_format() {
     let env = TestEnv::new();
 
     env.write_actions("test.actions", "[x] Test $with description$ !1 +context");
-    let test_path = env.data_dir.join("test.actions");
+    let test_path = env.data_dir.join("charters").join("test.actions");
 
     env.command()
         .arg("read")
@@ -208,7 +211,7 @@ fn test_read_acts_with_hierarchy() {
     let env = TestEnv::new();
 
     env.write_actions("test.actions", "[x] Parent\n>[ ] Child\n>>[ ] Grandchild");
-    let test_path = env.data_dir.join("test.actions");
+    let test_path = env.data_dir.join("charters").join("test.actions");
 
     env.command()
         .arg("read")
@@ -230,7 +233,7 @@ fn test_format_style_flags() {
     // output format. --indent-width and --indent-style ARE applied by Topiary.
 
     env.write_actions("compact.actions", "[ ] Root\n>[ ] Child");
-    let compact_path = env.data_dir.join("compact.actions");
+    let compact_path = env.data_dir.join("charters").join("compact.actions");
 
     // --style compact with --indent-width 2: Topiary indents child with 2 spaces
     env.command()
@@ -247,7 +250,7 @@ fn test_format_style_flags() {
 
     // --style list is accepted (falls back to Topiary compact); description stays inline
     env.write_actions("list.actions", "[ ] Root $ Desc $");
-    let list_path = env.data_dir.join("list.actions");
+    let list_path = env.data_dir.join("charters").join("list.actions");
 
     env.command()
         .arg("format")
@@ -285,7 +288,7 @@ fn test_json_output_validates_against_schema() {
         "test.actions",
         "[x] Parent task $description$ !1 +work,urgent\n> [ ] Child task\n>> [-] Grandchild task",
     );
-    let test_path = env.data_dir.join("test.actions");
+    let test_path = env.data_dir.join("charters").join("test.actions");
 
     let output = env
         .command()
@@ -367,7 +370,7 @@ fn test_empty_actions_file() {
     let env = TestEnv::new();
 
     env.write_actions("empty.actions", "");
-    let empty_path = env.data_dir.join("empty.actions");
+    let empty_path = env.data_dir.join("charters").join("empty.actions");
 
     env.command()
         .arg("read")
@@ -383,7 +386,7 @@ fn test_actions_file_with_only_whitespace() {
     let env = TestEnv::new();
 
     env.write_actions("whitespace.actions", "   \n\n  \t  \n");
-    let ws_path = env.data_dir.join("whitespace.actions");
+    let ws_path = env.data_dir.join("charters").join("whitespace.actions");
 
     env.command()
         .arg("read")
@@ -416,7 +419,7 @@ fn test_normalize_adds_uuids() {
     let env = TestEnv::new();
     // Action without ID
     env.write_actions("no_id.actions", "[ ] Task without ID");
-    let file_path = env.data_dir.join("no_id.actions");
+    let file_path = env.data_dir.join("charters").join("no_id.actions");
 
     // Run normalize file --write
     env.command()
@@ -443,8 +446,8 @@ fn test_patch_updates_existing_actions() {
     // 2. Create Secondary file with same ID but different state
     env.write_actions("secondary.actions", &format!("[x] Task A #{}", uuid));
 
-    let primary_path = env.data_dir.join("primary.actions");
-    let secondary_path = env.data_dir.join("secondary.actions");
+    let primary_path = env.data_dir.join("charters").join("primary.actions");
+    let secondary_path = env.data_dir.join("charters").join("secondary.actions");
 
     // 3. Run patch
     env.command()
@@ -479,8 +482,8 @@ fn test_patch_appends_new_actions() {
         &format!("[ ] Task A #{}\n[ ] Task B #{}", uuid_a, uuid_b),
     );
 
-    let primary_path = env.data_dir.join("primary.actions");
-    let secondary_path = env.data_dir.join("secondary.actions");
+    let primary_path = env.data_dir.join("charters").join("primary.actions");
+    let secondary_path = env.data_dir.join("charters").join("secondary.actions");
 
     // 3. Run patch
     env.command()
@@ -514,7 +517,9 @@ fn test_add_command() {
         .success(); // outputs UUID to stdout
 
     // Check file content
-    let content = fs::read_to_string(env.data_dir.join("inbox.ics")).unwrap();
+    let plans_dir = env.data_dir.join("charters").join("inbox").join("plans");
+    let written = fs::read_dir(&plans_dir).unwrap().next().unwrap().unwrap().path();
+    let content = fs::read_to_string(written).unwrap();
     assert!(content.contains("SUMMARY:New Task"));
     assert!(content.contains("UID:"));
     assert!(content.contains("DTSTART"));
@@ -541,7 +546,9 @@ fn test_add_command_with_options() {
         .assert()
         .success();
 
-    let content = fs::read_to_string(env.data_dir.join("inbox.ics")).unwrap();
+    let plans_dir = env.data_dir.join("charters").join("inbox").join("plans");
+    let written = fs::read_dir(&plans_dir).unwrap().next().unwrap().unwrap().path();
+    let content = fs::read_to_string(written).unwrap();
     assert!(content.contains("SUMMARY:High Priority Task"));
     assert!(content.contains("PRIORITY:1"));
     assert!(content.contains("CATEGORIES:work\\,urgent"));
@@ -562,7 +569,7 @@ fn test_complete_command() {
         .assert()
         .success(); // completion logged via tracing, no stdout output
 
-    let content = fs::read_to_string(env.data_dir.join("inbox.completed.actions")).unwrap();
+    let content = fs::read_to_string(env.data_dir.join("charters").join("inbox.completed.actions")).unwrap();
     assert!(content.contains("[x] Task to complete"));
     assert!(content.contains("%")); // Completed date
 }
@@ -579,7 +586,7 @@ fn test_complete_command_by_name() {
         .assert()
         .success();
 
-    let content = fs::read_to_string(env.data_dir.join("inbox.completed.actions")).unwrap();
+    let content = fs::read_to_string(env.data_dir.join("charters").join("inbox.completed.actions")).unwrap();
     assert!(content.contains("[x] Unique Task Name"));
 }
 
@@ -600,7 +607,7 @@ fn test_complete_command_idempotent_fail() {
 #[test]
 fn test_complete_plan_explains_state_lives_on_acts() {
     let env = TestEnv::new();
-    env.write_ics("inbox.ics", &["Scheduled Plan"]);
+    env.write_ics("inbox/plans/scheduled-plan.ics", &["Scheduled Plan"]);
 
     env.command()
         .arg("complete")
@@ -614,7 +621,7 @@ fn test_complete_plan_explains_state_lives_on_acts() {
 #[test]
 fn test_archive_plans_explains_schedule_archival_is_unresolved() {
     let env = TestEnv::new();
-    env.write_ics("inbox.ics", &["Scheduled Plan"]);
+    env.write_ics("inbox/plans/scheduled-plan.ics", &["Scheduled Plan"]);
 
     env.command()
         .arg("archive")
@@ -673,7 +680,7 @@ fn test_read_acts_aggregates_all_files() {
     env.write_actions("inbox.actions", "[ ] Inbox task");
     env.write_actions("work.actions", "[ ] Work task");
 
-    let project_dir = env.data_dir.join("project1");
+    let project_dir = env.data_dir.join("charters").join("project1");
     fs::create_dir_all(&project_dir).unwrap();
     fs::write(project_dir.join("next.actions"), "[ ] Project task").unwrap();
 
@@ -694,7 +701,7 @@ fn test_read_acts_file_flag() {
     env.write_actions("inbox.actions", "[ ] Inbox task");
     env.write_actions("work.actions", "[ ] Work task");
 
-    let work_path = env.data_dir.join("work.actions");
+    let work_path = env.data_dir.join("charters").join("work.actions");
 
     env.command()
         .arg("read")
@@ -734,7 +741,7 @@ fn test_read_workspace_filter_by_project() {
 
     env.write_actions("inbox.actions", "[ ] Inbox task");
 
-    let project_dir = env.data_dir.join("myproject");
+    let project_dir = env.data_dir.join("charters").join("myproject");
     fs::create_dir_all(&project_dir).unwrap();
     fs::write(project_dir.join("next.actions"), "[ ] Project task").unwrap();
 
@@ -814,8 +821,8 @@ fn test_read_plans_charter_filter() {
 
     // Seed the domain model with the charter (needed for --charter resolution)
     env.write_text("build_clearhead/next.actions", "");
-    env.write_ics("build_clearhead/next.ics", &["Top level plan"]);
-    env.write_ics("build_clearhead/subcharter.ics", &["Sub plan"]);
+    env.write_ics("build_clearhead/plans/top-level-plan.ics", &["Top level plan"]);
+    env.write_ics("build_clearhead/subcharter/plans/sub-plan.ics", &["Sub plan"]);
 
     // Charter filter scopes to the matched charter's ICS file
     env.command()
@@ -866,12 +873,12 @@ fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
     let env = TestEnv::new();
 
     env.write_text(
-        "focus.ics",
+        "charters/focus/plans/focus.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20991201T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
 
     let malformed = "not valid actions syntax !!!\n[ ] existing stable action\n";
-    env.write_text("focus.actions", malformed);
+    env.write_text("charters/focus.actions", malformed);
 
     env.command()
         .arg("expand")
@@ -882,7 +889,7 @@ fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
         .failure()
         .stderr(predicate::str::contains("skipped due to parse issues"));
 
-    let after = fs::read_to_string(env.data_dir.join("focus.actions")).unwrap();
+    let after = fs::read_to_string(env.data_dir.join("charters").join("focus.actions")).unwrap();
     assert_eq!(after, malformed, "malformed file should be byte-stable");
 }
 
@@ -891,17 +898,17 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
     let env = TestEnv::new();
 
     env.write_text(
-        "bad.ics",
+        "charters/bad/plans/bad.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20991201T090000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     let bad_content = "not valid actions syntax !!!\n[ ] preserve me\n";
-    env.write_text("bad.actions", bad_content);
+    env.write_text("charters/bad.actions", bad_content);
 
     env.write_text(
-        "good.ics",
+        "charters/good/plans/good.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20991201T110000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
-    env.write_text("good.actions", "[ ] already here\n");
+    env.write_text("charters/good.actions", "[ ] already here\n");
 
     env.command()
         .arg("expand")
@@ -914,10 +921,10 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
             "expand acts failed for 1 charter file",
         ));
 
-    let bad_after = fs::read_to_string(env.data_dir.join("bad.actions")).unwrap();
+    let bad_after = fs::read_to_string(env.data_dir.join("charters").join("bad.actions")).unwrap();
     assert_eq!(bad_after, bad_content, "bad file must remain unchanged");
 
-    let good_after = fs::read_to_string(env.data_dir.join("good.actions")).unwrap();
+    let good_after = fs::read_to_string(env.data_dir.join("charters").join("good.actions")).unwrap();
     assert!(good_after.contains("already here"));
     assert!(good_after.contains("Good schedule"));
 }
@@ -926,10 +933,10 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
 fn test_read_acts_file_fails_on_malformed_input() {
     let env = TestEnv::new();
     env.write_text(
-        "malformed.actions",
+        "charters/malformed.actions",
         "not valid actions syntax !!!\n[ ] Keep me\n",
     );
-    let path = env.data_dir.join("malformed.actions");
+    let path = env.data_dir.join("charters").join("malformed.actions");
 
     env.command()
         .arg("read")
@@ -959,10 +966,10 @@ fn test_export_plans_stdin_recover_mode_warns_and_succeeds() {
 fn test_sync_events_file_recover_mode_warns_and_succeeds() {
     let env = TestEnv::new();
     env.write_text(
-        "recover-sync.actions",
+        "charters/recover-sync.actions",
         "not valid actions syntax !!!\n[ ] Sync me #019baaec-00b6-7991-be34-94b68212619a\n",
     );
-    let path = env.data_dir.join("recover-sync.actions");
+    let path = env.data_dir.join("charters").join("recover-sync.actions");
 
     env.command()
         .arg("sync")
@@ -978,8 +985,8 @@ fn test_sync_events_file_recover_mode_warns_and_succeeds() {
 fn test_normalize_file_write_parse_error_keeps_file_unchanged_and_fails() {
     let env = TestEnv::new();
     let malformed = "not valid actions syntax !!!\n[ ] Keep normalize file\n";
-    env.write_text("normalize-bad.actions", malformed);
-    let path = env.data_dir.join("normalize-bad.actions");
+    env.write_text("charters/normalize-bad.actions", malformed);
+    let path = env.data_dir.join("charters").join("normalize-bad.actions");
 
     env.command()
         .arg("normalize")
@@ -998,10 +1005,10 @@ fn test_normalize_file_write_parse_error_keeps_file_unchanged_and_fails() {
 fn test_format_file_read_recover_mode_warns_and_succeeds() {
     let env = TestEnv::new();
     env.write_text(
-        "format-recover.actions",
+        "charters/format-recover.actions",
         "not valid actions syntax !!!\n[ ] Keep formatting preview\n",
     );
-    let path = env.data_dir.join("format-recover.actions");
+    let path = env.data_dir.join("charters").join("format-recover.actions");
 
     env.command()
         .arg("format")
