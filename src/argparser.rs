@@ -842,6 +842,10 @@ pub enum ImportTarget {
         #[arg(long)]
         charter: Option<String>,
 
+        /// Overwrite existing plan files when the imported VEVENT UID already exists.
+        #[arg(long)]
+        overwrite: bool,
+
         /// Preview what would be imported without writing
         #[arg(long)]
         dry_run: bool,

@@ -236,8 +236,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::ImportTarget::Plans {
                 source,
                 charter,
+                overwrite,
                 dry_run,
-            } => commands::plan::import_plans(&ctx, source, charter, *dry_run),
+            } => commands::plan::import_plans(&ctx, source, charter, *overwrite, *dry_run),
         },
         Verb::Start { target } => match target {
             argparser::StartTarget::Lsp => commands::service::start_lsp(),

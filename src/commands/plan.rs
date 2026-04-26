@@ -653,6 +653,7 @@ pub fn import_plans(
     ctx: &CommandContext,
     source: &PathBuf,
     charter: &Option<String>,
+    overwrite: bool,
     dry_run: bool,
 ) -> Result<(), String> {
     let plans = load_plan_file(source)?;
@@ -669,12 +670,23 @@ pub fn import_plans(
 
     let plans_dir = resolve_plans_dir(ctx, &None, &Some(target_charter.clone()))?;
     let mut imported = 0usize;
+    let mut overwritten = 0usize;
 
     for plan in plans {
         let target_path = plans_dir.join(plan_file_name(&plan));
+        if target_path.exists() && !overwrite {
+            return Err(format!(
+                "Import would overwrite existing plan file '{}'; re-run with --overwrite",
+                target_path.display()
+            ));
+        }
+
         if dry_run {
             println!("Would import '{}' to {}", plan.name, target_path.display());
         } else {
+            if target_path.exists() {
+                overwritten += 1;
+            }
             save_plan_file(&target_path, &plan)?;
         }
         imported += 1;
@@ -686,8 +698,11 @@ pub fn import_plans(
             imported, target_charter
         );
     } else {
-        info!(count = imported, charter = %target_charter, source = %source.display(), "Plans imported");
-        println!("Imported {} plan(s) into charter '{}'", imported, target_charter);
+        info!(count = imported, overwritten = overwritten, charter = %target_charter, source = %source.display(), "Plans imported");
+        println!(
+            "Imported {} plan(s) into charter '{}' ({} overwritten)",
+            imported, target_charter, overwritten
+        );
     }
 
     Ok(())

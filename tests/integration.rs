@@ -157,6 +157,85 @@ fn test_import_plans_honors_explicit_charter_flag() {
 }
 
 #[test]
+fn test_import_plans_errors_on_existing_uid_without_overwrite() {
+    let env = TestEnv::new();
+    let existing = env
+        .data_dir
+        .join("charters")
+        .join("inbox")
+        .join("plans")
+        .join("focus@example.com.ics");
+    if let Some(parent) = existing.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(
+        &existing,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let source = env.data_dir.join("collision.ics");
+    fs::write(
+        &source,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    env.command()
+        .arg("import")
+        .arg("plans")
+        .arg(&source)
+        .arg("--charter")
+        .arg("inbox")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("re-run with --overwrite"));
+
+    let content = fs::read_to_string(existing).unwrap();
+    assert!(content.contains("SUMMARY:Old Focus"));
+}
+
+#[test]
+fn test_import_plans_overwrites_existing_uid_with_flag() {
+    let env = TestEnv::new();
+    let existing = env
+        .data_dir
+        .join("charters")
+        .join("inbox")
+        .join("plans")
+        .join("focus@example.com.ics");
+    if let Some(parent) = existing.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(
+        &existing,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let source = env.data_dir.join("collision.ics");
+    fs::write(
+        &source,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    env.command()
+        .arg("import")
+        .arg("plans")
+        .arg(&source)
+        .arg("--charter")
+        .arg("inbox")
+        .arg("--overwrite")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("(1 overwritten)"));
+
+    let content = fs::read_to_string(existing).unwrap();
+    assert!(content.contains("SUMMARY:New Focus"));
+}
+
+#[test]
 fn test_read_acts_with_default_file() {
     let env = TestEnv::new();
 
