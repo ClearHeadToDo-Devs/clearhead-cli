@@ -156,10 +156,39 @@ pub fn load_file_for_mutation(path: &Path, command: &str) -> Result<ActionList, 
 }
 
 /// Format actions and write to a .actions file on disk.
+///
+/// Also updates the charter sidecar (best-effort — sidecar failures
+/// are logged but do not prevent the actions file from being saved).
 pub fn save_file(path: &Path, actions: &ActionList) -> Result<(), String> {
     let content = clearhead_cli::format(actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-    fs::write(path, content)
-        .map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))
+    fs::write(path, &content)
+        .map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
+    if let Err(e) = update_sidecar(path, actions) {
+        warn!(path = %path.display(), error = %e, "Failed to update sidecar");
+    }
+    Ok(())
+}
+
+/// Ensure every action in the list has an entry in the charter sidecar.
+///
+/// New entries get `created` set to either the action's `created_date_time`
+/// (if present in the DSL) or `now()`. Existing entries are not overwritten.
+pub fn update_sidecar(actions_path: &Path, actions: &ActionList) -> Result<(), String> {
+    use clearhead_core::workspace::sidecar;
+    use chrono::Local;
+
+    let sc_path = sidecar::sidecar_path(actions_path);
+    let mut meta = sidecar::read_sidecar(&sc_path).map_err(|e| e.to_string())?;
+
+    for action in actions.iter() {
+        let key = action.id.to_string();
+        meta.acts.entry(key).or_insert_with(|| sidecar::ActMeta {
+            created: Some(action.created_date_time.unwrap_or_else(Local::now)),
+            source_vevent: None,
+        });
+    }
+
+    sidecar::write_sidecar(&sc_path, &meta).map_err(|e| e.to_string())
 }
 
 /// Write content to a file if `write` is true, otherwise print to stdout.
