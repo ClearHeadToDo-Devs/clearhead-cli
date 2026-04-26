@@ -87,7 +87,7 @@ fn resolve_acts_file(
     }
     if let Some(query) = charter {
         let mcs =
-            clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
+            clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
         let mc = resolve_markdown_charter(&mcs, query)
             .ok_or_else(|| format!("No charter found matching '{}'", query))?;
         let rel = mc
@@ -500,7 +500,7 @@ pub fn read_acts_cmd(
 ) -> Result<(), String> {
     let charter_acts_file: Option<PathBuf> = if let Some(query) = charter_filter {
         let mcs =
-            clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
+            clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
         let mc = resolve_markdown_charter(&mcs, query)
             .ok_or_else(|| format!("No charter found matching '{}'", query))?;
         let rel = mc

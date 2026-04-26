@@ -13,3 +13,5 @@
         >[x] extend update act command  $ currently only handles --scheduled-at and --duration; add --name, --priority, --state so all grooming operations are possible from CLI without touching raw files $ +cli  %2026-04-25T11:20 ^2026-04-24T00:00 #11a3d23e-c8c6-4c0e-903e-3dbf06c15a90
         >[x] add delete act command  $ remove an act from the workspace by id or reference. currently no way to delete from CLI — grooming duplicates or retired acts requires file editing $ +cli  %2026-04-25T11:20 ^2026-03-24T10:58 #019d20ff-d6c5-74c1-960f-b47cf07769fc
         >[ ] add move act command  $ reparent an act to a different charter or make it a sub-act of another. needed for restructuring as the workspace grows — currently requires editing the raw file and knowing the file layout $ +cli  ^2026-03-24T10:58 #019d20ff-e4b9-7eb1-a0f1-3aad340c95de
+[ ] wire the json sidecar work from core so that we can start populating it and using it for action definitions  ^2026-04-26T09:57 #019dcab9-4724-7760-bab6-f138bf288238
+[ ] stop emitting created date in the action itself and rely on sidecar  ^2026-04-26T09:57 #019dcab9-7652-7b03-a864-6b0de2b63ce3

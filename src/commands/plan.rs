@@ -286,7 +286,7 @@ fn resolve_plans_dir(
 
     if let Some(query) = charter {
         let charters =
-            clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
+            clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
         if let Some(charter) = resolve_markdown_charter(&charters, query) {
             if let Some(path) = &charter.plans_dir {
                 return Ok(charter_root.join(path));
