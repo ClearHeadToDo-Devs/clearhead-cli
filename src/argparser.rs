@@ -191,6 +191,12 @@ pub enum Verb {
         target: ExportTarget,
     },
 
+    /// Import external formats into canonical workspace storage
+    Import {
+        #[command(subcommand)]
+        target: ImportTarget,
+    },
+
     /// Expand schedule plans into planned act instances
     Expand {
         #[command(subcommand)]
@@ -822,6 +828,23 @@ pub enum ExportTarget {
         /// Include sub-charters when exporting a charter reference
         #[arg(long, requires = "reference")]
         recursive: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ImportTarget {
+    /// Import .ics plans and split them into vdir storage
+    Plans {
+        /// Source .ics file to import
+        source: PathBuf,
+
+        /// Target charter (name, alias, or UUID). Defaults to source filename stem.
+        #[arg(long)]
+        charter: Option<String>,
+
+        /// Preview what would be imported without writing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

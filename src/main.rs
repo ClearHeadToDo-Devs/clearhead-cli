@@ -232,6 +232,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 recursive,
             } => commands::plan::export_plans(&ctx, reference, output, *open_only, *recursive),
         },
+        Verb::Import { target } => match target {
+            argparser::ImportTarget::Plans {
+                source,
+                charter,
+                dry_run,
+            } => commands::plan::import_plans(&ctx, source, charter, *dry_run),
+        },
         Verb::Start { target } => match target {
             argparser::StartTarget::Lsp => commands::service::start_lsp(),
         },

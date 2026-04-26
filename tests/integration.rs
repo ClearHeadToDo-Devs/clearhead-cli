@@ -101,6 +101,62 @@ fn test_read_plans_shows_ics_vevent() {
 }
 
 #[test]
+fn test_import_plans_splits_multi_event_ics_into_vdir_files() {
+    let env = TestEnv::new();
+    let source = env.data_dir.join("bulk-export.ics");
+    fs::write(
+        &source,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:plan-one@example.com\r\nSUMMARY:Plan One\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:plan-two@example.com\r\nSUMMARY:Plan Two\r\nDTSTART:20260429T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    env.command()
+        .arg("import")
+        .arg("plans")
+        .arg(&source)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Imported 2 plan(s) into charter 'bulk-export'"));
+
+    let plans_dir = env
+        .data_dir
+        .join("charters")
+        .join("bulk-export")
+        .join("plans");
+    assert!(plans_dir.join("plan-one@example.com.ics").exists());
+    assert!(plans_dir.join("plan-two@example.com.ics").exists());
+}
+
+#[test]
+fn test_import_plans_honors_explicit_charter_flag() {
+    let env = TestEnv::new();
+    let source = env.data_dir.join("calendar.ics");
+    fs::write(
+        &source,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Focus Block\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    env.command()
+        .arg("import")
+        .arg("plans")
+        .arg(&source)
+        .arg("--charter")
+        .arg("inbox")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Imported 1 plan(s) into charter 'inbox'"));
+
+    let imported = env
+        .data_dir
+        .join("charters")
+        .join("inbox")
+        .join("plans")
+        .join("focus@example.com.ics");
+    assert!(imported.exists());
+}
+
+#[test]
 fn test_read_acts_with_default_file() {
     let env = TestEnv::new();
 

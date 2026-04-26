@@ -287,15 +287,16 @@ fn resolve_plans_dir(
     if let Some(query) = charter {
         let charters =
             clearhead_core::load_markdown_charters(&ctx.data_dir).map_err(|e| e.to_string())?;
-        let charter = resolve_markdown_charter(&charters, query)
-            .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+        if let Some(charter) = resolve_markdown_charter(&charters, query) {
+            if let Some(path) = &charter.plans_dir {
+                return Ok(charter_root.join(path));
+            }
 
-        if let Some(path) = &charter.plans_dir {
-            return Ok(charter_root.join(path));
+            let key = charter.alias.as_deref().unwrap_or(&charter.title);
+            return Ok(charter_root.join(slug(key)).join("plans"));
         }
 
-        let key = charter.alias.as_deref().unwrap_or(&charter.title);
-        return Ok(charter_root.join(slug(key)).join("plans"));
+        return Ok(charter_root.join(slug(query)).join("plans"));
     }
 
     let default_actions = ctx.resolve_action_file(None);
@@ -313,6 +314,14 @@ fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
     } else {
         Ok(Vec::new())
     }
+}
+
+fn charter_stem_from_source(source: &Path) -> Result<String, String> {
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| format!("Cannot derive charter name from '{}'", source.display()))?;
+    Ok(slug(stem))
 }
 
 fn save_plan_file(path: &Path, plan: &clearhead_core::Plan) -> Result<(), String> {
@@ -638,6 +647,50 @@ pub fn archive_plans(
     Err(
         "Plan archival is not implemented yet: plans are schedules in .ics files, and recurring schedule completion needs separate lifecycle semantics. Use `archive acts` to move completed/cancelled planned acts.".to_string(),
     )
+}
+
+pub fn import_plans(
+    ctx: &CommandContext,
+    source: &PathBuf,
+    charter: &Option<String>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let plans = load_plan_file(source)?;
+    if plans.is_empty() {
+        println!("No VEVENT schedules found in {}", source.display());
+        return Ok(());
+    }
+
+    let target_charter = if let Some(charter) = charter {
+        charter.clone()
+    } else {
+        charter_stem_from_source(source)?
+    };
+
+    let plans_dir = resolve_plans_dir(ctx, &None, &Some(target_charter.clone()))?;
+    let mut imported = 0usize;
+
+    for plan in plans {
+        let target_path = plans_dir.join(plan_file_name(&plan));
+        if dry_run {
+            println!("Would import '{}' to {}", plan.name, target_path.display());
+        } else {
+            save_plan_file(&target_path, &plan)?;
+        }
+        imported += 1;
+    }
+
+    if dry_run {
+        println!(
+            "Would import {} plan(s) into charter '{}'",
+            imported, target_charter
+        );
+    } else {
+        info!(count = imported, charter = %target_charter, source = %source.display(), "Plans imported");
+        println!("Imported {} plan(s) into charter '{}'", imported, target_charter);
+    }
+
+    Ok(())
 }
 
 pub fn export_plans(
