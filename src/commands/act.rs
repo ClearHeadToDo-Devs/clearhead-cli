@@ -112,7 +112,7 @@ pub fn expand_acts(
     dry_run: bool,
 ) -> Result<(), String> {
     use chrono::Duration;
-    use clearhead_core::workspace::ics::{occurrence_act_id, parse_ics_file};
+    use clearhead_core::workspace::ics::parse_ics_file;
     use clearhead_core::workspace::plans::collect_plan_files;
 
     let data_root = clearhead_core::charter_root(&ctx.data_dir);
@@ -168,97 +168,52 @@ pub fn expand_acts(
                 continue;
             }
         };
-        let mut existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
-
-        let mut new_count = 0usize;
+        let existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
         let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
 
-        for entry in charter_entries {
-            let plans = parse_ics_file(&entry.path)
-                .map_err(|e| format!("Failed to parse {}: {}", entry.path.display(), e))?;
+        let mut all_plans = Vec::new();
+        for entry in &charter_entries {
+            match parse_ics_file(&entry.path) {
+                Ok(plans) => all_plans.extend(plans),
+                Err(e) => return Err(format!("Failed to parse {}: {}", entry.path.display(), e)),
+            }
+        }
 
-            for plan in &plans {
-                let vevent_uid = match &plan.external_id {
-                    Some(uid) => uid.as_str(),
-                    None => continue,
-                };
-                let Some(dtstart) = plan.dtstart else {
-                    continue;
-                };
+        let new_base = clearhead_core::expand_plans_into_acts(&all_plans, &existing_ids, now, horizon);
+        if new_base.is_empty() {
+            continue;
+        }
 
-                if plan.recurrence.is_some() {
-                    let occurrences = plan.expand_occurrences(dtstart, 1000);
-                    for occ in occurrences {
-                        let occ_local = occ.with_timezone(&Local);
-                        if occ_local > horizon {
+        // Template children require filesystem access — handled here after core expansion.
+        let mut template_additions = Vec::new();
+        for act in &new_base {
+            if let Some(dt) = act.do_date_time {
+                let occ_key = dt.to_rfc3339();
+                for plan in &all_plans {
+                    if let Some(uid) = &plan.external_id {
+                        if clearhead_core::occurrence_act_id(uid, &occ_key) == act.id {
+                            expand_template_children(
+                                plan,
+                                uid,
+                                &occ_key,
+                                act.id,
+                                charter_dir,
+                                &data_root,
+                                &mut template_additions,
+                            );
                             break;
                         }
-                        if occ_local < now {
-                            continue;
-                        }
-                        let occ_key = occ_local.to_rfc3339();
-                        let act_id = occurrence_act_id(vevent_uid, &occ_key);
-                        if existing_ids.contains(&act_id) {
-                            continue;
-                        }
-                        action_list.push(Action {
-                            id: act_id,
-                            state: ActionState::NotStarted,
-                            name: plan.name.clone(),
-                            do_date_time: Some(occ_local),
-                            created_date_time: Some(now),
-                            ..Default::default()
-                        });
-                        existing_ids.insert(act_id);
-                        new_count += 1;
-                        new_count += expand_template_children(
-                            plan,
-                            vevent_uid,
-                            &occ_key,
-                            act_id,
-                            charter_dir,
-                            &data_root,
-                            &mut action_list,
-                        );
-                    }
-                } else if dtstart >= now && dtstart <= horizon {
-                    let occ_key = dtstart.to_rfc3339();
-                    let act_id = occurrence_act_id(vevent_uid, &occ_key);
-                    if !existing_ids.contains(&act_id) {
-                        action_list.push(Action {
-                            id: act_id,
-                            state: ActionState::NotStarted,
-                            name: plan.name.clone(),
-                            do_date_time: Some(dtstart),
-                            created_date_time: Some(now),
-                            ..Default::default()
-                        });
-                        existing_ids.insert(act_id);
-                        new_count += 1;
-                        new_count += expand_template_children(
-                            plan,
-                            vevent_uid,
-                            &occ_key,
-                            act_id,
-                            charter_dir,
-                            &data_root,
-                            &mut action_list,
-                        );
                     }
                 }
             }
         }
 
-        if new_count == 0 {
-            continue;
-        }
+        let new_count = new_base.len() + template_additions.len();
+        action_list.extend(new_base);
+        action_list.extend(template_additions);
 
         if dry_run {
-            println!(
-                "Would add {} act(s) to {}",
-                new_count,
-                actions_path.display()
-            );
+            println!("Would add {} act(s) to {}", new_count, actions_path.display());
         } else {
             super::save_file(&actions_path, &action_list)?;
             info!(count = new_count, path = %actions_path.display(), "Acts expanded");
@@ -271,10 +226,7 @@ pub fn expand_acts(
     if total_added == 0 && !dry_run {
         println!("Nothing to expand.");
     } else if charters_touched > 1 {
-        println!(
-            "Expanded {} act(s) across {} charter(s).",
-            total_added, charters_touched
-        );
+        println!("Expanded {} act(s) across {} charter(s).", total_added, charters_touched);
     }
 
     if !parse_failures.is_empty() {

@@ -521,7 +521,7 @@ pub fn add_plan(
         alias: fields.alias.clone(),
         recurrence: parse_rrule(schedule.rrule.as_deref())?,
         dtstart: parse_local_datetime(schedule.scheduled_at.as_deref())?,
-        external_id: Some(uid),
+        external_id: Some(uid.clone()),
         template_name: schedule.template.clone(),
         ..Default::default()
     };
@@ -541,8 +541,9 @@ pub fn add_plan(
             },
         );
 
-        info!(name = %name, id = %new_id, "Plan added successfully");
-        println!("{}", new_id);
+        let short_uid = &uid[..8];
+        info!(name = %name, uid = %uid, id = %new_id, "Plan added successfully");
+        println!("Added plan {} ({})", short_uid, name);
     }
     Ok(())
 }
