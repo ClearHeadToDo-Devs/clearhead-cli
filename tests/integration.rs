@@ -1154,3 +1154,64 @@ fn test_format_file_read_recover_mode_warns_and_succeeds() {
         .stdout(predicate::str::contains("Keep formatting preview"))
         .stderr(predicate::str::contains("parsed with"));
 }
+
+#[test]
+fn test_normalize_write_creates_sidecar() {
+    use clearhead_core::workspace::sidecar::read_sidecar;
+
+    let env = TestEnv::new();
+    let uuid = "01951111-0000-7000-0000-000000000001";
+    env.write_actions("work.actions", &format!("[ ] Task one #{}\n", uuid));
+    let file_path = env.data_dir.join("charters").join("work.actions");
+
+    env.command()
+        .arg("normalize")
+        .arg("file")
+        .arg(&file_path)
+        .arg("--write")
+        .assert()
+        .success();
+
+    let sidecar_path = env.data_dir.join("charters").join(".work.json");
+    assert!(sidecar_path.exists(), "sidecar must be created by normalize --write");
+
+    let meta = read_sidecar(&sidecar_path).unwrap();
+    assert!(meta.acts.contains_key(uuid), "sidecar must have entry for the act UUID");
+    assert!(meta.acts[uuid].created.is_some(), "sidecar entry must have created timestamp");
+}
+
+#[test]
+fn test_sidecar_additive_on_repeated_normalize() {
+    use clearhead_core::workspace::sidecar::read_sidecar;
+
+    let env = TestEnv::new();
+    let uuid = "01951111-0000-7000-0000-000000000001";
+    env.write_actions("work.actions", &format!("[ ] Task #{}\n", uuid));
+    let file_path = env.data_dir.join("charters").join("work.actions");
+    let sidecar_path = env.data_dir.join("charters").join(".work.json");
+
+    // First normalize — creates sidecar
+    env.command()
+        .arg("normalize")
+        .arg("file")
+        .arg(&file_path)
+        .arg("--write")
+        .assert()
+        .success();
+    let created_first = read_sidecar(&sidecar_path).unwrap().acts[uuid].created.unwrap();
+
+    // Second normalize — must preserve existing entry unchanged
+    env.command()
+        .arg("normalize")
+        .arg("file")
+        .arg(&file_path)
+        .arg("--write")
+        .assert()
+        .success();
+    let created_second = read_sidecar(&sidecar_path).unwrap().acts[uuid].created.unwrap();
+
+    assert_eq!(
+        created_first, created_second,
+        "created timestamp must not change on re-normalize"
+    );
+}
