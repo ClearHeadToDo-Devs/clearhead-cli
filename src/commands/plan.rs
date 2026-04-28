@@ -273,6 +273,18 @@ fn plan_file_name(plan: &clearhead_core::Plan) -> String {
     format!("{}.ics", slug(&uid))
 }
 
+fn plans_dir_path(charter_root: &Path, key: &str, acts_file: Option<&Path>) -> PathBuf {
+    let is_flat = acts_file
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n != "next.actions");
+    if is_flat {
+        charter_root.join(format!("{}.plans", slug(key)))
+    } else {
+        charter_root.join(slug(key)).join("plans")
+    }
+}
+
 fn resolve_plans_dir(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
@@ -293,7 +305,7 @@ fn resolve_plans_dir(
             }
 
             let key = charter.alias.as_deref().unwrap_or(&charter.title);
-            return Ok(charter_root.join(slug(key)).join("plans"));
+            return Ok(plans_dir_path(&charter_root, key, charter.acts_file.as_deref()));
         }
 
         return Ok(charter_root.join(slug(query)).join("plans"));
@@ -305,7 +317,7 @@ fn resolve_plans_dir(
         .unwrap_or(default_actions.as_path());
     let charter_name = clearhead_core::infer_charter_name(relative)
         .ok_or_else(|| format!("Cannot infer charter name from '{}'", default_actions.display()))?;
-    Ok(charter_root.join(charter_name).join("plans"))
+    Ok(plans_dir_path(&charter_root, &charter_name, Some(relative)))
 }
 
 fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
