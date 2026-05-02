@@ -16,7 +16,7 @@ use super::CommandContext;
 // ============================================================================
 
 /// Add a new standalone planned act to a charter's `.actions` file.
-pub fn add_act(
+pub fn add_action(
     ctx: &CommandContext,
     name: &str,
     charter: &Option<String>,
@@ -105,7 +105,7 @@ fn resolve_acts_file(
 /// Acts are written to `<charter>.actions`. Expansion is idempotent: act UUIDs
 /// are derived from `(VEVENT.UID, occurrence_rfc3339)` so re-running never
 /// creates duplicates. Only occurrences within `now..now+days` are generated.
-pub fn expand_acts(
+pub fn expand_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     days: u32,
@@ -251,7 +251,7 @@ pub fn expand_acts(
 // ============================================================================
 
 /// Mark an open act as completed (moves to `.completed.actions`).
-pub fn complete_act(
+pub fn complete_action(
     ctx: &CommandContext,
     query: &str,
     file: &Option<PathBuf>,
@@ -289,7 +289,7 @@ pub fn complete_act(
 }
 
 /// Update an open act's fields.
-pub fn update_act(
+pub fn update_action(
     ctx: &CommandContext,
     query: &str,
     name: &Option<String>,
@@ -347,7 +347,7 @@ pub fn update_act(
 }
 
 /// Delete an act from the workspace (open or closed).
-pub fn delete_act(
+pub fn delete_action(
     ctx: &CommandContext,
     query: &str,
     file: &Option<PathBuf>,
@@ -401,7 +401,7 @@ pub fn delete_act(
 }
 
 /// Cancel an open act (moves to `.completed.actions` with Cancelled state).
-pub fn cancel_act(
+pub fn cancel_action(
     ctx: &CommandContext,
     query: &str,
     file: &Option<PathBuf>,
@@ -442,7 +442,7 @@ pub fn cancel_act(
 // ============================================================================
 
 /// List acts, optionally filtered by charter and/or plan name.
-pub fn read_acts_cmd(
+pub fn read_actions_cmd(
     ctx: &CommandContext,
     format: Option<crate::argparser::ActFormat>,
     plan_filter: Option<&str>,
@@ -465,7 +465,7 @@ pub fn read_acts_cmd(
         None
     };
     let effective_file = charter_acts_file.as_ref().or(file.as_ref()).cloned();
-    let acts = collect_all_acts(ctx, &effective_file, open_only)?;
+    let acts = collect_all_actions(ctx, &effective_file, open_only)?;
 
     let acts: Vec<&Action> = acts
         .iter()
@@ -494,8 +494,8 @@ pub fn read_acts_cmd(
 }
 
 /// Show details for one planned act from open and completed act stores.
-pub fn show_act(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Result<(), String> {
-    let acts = collect_all_acts(ctx, file, false)?;
+pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Result<(), String> {
+    let acts = collect_all_actions(ctx, file, false)?;
     let act = acts
         .iter()
         .find(|act| act_matches(act, query))
@@ -541,7 +541,7 @@ pub fn show_act(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Re
 // ============================================================================
 
 /// Sweep completed/cancelled acts from `.actions` into `.completed.actions`.
-pub fn archive_acts(
+pub fn archive_actions(
     ctx: &CommandContext,
     scope: &Option<String>,
     file: &Option<PathBuf>,
@@ -752,7 +752,7 @@ fn resolve_markdown_charter<'a>(
         .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
-fn collect_all_acts(
+fn collect_all_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     open_only: bool,

@@ -1,4 +1,4 @@
-pub mod act;
+pub mod action;
 pub mod agenda;
 pub mod charter;
 pub mod complete;

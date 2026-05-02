@@ -104,7 +104,7 @@ fn charter_children<'a>(charter: &Charter, by_parent: &'a HashMap<String, Vec<&'
 
 fn open_act_count(charter: &Charter) -> usize {
     charter
-        .acts
+        .actions
         .iter()
         .filter(|a| !matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled))
         .count()
@@ -183,7 +183,7 @@ pub fn add_charter(
         parent: parent.clone(),
         objectives: None,
         plans: vec![],
-        acts: vec![],
+        actions: vec![],
     };
 
     if dry_run {

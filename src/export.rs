@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local, Utc};
-use clearhead_core::{ActPhase, DomainModel, Plan, PlannedAct};
+use clearhead_core::domain::Action;
+use clearhead_core::{ActPhase, DomainModel, Plan};
 use icalendar::{Calendar, Component, Event, EventLike, EventStatus};
 
 // ============================================================================
@@ -8,7 +9,7 @@ use icalendar::{Calendar, Component, Event, EventLike, EventStatus};
 
 /// Calculate event start and end times from scheduled_at and duration.
 ///
-/// Duration resolution order: act duration → plan duration → default 15 min.
+/// Duration resolution order: action duration → default 15 min.
 pub fn calculate_event_times(
     scheduled_at: DateTime<Local>,
     duration: Option<u32>,
@@ -48,18 +49,18 @@ pub fn map_phase_to_event_status(phase: ActPhase) -> EventStatus {
     }
 }
 
-/// Check if a PlannedAct should be included in calendar export.
+/// Check if an Action should be included in calendar export.
 ///
 /// - Must have `scheduled_at` to anchor the event in time.
-/// - When `open_only`, excludes Completed and Cancelled acts.
-pub fn should_include_act(act: &PlannedAct, open_only: bool) -> bool {
-    if act.scheduled_at.is_none() {
+/// - When `open_only`, excludes Completed and Cancelled actions.
+pub fn should_include_action(action: &Action, open_only: bool) -> bool {
+    if action.scheduled_at.is_none() {
         return false;
     }
 
     if open_only {
         matches!(
-            act.phase,
+            action.phase,
             ActPhase::NotStarted | ActPhase::InProgress | ActPhase::Blocked
         )
     } else {
@@ -67,19 +68,19 @@ pub fn should_include_act(act: &PlannedAct, open_only: bool) -> bool {
     }
 }
 
-/// Convert a Plan + PlannedAct pair to an iCalendar Event.
+/// Convert a Plan + Action pair to an iCalendar Event.
 ///
 /// The Plan supplies the "what" (SUMMARY, DESCRIPTION, PRIORITY, CATEGORIES, RRULE).
-/// The PlannedAct supplies the "when" (DTSTART, DTEND, STATUS, COMPLETED).
+/// The Action supplies the "when" (DTSTART, DTEND, STATUS, COMPLETED).
 ///
-/// Returns `None` if the act has no `scheduled_at`.
-pub fn planned_act_to_ical_event(plan: &Plan, act: &PlannedAct) -> Option<Event> {
-    let scheduled_at = act.scheduled_at?;
+/// Returns `None` if the action has no `scheduled_at`.
+pub fn action_to_ical_event(plan: &Plan, action: &Action) -> Option<Event> {
+    let scheduled_at = action.scheduled_at?;
 
     let mut event = Event::new();
 
-    // UID: use act ID — each occurrence is a distinct event
-    event.uid(&act.id.to_string());
+    // UID: use action ID — each occurrence is a distinct event
+    event.uid(&action.id.to_string());
 
     // SUMMARY from Plan
     event.summary(&plan.name);
@@ -89,13 +90,13 @@ pub fn planned_act_to_ical_event(plan: &Plan, act: &PlannedAct) -> Option<Event>
         event.description(description);
     }
 
-    // DTSTART / DTEND: duration is occurrence-level semantics on PlannedAct
-    let (start, end) = calculate_event_times(scheduled_at, act.duration);
+    // DTSTART / DTEND
+    let (start, end) = calculate_event_times(scheduled_at, action.duration);
     event.starts(start);
     event.ends(end);
 
-    // RRULE from Plan — recurrence is information about the plan, not the act.
-    // The caller is responsible for only passing the first act when plan has recurrence
+    // RRULE from Plan — recurrence is information about the plan, not the action.
+    // Caller is responsible for only passing the first action when plan has recurrence
     // (making this the iCalendar master event).
     if let Some(recurrence) = &plan.recurrence {
         let rrule_str = recurrence.to_string();
@@ -103,12 +104,12 @@ pub fn planned_act_to_ical_event(plan: &Plan, act: &PlannedAct) -> Option<Event>
         event.add_property("RRULE", rrule);
     }
 
-    // STATUS from PlannedAct phase
-    event.status(map_phase_to_event_status(act.phase));
+    // STATUS from Action phase
+    event.status(map_phase_to_event_status(action.phase));
 
-    // COMPLETED timestamp for finished acts
-    if act.phase == ActPhase::Completed {
-        if let Some(completed_at) = act.completed_at {
+    // COMPLETED timestamp for finished actions
+    if action.phase == ActPhase::Completed {
+        if let Some(completed_at) = action.completed_at {
             event.timestamp(completed_at.with_timezone(&Utc));
         }
     }
@@ -129,13 +130,13 @@ pub fn planned_act_to_ical_event(plan: &Plan, act: &PlannedAct) -> Option<Event>
 
 /// Format a DomainModel as iCalendar (.ics).
 ///
-/// Walks charter → plan → acts hierarchy:
-/// - **Recurring plans**: emits one master VEVENT using the first scheduled act
+/// Walks charter → plan → actions hierarchy:
+/// - **Recurring plans**: emits one master VEVENT using the first scheduled action
 ///   as DTSTART, with the RRULE from the Plan. Calendar apps expand occurrences.
-/// - **Non-recurring plans**: emits one VEVENT per scheduled PlannedAct.
+/// - **Non-recurring plans**: emits one VEVENT per scheduled Action.
 ///
-/// Only acts with `scheduled_at` produce VEVENTs. Pass `open_only = true` to
-/// exclude Completed and Cancelled acts.
+/// Only actions with `scheduled_at` produce VEVENTs. Pass `open_only = true` to
+/// exclude Completed and Cancelled actions.
 pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<String, String> {
     let mut calendar = Calendar::new()
         .name("ClearHead Actions")
@@ -144,29 +145,29 @@ pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<Strin
 
     for charter in &model.charters {
         for plan in &charter.plans {
-            let plan_acts: Vec<&PlannedAct> = charter
-                .acts
+            let plan_actions: Vec<&Action> = charter
+                .actions
                 .iter()
                 .filter(|a| a.plan_id == Some(plan.id))
                 .collect();
 
             if plan.recurrence.is_some() {
-                // Recurring plan: the first scheduled act becomes the master VEVENT.
+                // Recurring plan: the first scheduled action becomes the master VEVENT.
                 // RRULE lives on the Plan (information content), so it's emitted once.
-                if let Some(act) = plan_acts.iter().find(|a| a.scheduled_at.is_some()) {
-                    if should_include_act(act, open_only) {
-                        if let Some(event) = planned_act_to_ical_event(plan, act) {
+                if let Some(action) = plan_actions.iter().find(|a| a.scheduled_at.is_some()) {
+                    if should_include_action(action, open_only) {
+                        if let Some(event) = action_to_ical_event(plan, action) {
                             calendar.push(event);
                         }
                     }
                 }
             } else {
-                // Non-recurring: each scheduled act is its own VEVENT
-                for act in plan_acts {
-                    if !should_include_act(act, open_only) {
+                // Non-recurring: each scheduled action is its own VEVENT
+                for action in plan_actions {
+                    if !should_include_action(action, open_only) {
                         continue;
                     }
-                    if let Some(event) = planned_act_to_ical_event(plan, act) {
+                    if let Some(event) = action_to_ical_event(plan, action) {
                         calendar.push(event);
                     }
                 }
@@ -192,12 +193,12 @@ mod tests {
         }
     }
 
-    fn make_act(
+    fn make_action(
         plan_id: Uuid,
         phase: ActPhase,
         scheduled_at: Option<DateTime<Local>>,
-    ) -> PlannedAct {
-        PlannedAct {
+    ) -> Action {
+        Action {
             id: Uuid::new_v5(&plan_id, b"act-0"),
             plan_id: Some(plan_id),
             phase,
@@ -265,40 +266,40 @@ mod tests {
     }
 
     #[test]
-    fn test_should_include_act_no_scheduled_at() {
+    fn test_should_include_action_no_scheduled_at() {
         let plan = make_plan("Task");
-        let act = make_act(plan.id, ActPhase::NotStarted, None);
-        assert!(!should_include_act(&act, false));
-        assert!(!should_include_act(&act, true));
+        let action = make_action(plan.id, ActPhase::NotStarted, None);
+        assert!(!should_include_action(&action, false));
+        assert!(!should_include_action(&action, true));
     }
 
     #[test]
-    fn test_should_include_act_with_scheduled_at() {
-        let plan = make_plan("Task");
-        let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
-        let act = make_act(plan.id, ActPhase::NotStarted, Some(dt));
-        assert!(should_include_act(&act, false));
-        assert!(should_include_act(&act, true));
-    }
-
-    #[test]
-    fn test_should_include_act_open_only_excludes_completed() {
+    fn test_should_include_action_with_scheduled_at() {
         let plan = make_plan("Task");
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
-        let act = make_act(plan.id, ActPhase::Completed, Some(dt));
-        assert!(should_include_act(&act, false));
-        assert!(!should_include_act(&act, true));
+        let action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
+        assert!(should_include_action(&action, false));
+        assert!(should_include_action(&action, true));
     }
 
     #[test]
-    fn test_planned_act_to_ical_event_basic() {
+    fn test_should_include_action_open_only_excludes_completed() {
+        let plan = make_plan("Task");
+        let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
+        let action = make_action(plan.id, ActPhase::Completed, Some(dt));
+        assert!(should_include_action(&action, false));
+        assert!(!should_include_action(&action, true));
+    }
+
+    #[test]
+    fn test_action_to_ical_event_basic() {
         let mut plan = make_plan("Test Event");
         plan.description = Some("Test description".to_string());
         plan.priority = Some(1);
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
-        let act = make_act(plan.id, ActPhase::NotStarted, Some(dt));
+        let action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
 
-        let event = planned_act_to_ical_event(&plan, &act).expect("Event should be created");
+        let event = action_to_ical_event(&plan, &action).expect("Event should be created");
         let event_str = event.to_string();
 
         assert!(event_str.contains("Test Event"));
@@ -306,14 +307,14 @@ mod tests {
     }
 
     #[test]
-    fn test_planned_act_to_ical_event_no_scheduled_at() {
+    fn test_action_to_ical_event_no_scheduled_at() {
         let plan = make_plan("Task");
-        let act = make_act(plan.id, ActPhase::NotStarted, None);
-        assert!(planned_act_to_ical_event(&plan, &act).is_none());
+        let action = make_action(plan.id, ActPhase::NotStarted, None);
+        assert!(action_to_ical_event(&plan, &action).is_none());
     }
 
     #[test]
-    fn test_planned_act_to_ical_event_carries_rrule_from_plan() {
+    fn test_action_to_ical_event_carries_rrule_from_plan() {
         let mut plan = make_plan("Daily standup");
         plan.recurrence = Some(Recurrence {
             frequency: "daily".to_string(),
@@ -332,22 +333,22 @@ mod tests {
             week_start: None,
         });
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 9, 0, 0).unwrap();
-        let act = make_act(plan.id, ActPhase::NotStarted, Some(dt));
+        let action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
 
-        let event = planned_act_to_ical_event(&plan, &act).expect("Event should be created");
+        let event = action_to_ical_event(&plan, &action).expect("Event should be created");
         let event_str = event.to_string();
 
         assert!(event_str.contains("RRULE:FREQ=DAILY;BYDAY=MO,TU"));
     }
 
     #[test]
-    fn test_act_duration_drives_calendar_length() {
+    fn test_action_duration_drives_calendar_length() {
         let plan = make_plan("Task");
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 9, 0, 0).unwrap();
-        let mut act = make_act(plan.id, ActPhase::NotStarted, Some(dt));
-        act.duration = Some(30);
+        let mut action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
+        action.duration = Some(30);
 
-        let (start, end) = calculate_event_times(dt, act.duration);
+        let (start, end) = calculate_event_times(dt, action.duration);
         assert_eq!(end - start, chrono::Duration::minutes(30));
     }
 }

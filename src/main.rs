@@ -76,13 +76,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::ReadTarget::Agenda { file, days } => {
                 commands::agenda::run_agenda(&ctx, file, *days)
             }
-            argparser::ReadTarget::Acts {
+            argparser::ReadTarget::Actions {
                 format,
                 plan,
                 charter,
                 open_only,
                 file,
-            } => commands::act::read_acts_cmd(
+            } => commands::action::read_actions_cmd(
                 &ctx,
                 *format,
                 plan.as_deref(),
@@ -98,8 +98,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 table_options,
             } => commands::plan::show_plan(&ctx, query, file, format, table_options),
-            argparser::ShowTarget::Act { query, file } => {
-                commands::act::show_act(&ctx, query, file)
+            argparser::ShowTarget::Action { query, file } => {
+                commands::action::show_action(&ctx, query, file)
             }
             argparser::ShowTarget::Charter { query } => {
                 commands::charter::show_charter(&ctx, query)
@@ -117,7 +117,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::add_plan(
                 &ctx, name, file, charter, parent, fields, schedule, *dry_run,
             ),
-            argparser::AddTarget::Act {
+            argparser::AddTarget::Action {
                 name,
                 charter,
                 file,
@@ -128,7 +128,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 scheduled_at,
                 duration,
                 dry_run,
-            } => commands::act::add_act(
+            } => commands::action::add_action(
                 &ctx, name, charter, file, parent, *priority, *state, alias,
                 scheduled_at, *duration, *dry_run,
             ),
@@ -149,7 +149,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 schedule,
                 dry_run,
             } => commands::plan::update_plan(&ctx, query, file, name, fields, schedule, *dry_run),
-            argparser::UpdateTarget::Act {
+            argparser::UpdateTarget::Action {
                 query,
                 name,
                 priority,
@@ -158,7 +158,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 duration,
                 file,
                 dry_run,
-            } => commands::act::update_act(
+            } => commands::action::update_action(
                 &ctx, query, name, *priority, *state, scheduled_at, duration, file, *dry_run,
             ),
         },
@@ -168,11 +168,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::plan::complete_plan(&ctx, query, file, *dry_run),
-            argparser::CompleteTarget::Act {
+            argparser::CompleteTarget::Action {
                 query,
                 file,
                 dry_run,
-            } => commands::act::complete_act(&ctx, query, file, *dry_run),
+            } => commands::action::complete_action(&ctx, query, file, *dry_run),
         },
         Verb::Delete { target } => match target {
             argparser::DeleteTarget::Plan {
@@ -180,11 +180,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::plan::delete_plan(&ctx, query, file, *dry_run),
-            argparser::DeleteTarget::Act {
+            argparser::DeleteTarget::Action {
                 query,
                 file,
                 dry_run,
-            } => commands::act::delete_act(&ctx, query, file, *dry_run),
+            } => commands::action::delete_action(&ctx, query, file, *dry_run),
         },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {
@@ -218,11 +218,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::plan::archive_plans(&ctx, scope, file, *dry_run),
-            argparser::ArchiveTarget::Acts {
+            argparser::ArchiveTarget::Actions {
                 scope,
                 file,
                 dry_run,
-            } => commands::act::archive_acts(&ctx, scope, file, *dry_run),
+            } => commands::action::archive_actions(&ctx, scope, file, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {
@@ -279,18 +279,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             Ok(())
         }
         Verb::Expand { target } => match target {
-            argparser::ExpandTarget::Acts {
+            argparser::ExpandTarget::Actions {
                 file,
                 days,
                 dry_run,
-            } => commands::act::expand_acts(&ctx, file, *days, *dry_run),
+            } => commands::action::expand_actions(&ctx, file, *days, *dry_run),
         },
         Verb::Cancel { target } => match target {
-            argparser::CancelTarget::Act {
+            argparser::CancelTarget::Action {
                 query,
                 file,
                 dry_run,
-            } => commands::act::cancel_act(&ctx, query, file, *dry_run),
+            } => commands::action::cancel_action(&ctx, query, file, *dry_run),
         },
         Verb::Apply { target } => match target {
             argparser::ApplyTarget::Template {

@@ -41,13 +41,13 @@ pub struct PlanFields {
     #[arg(short, long)]
     pub alias: Option<String>,
 
-    /// State — plans do not have state; use `update act --state` for planned acts
+    /// State — plans do not have state; use `update action --state` for actions
     #[arg(short, long, value_enum)]
     pub state: Option<ActionStateArg>,
 }
 
 /// Schedule fields used by plan commands. Plans live in `.ics` files and
-/// describe when planned acts should be generated.
+/// describe when actions should be generated.
 #[derive(Args, Clone, Default, Debug)]
 pub struct PlanScheduleFields {
     /// Schedule anchor datetime (RFC3339, e.g. 2026-04-28T10:00:00-07:00)
@@ -197,7 +197,7 @@ pub enum Verb {
         target: ImportTarget,
     },
 
-    /// Expand schedule plans into planned act instances
+    /// Expand schedule plans into Action instances
     Expand {
         #[command(subcommand)]
         target: ExpandTarget,
@@ -338,8 +338,8 @@ pub enum ReadTarget {
         days: u32,
     },
 
-    /// Read and display planned acts
-    Acts {
+    /// Read and display actions
+    Actions {
         /// Output format (table or json)
         #[arg(short, long, value_enum)]
         format: Option<ActFormat>,
@@ -386,9 +386,9 @@ pub enum ShowTarget {
         table_options: CliTableOptions,
     },
 
-    /// Show details of a specific planned act
-    Act {
-        /// UUID, short UUID, alias, or name of the planned act
+    /// Show details of a specific action
+    Action {
+        /// UUID, short UUID, alias, or name of the action
         query: String,
 
         /// File containing the .actions file. If not provided, workspace search.
@@ -439,12 +439,12 @@ pub enum AddTarget {
         dry_run: bool,
     },
 
-    /// Add a new planned act to a charter's .actions file
-    Act {
-        /// Name of the act
+    /// Add a new action to a charter's .actions file
+    Action {
+        /// Name of the action
         name: String,
 
-        /// Charter to add the act to (name, alias, or UUID). Routes to the charter's .actions file.
+        /// Charter to add the action to (name, alias, or UUID). Routes to the charter's .actions file.
         #[arg(long, conflicts_with = "file")]
         charter: Option<String>,
 
@@ -536,9 +536,9 @@ pub enum UpdateTarget {
         dry_run: bool,
     },
 
-    /// Update a planned act's fields
-    Act {
-        /// UUID or 8-char prefix of the act
+    /// Update an action's fields
+    Action {
+        /// UUID or 8-char prefix of the action
         query: String,
 
         /// New name
@@ -587,9 +587,9 @@ pub enum CompleteTarget {
         dry_run: bool,
     },
 
-    /// Mark a planned act as completed
-    Act {
-        /// UUID or 8-char prefix of the act
+    /// Mark an action as completed
+    Action {
+        /// UUID or 8-char prefix of the action
         query: String,
 
         /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
@@ -618,9 +618,9 @@ pub enum DeleteTarget {
         dry_run: bool,
     },
 
-    /// Delete a planned act from the workspace
-    Act {
-        /// UUID, short UUID, alias, or name of the act to delete
+    /// Delete an action from the workspace
+    Action {
+        /// UUID, short UUID, alias, or name of the action to delete
         query: String,
 
         /// File containing the .actions file. If not provided, searches the workspace.
@@ -726,8 +726,8 @@ pub enum ArchiveTarget {
         dry_run: bool,
     },
 
-    /// Move completed/cancelled acts from `.actions` to `.completed.actions`. Workspace-wide by default.
-    Acts {
+    /// Move completed/cancelled actions from `.actions` to `.completed.actions`. Workspace-wide by default.
+    Actions {
         /// Domain path to scope: "health", "health/exercise", etc. Workspace-wide if omitted.
         scope: Option<String>,
 
@@ -747,8 +747,8 @@ pub enum ArchiveTarget {
 
 #[derive(Subcommand)]
 pub enum ExpandTarget {
-    /// Expand recurring plans into sidecar PlannedAct instances
-    Acts {
+    /// Expand recurring plans into Action instances
+    Actions {
         /// File to expand (.actions format). If not provided, uses the default file.
         file: Option<PathBuf>,
 
@@ -793,9 +793,9 @@ pub enum ApplyTarget {
 
 #[derive(Subcommand)]
 pub enum CancelTarget {
-    /// Cancel a planned act (sets phase to Cancelled)
-    Act {
-        /// UUID or 8-char prefix of the act
+    /// Cancel an action (sets phase to Cancelled)
+    Action {
+        /// UUID or 8-char prefix of the action
         query: String,
 
         /// File containing the .actions file (sidecar is derived). If not provided, workspace search.

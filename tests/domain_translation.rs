@@ -36,7 +36,7 @@ fn test_domain_round_trip_simple() {
         parent: None,
         objectives: None,
         plans: vec![plan],
-        acts: vec![act],
+        actions: vec![act],
     };
 
     let domain = DomainModel {

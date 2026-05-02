@@ -72,7 +72,7 @@ fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
 
     let charter_count = model.charters.len();
     let plan_count: usize = model.charters.iter().map(|c| c.plans.len()).sum();
-    let act_count: usize = model.charters.iter().map(|c| c.acts.len()).sum();
+    let act_count: usize = model.charters.iter().map(|c| c.actions.len()).sum();
     let warnings = count_workspace_warnings(&model.charters);
 
     println!(
