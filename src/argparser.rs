@@ -414,11 +414,11 @@ pub enum AddTarget {
         /// Name of the plan
         name: String,
 
-        /// .ics file to add to. If not provided, uses the default plan file
+        /// Explicit output .ics file path for the new single-event plan file
         #[arg(short, long, conflicts_with = "charter")]
         file: Option<PathBuf>,
 
-        /// Charter to add the plan to (name, alias, or UUID). Routes to the charter's .ics file.
+        /// Charter to add the plan to (name, alias, or UUID). Writes into that charter's plans/ directory.
         #[arg(long, conflicts_with = "file")]
         charter: Option<String>,
 

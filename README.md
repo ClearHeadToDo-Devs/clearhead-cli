@@ -158,7 +158,7 @@ clearhead_cli read --format calendar # iCalendar format (for actions with due da
 
 ### Add
 
-Add a new schedule plan to an `.ics` file. Generated or manually managed planned acts live in `.actions` files.
+Add a new schedule plan as a single-event `.ics` file inside a charter `plans/` directory. Generated or manually managed planned acts live in `.actions` files.
 
 ```bash
 # Add a one-off scheduled plan
@@ -166,6 +166,9 @@ clearhead_cli add plan "Buy groceries" --scheduled-at "2026-04-28T10:00:00-07:00
 
 # Add with metadata
 clearhead_cli add plan "Weekly review" --scheduled-at "2026-04-28T10:00:00-07:00" --rrule "FREQ=WEEKLY" --context work --description "Check logs"
+
+# Or write to an explicit vdir file path
+clearhead_cli add plan "Release freeze" --file ~/.local/share/clearhead/charters/work/plans/release-freeze.ics
 ```
 
 ### Complete

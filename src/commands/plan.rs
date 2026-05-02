@@ -274,12 +274,12 @@ fn plan_file_name(plan: &clearhead_core::Plan) -> String {
 }
 
 fn plans_dir_path(charter_root: &Path, key: &str, acts_file: Option<&Path>) -> PathBuf {
-    let is_flat = acts_file
+    let is_root = acts_file
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .is_some_and(|n| n != "next.actions");
-    if is_flat {
-        charter_root.join(format!("{}.plans", slug(key)))
+        .is_some_and(|n| n == "next.actions");
+    if is_root {
+        charter_root.join("plans")
     } else {
         charter_root.join(slug(key)).join("plans")
     }
@@ -318,6 +318,26 @@ fn resolve_plans_dir(
     let charter_name = clearhead_core::infer_charter_name(relative)
         .ok_or_else(|| format!("Cannot infer charter name from '{}'", default_actions.display()))?;
     Ok(plans_dir_path(&charter_root, &charter_name, Some(relative)))
+}
+
+fn resolve_add_plan_output_path(
+    ctx: &CommandContext,
+    file: &Option<PathBuf>,
+    charter: &Option<String>,
+    plan: &clearhead_core::Plan,
+) -> Result<PathBuf, String> {
+    if let Some(path) = file {
+        if path.extension().and_then(|ext| ext.to_str()) != Some("ics") {
+            return Err(format!(
+                "Explicit plan output path must end with '.ics': {}",
+                path.display()
+            ));
+        }
+        return Ok(path.clone());
+    }
+
+    let plans_dir = resolve_plans_dir(ctx, &None, charter)?;
+    Ok(plans_dir.join(plan_file_name(plan)))
 }
 
 fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
@@ -519,9 +539,6 @@ pub fn add_plan(
         return Err("Plan hierarchy in ICS files is not implemented yet".to_string());
     }
 
-    let plans_dir = resolve_plans_dir(ctx, file, charter)?;
-    debug!(name = %name, plans_dir = %plans_dir.display(), dry_run = dry_run, "Executing Add Plan");
-
     let uid = uuid::Uuid::now_v7().to_string();
     let new_id = clearhead_core::workspace::ics::plan_id_from_ics_uid(&uid);
     let new_plan = clearhead_core::Plan {
@@ -538,18 +555,19 @@ pub fn add_plan(
         ..Default::default()
     };
 
-    let input_file = plans_dir.join(plan_file_name(&new_plan));
+    let output_file = resolve_add_plan_output_path(ctx, file, charter, &new_plan)?;
+    debug!(name = %name, output_file = %output_file.display(), dry_run = dry_run, "Executing Add Plan");
 
     if dry_run {
         println!("{}", format_plans_as_ics(&[new_plan]));
     } else {
-        save_plan_file(&input_file, &new_plan)?;
+        save_plan_file(&output_file, &new_plan)?;
 
         try_emit(
             &new_id,
             TelemetryEvent::PlanCreated {
                 name: name.to_string(),
-                file_path: input_file.display().to_string(),
+                file_path: output_file.display().to_string(),
             },
         );
 

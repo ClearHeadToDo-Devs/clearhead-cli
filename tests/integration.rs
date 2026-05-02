@@ -692,6 +692,48 @@ fn test_add_command_with_options() {
 }
 
 #[test]
+fn test_add_plan_file_flag_writes_single_event_file_to_explicit_path() {
+    let env = TestEnv::new();
+    let output = env
+        .data_dir
+        .join("charters")
+        .join("focus")
+        .join("plans")
+        .join("focus-block.ics");
+
+    env.command()
+        .arg("add")
+        .arg("plan")
+        .arg("Focus Block")
+        .arg("--file")
+        .arg(&output)
+        .arg("--scheduled-at")
+        .arg("2026-04-28T10:00:00Z")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&output).unwrap();
+    assert!(content.contains("SUMMARY:Focus Block"));
+    assert!(content.contains("BEGIN:VEVENT"));
+}
+
+#[test]
+fn test_add_plan_file_flag_rejects_non_ics_path() {
+    let env = TestEnv::new();
+    let output = env.data_dir.join("charters").join("focus").join("plans");
+
+    env.command()
+        .arg("add")
+        .arg("plan")
+        .arg("Focus Block")
+        .arg("--file")
+        .arg(&output)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("must end with '.ics'"));
+}
+
+#[test]
 fn test_complete_command() {
     let env = TestEnv::new();
     let uuid = "019baaec-00b6-7991-be34-94b68212619a";
