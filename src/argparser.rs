@@ -339,6 +339,7 @@ pub enum ReadTarget {
     },
 
     /// Read and display actions
+    #[command(alias = "acts")]
     Actions {
         /// Output format (table or json)
         #[arg(short, long, value_enum)]
@@ -387,6 +388,7 @@ pub enum ShowTarget {
     },
 
     /// Show details of a specific action
+    #[command(alias = "act")]
     Action {
         /// UUID, short UUID, alias, or name of the action
         query: String,
@@ -588,6 +590,7 @@ pub enum CompleteTarget {
     },
 
     /// Mark an action as completed
+    #[command(alias = "act")]
     Action {
         /// UUID or 8-char prefix of the action
         query: String,
@@ -748,6 +751,7 @@ pub enum ArchiveTarget {
 #[derive(Subcommand)]
 pub enum ExpandTarget {
     /// Expand recurring plans into Action instances
+    #[command(alias = "acts")]
     Actions {
         /// File to expand (.actions format). If not provided, uses the default file.
         file: Option<PathBuf>,

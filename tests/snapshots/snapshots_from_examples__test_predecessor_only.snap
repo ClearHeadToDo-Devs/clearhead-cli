@@ -7,7 +7,6 @@ expression: actions
     id: "[uuid]",
     state: not_started,
     name: "Task name",
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",

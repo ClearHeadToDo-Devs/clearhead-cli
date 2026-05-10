@@ -8,7 +8,6 @@ expression: actions
     id: "[uuid]",
     state: completed,
     name: "story test",
-    createdDate: "[timestamp]",
     story: Some("Parent Story"),
   ),
 ]

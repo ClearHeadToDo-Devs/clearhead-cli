@@ -1,26 +1,19 @@
 use chrono::Local;
-use clearhead_cli::{ActPhase, Action, ActionState, Charter, DomainModel, Plan, PlannedAct};
+use clearhead_cli::{ActPhase, Action, ActionState, Charter, DomainModel, PlannedAct};
 use clearhead_core::workspace::actions::convert;
 use uuid::Uuid;
 
 #[test]
 fn test_domain_round_trip_simple() {
     // 1. Create a Domain Model manually (simulate CRDT state)
-    let plan_id = Uuid::now_v7();
-    let act_id = Uuid::now_v7();
+    let action_id = Uuid::now_v7();
 
-    let plan = Plan {
-        id: plan_id,
+    let act = PlannedAct {
+        id: action_id,
         name: "Test Task".to_string(),
         description: Some("Description".to_string()),
         priority: Some(1),
         contexts: Some(vec!["ctx".to_string()]),
-        ..Default::default()
-    };
-
-    let act = PlannedAct {
-        id: act_id,
-        plan_id: Some(plan_id),
         phase: ActPhase::NotStarted,
         scheduled_at: Some(Local::now()),
         duration: Some(30),
@@ -35,7 +28,7 @@ fn test_domain_round_trip_simple() {
         alias: None,
         parent: None,
         objectives: None,
-        plans: vec![plan],
+        plans: vec![],
         actions: vec![act],
     };
 
@@ -51,10 +44,7 @@ fn test_domain_round_trip_simple() {
     let action = &actions[0];
 
     // 3. Verify Translation
-    assert_eq!(
-        action.id, plan_id,
-        "Action ID should match Plan ID for singleton"
-    );
+    assert_eq!(action.id, action_id);
     assert_eq!(action.name, "Test Task");
     assert_eq!(action.state, ActionState::NotStarted);
     assert_eq!(action.description, Some("Description".to_string()));
@@ -79,13 +69,12 @@ fn test_from_actions_preserves_data() {
         charters: vec![charter],
     };
 
-    assert_eq!(domain.all_plans().len(), 1);
+    assert!(domain.all_plans().is_empty());
     assert_eq!(domain.all_acts().len(), 1);
 
-    let p = domain.all_plans()[0];
     let a = domain.all_acts()[0];
 
-    assert_eq!(p.name, "Source Action");
-    assert_eq!(p.priority, Some(2));
+    assert_eq!(a.name, "Source Action");
+    assert_eq!(a.priority, Some(2));
     assert_eq!(a.phase, ActPhase::InProgress);
 }

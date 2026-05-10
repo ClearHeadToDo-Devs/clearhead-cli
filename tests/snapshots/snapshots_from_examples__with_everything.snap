@@ -24,41 +24,35 @@ expression: actions
     parent_id: "[uuid]",
     state: not_started,
     name: "child action",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "grandchild action",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "great grandchild action",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "double-great grandchild action",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Leaf action",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     state: not_started,
     name: "Action with predecessor",
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",

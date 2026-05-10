@@ -8,19 +8,16 @@ expression: actions
     id: "[uuid]",
     state: not_started,
     name: "First root task",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Child of first",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     state: not_started,
     name: "Second root task",
-    createdDate: "[timestamp]",
   ),
 ]

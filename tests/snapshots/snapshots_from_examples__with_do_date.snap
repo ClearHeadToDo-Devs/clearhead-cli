@@ -10,6 +10,5 @@ expression: actions
     name: "meeting with team",
     doDateTime: Some("2025-01-20T14:30:00-08:00"),
     doDuration: Some(90),
-    createdDate: "[timestamp]",
   ),
 ]

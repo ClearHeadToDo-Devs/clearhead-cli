@@ -8,7 +8,6 @@ expression: actions
     state: not_started,
     name: "Task with description",
     description: Some("This is my description"),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",

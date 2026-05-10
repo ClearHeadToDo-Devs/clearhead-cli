@@ -12,6 +12,5 @@ expression: actions
       "office",
       "computer",
     ]),
-    createdDate: "[timestamp]",
   ),
 ]

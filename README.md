@@ -53,16 +53,16 @@ View it in different formats:
 
 ```bash
 # Read entire workspace (all .actions, charter, and objectives files)
-clearhead_cli read
+clearhead_cli read actions
 
 # Table view (great for browsing)
-clearhead_cli read --format table
+clearhead_cli read actions --format table
 
 # JSON (great for scripting)
-clearhead_cli read --format json
+clearhead_cli read actions --format json
 
 # Read a specific file
-clearhead_cli read file inbox.actions
+clearhead_cli read actions --file inbox.actions
 ```
 
 ## Features
@@ -137,23 +137,23 @@ The `read` command operates in three modes:
 
 ```bash
 # Workspace-wide read (default) - reads ALL .actions,charter, objectives files from data directory
-clearhead_cli read
+clearhead_cli read actions
 
 # Read specific file
-clearhead_cli read file ~/work.actions
+clearhead_cli read actions --file ~/work.actions
 
 # Read from stdin
-cat tasks.actions | clearhead_cli read stdio
+cat tasks.actions | clearhead_cli read plans --stdio
 ```
 
 **Output formats:**
 
 ```bash
-clearhead_cli read --format table   # Table view (great for browsing)
-clearhead_cli read --format actions # Original format (default)
-clearhead_cli read --format json    # JSON (great for scripting)
-clearhead_cli read --format xml     # XML format
-clearhead_cli read --format calendar # iCalendar format (for actions with due dates)
+clearhead_cli read plans --format table    # Table view (great for browsing)
+clearhead_cli read plans --format actions  # Original format (default)
+clearhead_cli read plans --format json     # JSON (great for scripting)
+clearhead_cli read plans --format xml      # XML format
+clearhead_cli export plans                 # iCalendar export for scheduled items
 ```
 
 ### Add
@@ -194,23 +194,23 @@ Format `.actions` files with proper spacing (preserves existing UUIDs).
 
 ```bash
 # Format a file with default compact style
-clearhead_cli format ~/work.actions --write
+clearhead_cli format file ~/work.actions --write
 
 # Preview formatted output without writing
-clearhead_cli format ~/work.actions
+clearhead_cli format file ~/work.actions
 
 # Format with specific style
-clearhead_cli format ~/work.actions --style compact --write
+clearhead_cli format file ~/work.actions --style compact --write
 ```
 
 ### Normalization**
 Ensure all actions have UUIDs (formats by default for clean output).
 ```bash
 # Add UUIDs and format
-clearhead_cli normalize ~/work.actions --write
+clearhead_cli normalize file ~/work.actions --write
 
 # Add UUIDs without formatting
-clearhead_cli normalize ~/work.actions --no-format --write
+clearhead_cli normalize file ~/work.actions --no-format --write
 ```
 
 
@@ -218,10 +218,10 @@ clearhead_cli normalize ~/work.actions --no-format --write
 Check your files for syntax errors, missing IDs, or convention violations.
 ```bash
 # Lint a specific file
-clearhead_cli lint ~/work.actions
+clearhead_cli lint file ~/work.actions
 
 # Lint output from another command
-cat ~/work.actions | clearhead_cli lint
+cat ~/work.actions | clearhead_cli lint file
 ```
 
 
@@ -244,7 +244,7 @@ The official [clearhead.nvim](https://github.com/ClearHeadToDo-Devs/clearhead.nv
 ### Built-in LSP
 The CLI includes a built-in Language Server. To use it with any LSP-compatible editor:
 ```bash
-clearhead_cli lsp
+clearhead_cli start lsp
 ```
 See [docs/LSP.md](docs/LSP.md) for configuration details.
 

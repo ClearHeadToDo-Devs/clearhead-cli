@@ -68,6 +68,53 @@ pub fn should_include_action(action: &Action, open_only: bool) -> bool {
     }
 }
 
+fn build_ical_event(
+    action: &Action,
+    summary: &str,
+    description: Option<&str>,
+    priority: Option<u32>,
+    contexts: Option<&Vec<String>>,
+    recurrence_rrule: Option<&str>,
+) -> Option<Event> {
+    let scheduled_at = action.scheduled_at?;
+
+    let mut event = Event::new();
+
+    // UID: use action ID — each occurrence is a distinct event
+    event.uid(&action.id.to_string());
+    event.summary(summary);
+
+    if let Some(description) = description {
+        event.description(description);
+    }
+
+    let (start, end) = calculate_event_times(scheduled_at, action.duration);
+    event.starts(start);
+    event.ends(end);
+
+    if let Some(rrule) = recurrence_rrule {
+        event.add_property("RRULE", rrule);
+    }
+
+    event.status(map_phase_to_event_status(action.phase));
+
+    if action.phase == ActPhase::Completed {
+        if let Some(completed_at) = action.completed_at {
+            event.timestamp(completed_at.with_timezone(&Utc));
+        }
+    }
+
+    if let Some(priority) = priority {
+        event.priority(map_priority_to_ical(priority));
+    }
+
+    if let Some(contexts) = contexts {
+        event.add_property("CATEGORIES", &contexts.join(","));
+    }
+
+    Some(event)
+}
+
 /// Convert a Plan + Action pair to an iCalendar Event.
 ///
 /// The Plan supplies the "what" (SUMMARY, DESCRIPTION, PRIORITY, CATEGORIES, RRULE).
@@ -75,57 +122,30 @@ pub fn should_include_action(action: &Action, open_only: bool) -> bool {
 ///
 /// Returns `None` if the action has no `scheduled_at`.
 pub fn action_to_ical_event(plan: &Plan, action: &Action) -> Option<Event> {
-    let scheduled_at = action.scheduled_at?;
-
-    let mut event = Event::new();
-
-    // UID: use action ID — each occurrence is a distinct event
-    event.uid(&action.id.to_string());
-
-    // SUMMARY from Plan
-    event.summary(&plan.name);
-
-    // DESCRIPTION from Plan
-    if let Some(description) = &plan.description {
-        event.description(description);
-    }
-
-    // DTSTART / DTEND
-    let (start, end) = calculate_event_times(scheduled_at, action.duration);
-    event.starts(start);
-    event.ends(end);
-
-    // RRULE from Plan — recurrence is information about the plan, not the action.
-    // Caller is responsible for only passing the first action when plan has recurrence
-    // (making this the iCalendar master event).
-    if let Some(recurrence) = &plan.recurrence {
+    let recurrence_rrule = plan.recurrence.as_ref().map(|recurrence| {
         let rrule_str = recurrence.to_string();
-        let rrule = rrule_str.strip_prefix("R:").unwrap_or(&rrule_str);
-        event.add_property("RRULE", rrule);
-    }
+        rrule_str.strip_prefix("R:").unwrap_or(&rrule_str).to_string()
+    });
 
-    // STATUS from Action phase
-    event.status(map_phase_to_event_status(action.phase));
+    build_ical_event(
+        action,
+        &plan.name,
+        plan.description.as_deref(),
+        plan.priority,
+        plan.contexts.as_ref(),
+        recurrence_rrule.as_deref(),
+    )
+}
 
-    // COMPLETED timestamp for finished actions
-    if action.phase == ActPhase::Completed {
-        if let Some(completed_at) = action.completed_at {
-            event.timestamp(completed_at.with_timezone(&Utc));
-        }
-    }
-
-    // PRIORITY from Plan
-    if let Some(priority) = plan.priority {
-        event.priority(map_priority_to_ical(priority));
-    }
-
-    // CATEGORIES from Plan contexts
-    if let Some(contexts) = &plan.contexts {
-        let categories = contexts.join(",");
-        event.add_property("CATEGORIES", &categories);
-    }
-
-    Some(event)
+fn direct_action_to_ical_event(action: &Action) -> Option<Event> {
+    build_ical_event(
+        action,
+        &action.name,
+        action.description.as_deref(),
+        action.priority,
+        action.contexts.as_ref(),
+        None,
+    )
 }
 
 /// Format a DomainModel as iCalendar (.ics).
@@ -171,6 +191,15 @@ pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<Strin
                         calendar.push(event);
                     }
                 }
+            }
+        }
+
+        for action in charter.actions.iter().filter(|a| a.plan_id.is_none()) {
+            if !should_include_action(action, open_only) {
+                continue;
+            }
+            if let Some(event) = direct_action_to_ical_event(action) {
+                calendar.push(event);
             }
         }
     }

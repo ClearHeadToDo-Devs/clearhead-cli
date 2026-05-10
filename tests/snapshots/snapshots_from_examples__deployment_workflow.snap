@@ -16,7 +16,6 @@ expression: actions
     ]),
     doDateTime: Some("2025-02-15T14:00:00-08:00"),
     doDuration: Some(30),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -38,7 +37,6 @@ expression: actions
     ]),
     doDateTime: Some("2025-02-15T10:00:00-08:00"),
     doDuration: Some(90),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -57,7 +55,6 @@ expression: actions
     ]),
     doDateTime: Some("2025-02-15T11:00:00-08:00"),
     doDuration: Some(60),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -74,7 +71,6 @@ expression: actions
       "Work",
     ]),
     doDateTime: Some("2025-02-14T17:00:00-08:00"),
-    createdDate: "[timestamp]",
     story: Some("Release Management"),
   ),
 ]

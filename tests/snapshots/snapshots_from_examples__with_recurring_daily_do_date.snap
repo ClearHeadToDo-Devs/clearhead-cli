@@ -9,6 +9,5 @@ expression: actions
     name: "Daily medication",
     doDateTime: Some("2019-01-01T00:01:00-08:00"),
     doDuration: Some(120),
-    createdDate: "[timestamp]",
   ),
 ]

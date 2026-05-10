@@ -13,7 +13,6 @@ expression: actions
     contexts: Some([
       "DevOps",
     ]),
-    createdDate: "[timestamp]",
     story: Some("Release"),
     isSequential: Some(true),
   ),
@@ -27,7 +26,6 @@ expression: actions
     contexts: Some([
       "Tooling",
     ]),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -39,7 +37,6 @@ expression: actions
     contexts: Some([
       "Testing",
     ]),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -51,7 +48,6 @@ expression: actions
     contexts: Some([
       "Testing",
     ]),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -63,7 +59,6 @@ expression: actions
     contexts: Some([
       "Build",
     ]),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -75,7 +70,6 @@ expression: actions
     contexts: Some([
       "Build",
     ]),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -85,7 +79,6 @@ expression: actions
     contexts: Some([
       "Home",
     ]),
-    createdDate: "[timestamp]",
     story: Some("Personal"),
     isSequential: Some(true),
   ),
@@ -94,35 +87,30 @@ expression: actions
     parent_id: "[uuid]",
     state: not_started,
     name: "Wake up",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Shower",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Get dressed",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Breakfast",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Check calendar",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -134,7 +122,6 @@ expression: actions
       "Work",
       "DevOps",
     ]),
-    createdDate: "[timestamp]",
     story: Some("Infrastructure"),
     isSequential: Some(true),
   ),
@@ -145,7 +132,6 @@ expression: actions
     name: "Take backup",
     description: Some("Backup current state before changes"),
     priority: Some(1),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -153,7 +139,6 @@ expression: actions
     state: not_started,
     name: "Stop services",
     priority: Some(2),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -162,7 +147,6 @@ expression: actions
     name: "Run migrations",
     description: Some("Apply database changes"),
     priority: Some(1),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -170,7 +154,6 @@ expression: actions
     state: not_started,
     name: "Deploy new code",
     priority: Some(1),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -178,7 +161,6 @@ expression: actions
     state: not_started,
     name: "Start services",
     priority: Some(2),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -186,7 +168,6 @@ expression: actions
     state: not_started,
     name: "Verify health checks",
     priority: Some(1),
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
@@ -194,6 +175,5 @@ expression: actions
     state: not_started,
     name: "Notify stakeholders",
     priority: Some(3),
-    createdDate: "[timestamp]",
   ),
 ]

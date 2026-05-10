@@ -13,7 +13,6 @@ expression: actions
       "Work",
       "Writing",
     ]),
-    createdDate: "[timestamp]",
     story: Some("Documentation"),
     alias: Some("docs"),
   ),
@@ -27,7 +26,6 @@ expression: actions
       "Work",
       "Review",
     ]),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -45,7 +43,6 @@ expression: actions
     contexts: Some([
       "DevOps",
     ]),
-    createdDate: "[timestamp]",
     story: Some("Infrastructure"),
     alias: Some("staging"),
   ),
@@ -58,7 +55,6 @@ expression: actions
       "DevOps",
       "QA",
     ]),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -78,7 +74,6 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
-    createdDate: "[timestamp]",
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",

@@ -110,7 +110,7 @@ clearhead_cli update objective --where "{ ?objective a :Objective ; :hasTag :som
 One core usecase is the creation of calendar events for upcoming planned acts so all we need to do is read all planned acts that have a start time in the future and export them to a calendar format like VEVENT. This can be done with a simple command like:
 
 ```
-clearhead_cli read acts --where "{ ?act a :PlannedAct ; :startTime ?startTime . FILTER(?startTime > NOW()) }" --format vcalendar
+clearhead_cli export plans --open-only
 ```
 
 By using our simple verb-noun structure and leveraging the power of SPARQL queries, we can easily create complex interactions without needing to add new commands or functionality to the CLI. This allows us to keep the interface simple and intuitive while still providing powerful tools for users to manage their work effectively.

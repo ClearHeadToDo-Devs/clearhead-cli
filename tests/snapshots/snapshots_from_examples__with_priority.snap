@@ -9,6 +9,5 @@ expression: actions
     state: completed,
     name: "buy groceries",
     priority: Some(1),
-    createdDate: "[timestamp]",
   ),
 ]

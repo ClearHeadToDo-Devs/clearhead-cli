@@ -14,7 +14,6 @@ expression: actions
       "DevOps",
       "Coding",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/clearhead/cli"),
   ),
   Action(
@@ -26,7 +25,6 @@ expression: actions
     contexts: Some([
       "Coding",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/clearhead/parser"),
   ),
   Action(
@@ -38,7 +36,6 @@ expression: actions
     contexts: Some([
       "Testing",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/clearhead/parser"),
   ),
   Action(
@@ -50,7 +47,6 @@ expression: actions
     contexts: Some([
       "Design",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/clearhead/neovim"),
   ),
   Action(
@@ -62,7 +58,6 @@ expression: actions
     contexts: Some([
       "DevOps",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/clearhead/cli"),
   ),
   Action(
@@ -75,7 +70,6 @@ expression: actions
       "Coding",
       "Creative",
     ]),
-    createdDate: "[timestamp]",
     story: Some("personal/website"),
   ),
   Action(
@@ -87,7 +81,6 @@ expression: actions
     contexts: Some([
       "Planning",
     ]),
-    createdDate: "[timestamp]",
     story: Some("personal/travel"),
   ),
   Action(
@@ -100,7 +93,6 @@ expression: actions
       "Bugfix",
       "Critical",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/other-project"),
   ),
   Action(
@@ -113,7 +105,6 @@ expression: actions
       "Coding",
       "Security",
     ]),
-    createdDate: "[timestamp]",
     story: Some("work/other-project"),
   ),
   Action(
@@ -125,7 +116,6 @@ expression: actions
     contexts: Some([
       "Reading",
     ]),
-    createdDate: "[timestamp]",
     story: Some("personal/learning"),
   ),
 ]

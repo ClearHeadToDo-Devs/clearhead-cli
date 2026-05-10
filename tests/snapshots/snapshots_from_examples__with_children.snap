@@ -8,27 +8,23 @@ expression: actions
     id: "[uuid]",
     state: completed,
     name: "Parent task",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Child task one",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Grandchild task",
-    createdDate: "[timestamp]",
   ),
   Action(
     id: "[uuid]",
     parent_id: "[uuid]",
     state: not_started,
     name: "Child task two",
-    createdDate: "[timestamp]",
   ),
 ]

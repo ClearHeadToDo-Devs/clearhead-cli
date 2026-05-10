@@ -3,6 +3,15 @@ use clearhead_cli::{get_parsed_document, lint_document};
 use std::fs;
 use std::path::PathBuf;
 
+const IMPLEMENTED_LINT_RULES: &[&str] = &[
+    // Errors (E001, E002 are unit-tested directly against constructed actions)
+    "E003", "E006", "E010", "E011",
+    // Warnings (W004 removed; created_at now lives in sidecar)
+    "W002", "W003", "W005", "W006",
+    // Info
+    "I001", "I002", "I003", "I004", "I008", "I010",
+];
+
 /// Get all linting test cases from the examples/linting directory
 fn get_linting_examples() -> Vec<(String, String, String)> {
     let mut examples = Vec::new();
@@ -48,18 +57,6 @@ fn get_linting_examples() -> Vec<(String, String, String)> {
 
 #[test]
 fn test_linting_error_detection() {
-    // List of currently implemented rules (updated to match spec codes)
-    // Note: E001/E002 (duration/recurrence without do-date) are implemented but
-    // can't be tested via parsing - the grammar requires D/R: to be inside do_date.
-    // These are tested via unit tests with constructed Action objects.
-    // E003, E006: Errors (parser correctness)
-    // W002-W006: Warnings (temporal/semantic issues)
-    let implemented_rules = vec![
-        "E003", "E006", "E010", "E011", // Errors (E001, E002 tested via unit tests only)
-        "W002", "W003", "W004", "W005", "W006", // Warnings
-        "I001", "I002", "I003", "I004", "I008", "I010", // Info
-    ];
-
     let examples = get_linting_examples();
 
     for (rule_name, error_content, _fixed_content) in &examples {
@@ -67,7 +64,7 @@ fn test_linting_error_detection() {
         let expected_code = rule_name.split('_').next().unwrap();
 
         // Skip unimplemented rules for now
-        if !implemented_rules.contains(&expected_code) {
+        if !IMPLEMENTED_LINT_RULES.contains(&expected_code) {
             eprintln!("Skipping unimplemented rule: {}", rule_name);
             continue;
         }
@@ -107,13 +104,6 @@ fn test_linting_error_detection() {
 
 #[test]
 fn test_linting_fixed_version_passes() {
-    // List of currently implemented rules (same as above)
-    let implemented_rules = vec![
-        "E003", "E006", "E010", "E011", // Errors (E001, E002 tested via unit tests only)
-        "W002", "W003", "W004", "W005", "W006", // Warnings
-        "I001", "I002", "I003", "I004", "I008", "I010", // Info
-    ];
-
     let examples = get_linting_examples();
 
     for (rule_name, _error_content, fixed_content) in &examples {
@@ -121,7 +111,7 @@ fn test_linting_fixed_version_passes() {
         let rule_code = rule_name.split('_').next().unwrap();
 
         // Skip unimplemented rules for now
-        if !implemented_rules.contains(&rule_code) {
+        if !IMPLEMENTED_LINT_RULES.contains(&rule_code) {
             continue;
         }
 
