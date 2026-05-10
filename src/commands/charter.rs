@@ -26,14 +26,95 @@ pub fn read_charters(
         return Ok(());
     }
 
-    if matches!(format, Some(argparser::Format::Json)) {
-        let json = serde_json::to_string_pretty(&charters)
-            .map_err(|e| format!("Failed to serialize charters: {}", e))?;
-        println!("{}", json);
-    } else {
-        print_charter_tree(&charters);
+    match format {
+        Some(argparser::Format::Json) => {
+            let json = serde_json::to_string_pretty(&charters)
+                .map_err(|e| format!("Failed to serialize charters: {}", e))?;
+            println!("{}", json);
+        }
+        Some(argparser::Format::Table) => {
+            print_charter_table(&charters);
+        }
+        _ => {
+            print_charter_tree(&charters);
+        }
     }
     Ok(())
+}
+
+fn print_charter_table(charters: &[&Charter]) {
+    use comfy_table::{Cell, Color, Table, presets::UTF8_FULL};
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_header(vec![
+            Cell::new("Title").fg(Color::Cyan),
+            Cell::new("Alias").fg(Color::Cyan),
+            Cell::new("Parent").fg(Color::Cyan),
+            Cell::new("Open Actions").fg(Color::Cyan),
+        ]);
+
+    let sorted = sort_charters_hierarchically(charters);
+
+    for charter in sorted {
+        let open = open_act_count(charter);
+        table.add_row(vec![
+            Cell::new(&charter.title),
+            Cell::new(charter.alias.as_deref().unwrap_or("-")),
+            Cell::new(charter.parent.as_deref().unwrap_or("-")),
+            Cell::new(if open > 0 { open.to_string() } else { "-".to_string() }),
+        ]);
+    }
+
+    println!("{table}");
+}
+
+fn sort_charters_hierarchically<'a>(charters: &[&'a Charter]) -> Vec<&'a Charter> {
+    let mut by_parent: HashMap<String, Vec<&Charter>> = HashMap::new();
+    let mut roots: Vec<&Charter> = Vec::new();
+
+    let all_keys: std::collections::HashSet<String> = charters
+        .iter()
+        .flat_map(|c| {
+            let mut v = vec![c.title.to_lowercase()];
+            if let Some(a) = &c.alias {
+                v.push(a.to_lowercase());
+            }
+            v
+        })
+        .collect();
+
+    for &c in charters {
+        match c.parent.as_deref() {
+            Some(p) if all_keys.contains(&p.to_lowercase()) => {
+                by_parent.entry(p.to_lowercase()).or_default().push(c);
+            }
+            _ => roots.push(c),
+        }
+    }
+
+    // Sort roots alphabetically
+    roots.sort_by(|a, b| a.title.cmp(&b.title));
+
+    let mut result = Vec::new();
+    for root in roots {
+        flatten_charter_hierarchy(root, &by_parent, &mut result);
+    }
+    result
+}
+
+fn flatten_charter_hierarchy<'a>(
+    charter: &'a Charter,
+    by_parent: &HashMap<String, Vec<&'a Charter>>,
+    result: &mut Vec<&'a Charter>,
+) {
+    result.push(charter);
+    let mut kids = charter_children(charter, by_parent);
+    kids.sort_by(|a, b| a.title.cmp(&b.title));
+    for kid in kids {
+        flatten_charter_hierarchy(kid, by_parent, result);
+    }
 }
 
 fn print_charter_tree(charters: &[&Charter]) {
@@ -60,6 +141,9 @@ fn print_charter_tree(charters: &[&Charter]) {
         }
     }
 
+    // Sort roots alphabetically
+    roots.sort_by(|a, b| a.title.cmp(&b.title));
+
     for root in &roots {
         let open = open_act_count(root);
         let open_str = if open > 0 { format!("  ({open} open)") } else { String::new() };
@@ -83,18 +167,32 @@ fn print_charter_node(
     println!("{}{}{}{}", prefix, connector, charter.title, open_str);
 
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
-    let kids = charter_children(charter, by_parent);
+    let mut kids = charter_children(charter, by_parent);
+    kids.sort_by(|a, b| a.title.cmp(&b.title));
     for (i, kid) in kids.iter().enumerate() {
         print_charter_node(kid, by_parent, &child_prefix, i == kids.len() - 1);
     }
 }
 
-fn charter_children<'a>(charter: &Charter, by_parent: &'a HashMap<String, Vec<&'a Charter>>) -> Vec<&'a Charter> {
+fn charter_children<'a>(
+    charter: &Charter,
+    by_parent: &HashMap<String, Vec<&'a Charter>>,
+) -> Vec<&'a Charter> {
     let mut kids: Vec<&Charter> = Vec::new();
     if let Some(alias) = charter.alias.as_deref() {
-        kids.extend(by_parent.get(&alias.to_lowercase()).into_iter().flatten().copied());
+        kids.extend(
+            by_parent
+                .get(&alias.to_lowercase())
+                .into_iter()
+                .flatten()
+                .copied(),
+        );
     }
-    for &kid in by_parent.get(&charter.title.to_lowercase()).into_iter().flatten() {
+    for &kid in by_parent
+        .get(&charter.title.to_lowercase())
+        .into_iter()
+        .flatten()
+    {
         if !kids.iter().any(|k| k.id == kid.id) {
             kids.push(kid);
         }

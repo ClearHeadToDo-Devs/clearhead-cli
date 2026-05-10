@@ -76,7 +76,7 @@ fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
     let warnings = count_workspace_warnings(&model.charters);
 
     println!(
-        "  graph_summary: {} charters | {} plans | {} acts | {} warnings",
+        "  graph_summary: {} charters | {} plans | {} actions | {} warnings",
         charter_count, plan_count, act_count, warnings
     );
 

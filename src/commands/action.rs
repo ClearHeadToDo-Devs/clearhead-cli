@@ -1,4 +1,4 @@
-//! Handlers for act commands (expand, complete, cancel, update, read, archive).
+//! Handlers for action commands (expand, complete, cancel, update, read, archive).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -12,10 +12,10 @@ use clearhead_core::{Action, ActionList, ActionState};
 use super::CommandContext;
 
 // ============================================================================
-// expand acts — ICS schedule → .actions file
+// expand actions — ICS schedule → .actions file
 // ============================================================================
 
-/// Add a new standalone planned act to a charter's `.actions` file.
+/// Add a new standalone action to a charter's `.actions` file.
 pub fn add_action(
     ctx: &CommandContext,
     name: &str,
@@ -37,7 +37,7 @@ pub fn add_action(
             let mut list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
             find_act_mut(&mut list, q)
                 .map(|a| a.id)
-                .ok_or_else(|| format!("No act found matching parent '{}'", q))
+                .ok_or_else(|| format!("No action found matching parent '{}'", q))
         })
         .transpose()?;
 
@@ -63,7 +63,7 @@ pub fn add_action(
     };
 
     if dry_run {
-        println!("Would add act '{}' to {}", name, actions_path.display());
+        println!("Would add action '{}' to {}", name, actions_path.display());
         return Ok(());
     }
 
@@ -71,8 +71,8 @@ pub fn add_action(
     list.push(act.clone());
     super::save_file(&actions_path, &list)?;
 
-    info!(id = %act.id, name = %name, "Act added");
-    println!("Added act {} ({})", &act.id.to_string()[..8], name);
+    info!(id = %act.id, name = %name, "Action added");
+    println!("Added action {} ({})", &act.id.to_string()[..8], name);
     Ok(())
 }
 
@@ -93,16 +93,16 @@ fn resolve_acts_file(
         let rel = mc
             .acts_file
             .as_ref()
-            .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
+            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
         let root = clearhead_core::charter_root(&ctx.data_dir);
         return Ok(root.join(rel));
     }
-    Err("Specify --charter <name> or --file <path> to target a charter's acts file".to_string())
+    Err("Specify --charter <name> or --file <path> to target a charter's actions file".to_string())
 }
 
-/// Expand ICS schedule VEVENTs into planned acts in the charter's `.actions` file.
+/// Expand ICS schedule VEVENTs into actions in the charter's `.actions` file.
 ///
-/// Acts are written to `<charter>.actions`. Expansion is idempotent: act UUIDs
+/// Actions are written to `<charter>.actions`. Expansion is idempotent: action UUIDs
 /// are derived from `(VEVENT.UID, occurrence_rfc3339)` so re-running never
 /// creates duplicates. Only occurrences within `now..now+days` are generated.
 pub fn expand_actions(
@@ -160,7 +160,7 @@ pub fn expand_actions(
     for (charter_name, charter_entries) in by_charter {
         let actions_path = resolve_acts_file(ctx, &Some(charter_name.clone()), &None)?;
 
-        let mut action_list = match super::load_file_for_mutation(&actions_path, "expand acts") {
+        let mut action_list = match super::load_file_for_mutation(&actions_path, "expand actions") {
             Ok(actions) => actions,
             Err(err) => {
                 warn!(path = %actions_path.display(), error = %err, "Skipping charter due to parse issues");
@@ -213,11 +213,11 @@ pub fn expand_actions(
         action_list.extend(template_additions);
 
         if dry_run {
-            println!("Would add {} act(s) to {}", new_count, actions_path.display());
+            println!("Would add {} action(s) to {}", new_count, actions_path.display());
         } else {
             super::save_file(&actions_path, &action_list)?;
-            info!(count = new_count, path = %actions_path.display(), "Acts expanded");
-            println!("Added {} act(s) to {}", new_count, actions_path.display());
+            info!(count = new_count, path = %actions_path.display(), "Actions expanded");
+            println!("Added {} action(s) to {}", new_count, actions_path.display());
             total_added += new_count;
             charters_touched += 1;
         }
@@ -226,19 +226,19 @@ pub fn expand_actions(
     if total_added == 0 && !dry_run {
         println!("Nothing to expand.");
     } else if charters_touched > 1 {
-        println!("Expanded {} act(s) across {} charter(s).", total_added, charters_touched);
+        println!("Expanded {} action(s) across {} charter(s).", total_added, charters_touched);
     }
 
     if !parse_failures.is_empty() {
         eprintln!(
-            "expand acts failed for {} charter file(s) due to parse errors",
+            "expand actions failed for {} charter file(s) due to parse errors",
             parse_failures.len()
         );
         for path in &parse_failures {
             eprintln!("  - {}", path.display());
         }
         return Err(format!(
-            "expand acts skipped {} file(s) due to parse errors",
+            "expand actions skipped {} file(s) due to parse errors",
             parse_failures.len()
         ));
     }
@@ -247,10 +247,10 @@ pub fn expand_actions(
 }
 
 // ============================================================================
-// Act lifecycle — complete, cancel, update
+// Action lifecycle — complete, cancel, update
 // ============================================================================
 
-/// Mark an open act as completed (moves to `.completed.actions`).
+/// Mark an open action as completed (moves to `.completed.actions`).
 pub fn complete_action(
     ctx: &CommandContext,
     query: &str,
@@ -261,7 +261,7 @@ pub fn complete_action(
 
     let (act_id, completed_act) = {
         let act = find_act_mut(&mut open_acts, query)
-            .ok_or_else(|| format!("No open act found matching '{}'", query))?;
+            .ok_or_else(|| format!("No open action found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
             act.state = ActionState::Completed;
@@ -271,7 +271,7 @@ pub fn complete_action(
     };
 
     if dry_run {
-        println!("Would complete act {}", &act_id.to_string()[..8]);
+        println!("Would complete action {}", &act_id.to_string()[..8]);
         return Ok(());
     }
 
@@ -283,12 +283,12 @@ pub fn complete_action(
     closed.push(completed_act);
     acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
 
-    info!(%act_id, "Act marked completed");
-    println!("Completed act {}", act_id);
+    info!(%act_id, "Action marked completed");
+    println!("Completed action {}", act_id);
     Ok(())
 }
 
-/// Update an open act's fields.
+/// Update an open action's fields.
 pub fn update_action(
     ctx: &CommandContext,
     query: &str,
@@ -313,7 +313,7 @@ pub fn update_action(
 
     let act_id = {
         let act = find_act_mut(&mut open_acts, query)
-            .ok_or_else(|| format!("No open act found matching '{}'", query))?;
+            .ok_or_else(|| format!("No open action found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
             if let Some(n) = name {
@@ -336,24 +336,24 @@ pub fn update_action(
     };
 
     if dry_run {
-        println!("Would update act {}", &act_id.to_string()[..8]);
+        println!("Would update action {}", &act_id.to_string()[..8]);
         return Ok(());
     }
 
     super::save_file(&actions_path, &open_acts)?;
-    info!(%act_id, "Act updated");
-    println!("Updated act {}", act_id);
+    info!(%act_id, "Action updated");
+    println!("Updated action {}", act_id);
     Ok(())
 }
 
-/// Delete an act from the workspace (open or closed).
+/// Delete an action from the workspace (open or closed).
 pub fn delete_action(
     ctx: &CommandContext,
     query: &str,
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    // Try open acts first, then completed.
+    // Try open actions first, then completed.
     let action_files: Vec<PathBuf> = if let Some(path) = file {
         vec![path.clone()]
     } else {
@@ -368,13 +368,13 @@ pub fn delete_action(
             let act_id = act.id;
             let act_name = act.name.clone();
             if dry_run {
-                println!("Would delete act {} ({})", &act_id.to_string()[..8], act_name);
+                println!("Would delete action {} ({})", &act_id.to_string()[..8], act_name);
                 return Ok(());
             }
             open.remove(pos);
             super::save_file(actions_path, &open)?;
-            info!(%act_id, "Act deleted");
-            println!("Deleted act {} ({})", &act_id.to_string()[..8], act_name);
+            info!(%act_id, "Action deleted");
+            println!("Deleted action {} ({})", &act_id.to_string()[..8], act_name);
             return Ok(());
         }
 
@@ -386,21 +386,21 @@ pub fn delete_action(
             let act_id = act.id;
             let act_name = act.name.clone();
             if dry_run {
-                println!("Would delete act {} ({})", &act_id.to_string()[..8], act_name);
+                println!("Would delete action {} ({})", &act_id.to_string()[..8], act_name);
                 return Ok(());
             }
             closed.remove(pos);
             acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
-            info!(%act_id, "Act deleted from completed");
-            println!("Deleted act {} ({})", &act_id.to_string()[..8], act_name);
+            info!(%act_id, "Action deleted from completed");
+            println!("Deleted action {} ({})", &act_id.to_string()[..8], act_name);
             return Ok(());
         }
     }
 
-    Err(format!("No act found matching '{}'", query))
+    Err(format!("No action found matching '{}'", query))
 }
 
-/// Cancel an open act (moves to `.completed.actions` with Cancelled state).
+/// Cancel an open action (moves to `.completed.actions` with Cancelled state).
 pub fn cancel_action(
     ctx: &CommandContext,
     query: &str,
@@ -411,7 +411,7 @@ pub fn cancel_action(
 
     let (act_id, cancelled_act) = {
         let act = find_act_mut(&mut open_acts, query)
-            .ok_or_else(|| format!("No open act found matching '{}'", query))?;
+            .ok_or_else(|| format!("No open action found matching '{}'", query))?;
         let id = act.id;
         if !dry_run {
             act.state = ActionState::Cancelled;
@@ -420,7 +420,7 @@ pub fn cancel_action(
     };
 
     if dry_run {
-        println!("Would cancel act {}", &act_id.to_string()[..8]);
+        println!("Would cancel action {}", &act_id.to_string()[..8]);
         return Ok(());
     }
 
@@ -432,16 +432,16 @@ pub fn cancel_action(
     closed.push(cancelled_act);
     acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
 
-    info!(%act_id, "Act cancelled");
-    println!("Cancelled act {}", act_id);
+    info!(%act_id, "Action cancelled");
+    println!("Cancelled action {}", act_id);
     Ok(())
 }
 
 // ============================================================================
-// read acts
+// read actions
 // ============================================================================
 
-/// List acts, optionally filtered by charter and/or plan name.
+/// List actions, optionally filtered by charter and/or plan name.
 pub fn read_actions_cmd(
     ctx: &CommandContext,
     format: Option<crate::argparser::ActFormat>,
@@ -458,7 +458,7 @@ pub fn read_actions_cmd(
         let rel = mc
             .acts_file
             .as_ref()
-            .ok_or_else(|| format!("Charter '{}' has no associated acts file", mc.title))?;
+            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
         let root = clearhead_core::charter_root(&ctx.data_dir);
         Some(root.join(rel))
     } else {
@@ -493,13 +493,13 @@ pub fn read_actions_cmd(
     Ok(())
 }
 
-/// Show details for one planned act from open and completed act stores.
+/// Show details for one action from open and completed action stores.
 pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Result<(), String> {
     let acts = collect_all_actions(ctx, file, false)?;
     let act = acts
         .iter()
         .find(|act| act_matches(act, query))
-        .ok_or_else(|| format!("No act found matching '{}'", query))?;
+        .ok_or_else(|| format!("No action found matching '{}'", query))?;
 
     println!("{}", act.name);
     println!("{}", "=".repeat(act.name.len()));
@@ -537,10 +537,10 @@ pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) ->
 }
 
 // ============================================================================
-// archive acts
+// archive actions
 // ============================================================================
 
-/// Sweep completed/cancelled acts from `.actions` into `.completed.actions`.
+/// Sweep completed/cancelled actions from `.actions` into `.completed.actions`.
 pub fn archive_actions(
     ctx: &CommandContext,
     scope: &Option<String>,
@@ -577,7 +577,7 @@ pub fn archive_actions(
 
         if dry_run {
             println!(
-                "Would archive {} act(s) from {}",
+                "Would archive {} action(s) from {}",
                 to_close.len(),
                 actions_path.display()
             );
@@ -593,7 +593,7 @@ pub fn archive_actions(
             info!(
                 count = to_close.len(),
                 charter = %actions_path.display(),
-                "Acts archived"
+                "Actions archived"
             );
         }
 
@@ -605,12 +605,12 @@ pub fn archive_actions(
         println!("Nothing to archive.");
     } else if dry_run {
         println!(
-            "Would archive {} act(s) across {} charter(s).",
+            "Would archive {} action(s) across {} charter(s).",
             total_archived, charters_touched
         );
     } else {
         println!(
-            "Archived {} act(s) across {} charter(s).",
+            "Archived {} action(s) across {} charter(s).",
             total_archived, charters_touched
         );
     }
@@ -628,13 +628,13 @@ fn find_and_load_open_acts(
     query: &str,
 ) -> Result<(PathBuf, ActionList), String> {
     if let Some(path) = file {
-        let acts = super::load_file_for_mutation(path, "act lifecycle")?;
+        let acts = super::load_file_for_mutation(path, "action lifecycle")?;
         return Ok((path.clone(), acts));
     }
     find_act_in_open_files(&ctx.data_dir, query)
 }
 
-/// Scan `.actions` files in the workspace for one containing an act matching `query`.
+/// Scan `.actions` files in the workspace for one containing an action matching `query`.
 fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionList), String> {
     let action_files = clearhead_core::list_action_files(data_dir)
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
@@ -649,7 +649,7 @@ fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, Acti
         }
     }
 
-    Err(format!("No open act found matching '{}'", query))
+    Err(format!("No open action found matching '{}'", query))
 }
 
 /// If the plan references a template, resolve and instantiate it as children of `root_id`.
@@ -672,7 +672,7 @@ fn expand_template_children(
     let tpl_path = match templates::resolve_template(charter_dir, data_root, tpl_name) {
         Ok(Some(p)) => p,
         Ok(None) => {
-            warn!(template = %tpl_name, "Template not found, expanding flat act only");
+            warn!(template = %tpl_name, "Template not found, expanding flat action only");
             return 0;
         }
         Err(e) => {

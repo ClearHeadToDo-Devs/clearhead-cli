@@ -447,7 +447,7 @@ fn parse_rrule(value: Option<&str>) -> Result<Option<clearhead_core::Recurrence>
 
 fn reject_act_only_plan_fields(fields: &argparser::PlanFields) -> Result<(), String> {
     if fields.state.is_some() {
-        return Err("Plan state is stored on planned acts; use `update act --state` once act state editing exists".to_string());
+        return Err("Plan state is stored on actions; use `update action --state` to edit action state".to_string());
     }
     Ok(())
 }
@@ -545,6 +545,11 @@ pub fn add_plan(
         return Err("Plan hierarchy in ICS files is not implemented yet".to_string());
     }
 
+    let rrule = parse_rrule(schedule.rrule.as_deref())?;
+    if rrule.is_none() {
+        return Err("Plans are for recurring work and require a recurrence rule (--rrule). For one-off scheduled tasks, use `add action --scheduled-at` instead.".to_string());
+    }
+
     let uid = uuid::Uuid::now_v7().to_string();
     let new_id = clearhead_core::workspace::ics::plan_id_from_ics_uid(&uid);
     let new_plan = clearhead_core::Plan {
@@ -554,7 +559,7 @@ pub fn add_plan(
         priority: fields.priority,
         contexts: (!fields.context.is_empty()).then(|| fields.context.clone()),
         alias: fields.alias.clone(),
-        recurrence: parse_rrule(schedule.rrule.as_deref())?,
+        recurrence: rrule,
         dtstart: parse_local_datetime(schedule.scheduled_at.as_deref())?,
         external_id: Some(uid.clone()),
         template_name: schedule.template.clone(),
@@ -642,7 +647,7 @@ pub fn complete_plan(
 ) -> Result<(), String> {
     let _ = (ctx, query, file, dry_run);
     Err(
-        "Plans are schedules and do not have completion state; use `complete act` for planned acts"
+        "Plans are schedules and do not have completion state; use `complete action` for actions"
             .to_string(),
     )
 }
@@ -682,7 +687,7 @@ pub fn archive_plans(
 ) -> Result<(), String> {
     let _ = (ctx, scope, file, dry_run);
     Err(
-        "Plan archival is not implemented yet: plans are schedules in .ics files, and recurring schedule completion needs separate lifecycle semantics. Use `archive acts` to move completed/cancelled planned acts.".to_string(),
+        "Plan archival is not implemented yet: plans are schedules in .ics files, and recurring schedule completion needs separate lifecycle semantics. Use `archive actions` to move completed/cancelled actions.".to_string(),
     )
 }
 

@@ -271,7 +271,7 @@ pub enum QueryTarget {
         /// Name of the query (stem of the .sparql file)
         name: String,
 
-        /// Filter by act status (substitutes ?STATUS_FILTER in the query)
+        /// Filter by action status (substitutes ?STATUS_FILTER in the query)
         #[arg(short, long, value_enum)]
         status: Option<ActionStateArg>,
 
@@ -345,15 +345,15 @@ pub enum ReadTarget {
         #[arg(short, long, value_enum)]
         format: Option<ActFormat>,
 
-        /// Filter acts by plan UUID, short UUID, alias, or name
+        /// Filter actions by plan UUID, short UUID, alias, or name
         #[arg(long)]
         plan: Option<String>,
 
-        /// Filter acts by charter (name, alias, or UUID)
+        /// Filter actions by charter (name, alias, or UUID)
         #[arg(long)]
         charter: Option<String>,
 
-        /// Only show open acts (excludes Completed and Cancelled)
+        /// Only show open actions (excludes Completed and Cancelled)
         #[arg(long)]
         open_only: bool,
 
@@ -428,7 +428,7 @@ pub enum AddTarget {
         #[arg(long)]
         parent: Option<String>,
 
-        /// Plan fields (priority, context, description, alias; state is act-only and rejected)
+        /// Plan fields (priority, context, description, alias; state is action-only and rejected)
         #[command(flatten)]
         fields: PlanFields,
 
@@ -454,7 +454,7 @@ pub enum AddTarget {
         #[arg(short, long, conflicts_with = "charter")]
         file: Option<PathBuf>,
 
-        /// Parent act UUID or short UUID
+        /// Parent action UUID or short UUID
         #[arg(long)]
         parent: Option<String>,
 
@@ -466,7 +466,7 @@ pub enum AddTarget {
         #[arg(short, long, value_enum)]
         state: Option<ActionStateArg>,
 
-        /// Alias for referencing this act
+        /// Alias for referencing this action
         #[arg(short, long)]
         alias: Option<String>,
 
@@ -525,7 +525,7 @@ pub enum UpdateTarget {
         #[arg(short, long)]
         name: Option<String>,
 
-        /// Plan fields to update (priority, context, description, alias; state is act-only and rejected)
+        /// Plan fields to update (priority, context, description, alias; state is action-only and rejected)
         #[command(flatten)]
         fields: PlanFields,
 
@@ -575,7 +575,7 @@ pub enum UpdateTarget {
 
 #[derive(Subcommand)]
 pub enum CompleteTarget {
-    /// Deprecated: plans are schedules; complete planned acts instead
+    /// Deprecated: plans are schedules; complete actions instead
     Plan {
         /// UUID or name of the plan
         query: String,
@@ -817,7 +817,7 @@ pub enum ExportTarget {
     /// Export plans to calendar format (iCalendar)
     #[command(alias = "calendar")]
     Plans {
-        /// Reference to export (charter/plan/act alias or UUID, or .actions file)
+        /// Reference to export (charter/plan/action alias or UUID, or .actions file)
         #[arg(value_name = "REFERENCE")]
         reference: Option<String>,
 
@@ -883,7 +883,7 @@ pub enum SyncTarget {
 // Shared value enums
 // =============================================================================
 
-/// Output format for act listing
+/// Output format for action listing
 #[derive(Clone, Copy, ValueEnum, Debug)]
 pub enum ActFormat {
     /// Pretty-printed table (default)
