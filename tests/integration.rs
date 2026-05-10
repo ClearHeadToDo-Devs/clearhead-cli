@@ -50,6 +50,25 @@ impl TestEnv {
     }
 
     fn write_ics(&self, filename: &str, summaries: &[&str]) {
+        let content = Self::ics_content(summaries);
+        let path = self.data_dir.join("charters").join(filename);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create ics parent dir");
+        }
+        fs::write(path, content).expect("Failed to write ics file");
+    }
+
+    /// Write a single-event `.ics` file into `data_dir/plans/<charter_slug>/<filename>`.
+    fn write_plan_ics(&self, charter_slug: &str, filename: &str, summaries: &[&str]) {
+        let content = Self::ics_content(summaries);
+        let path = self.data_dir.join("plans").join(charter_slug).join(filename);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create plan ics parent dir");
+        }
+        fs::write(path, content).expect("Failed to write plan ics file");
+    }
+
+    fn ics_content(summaries: &[&str]) -> String {
         let mut content =
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\n".to_string();
         for (i, summary) in summaries.iter().enumerate() {
@@ -59,11 +78,7 @@ impl TestEnv {
             ));
         }
         content.push_str("END:VCALENDAR\r\n");
-        let path = self.data_dir.join("charters").join(filename);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("Failed to create ics parent dir");
-        }
-        fs::write(path, content).expect("Failed to write ics file");
+        content
     }
 
     fn write_text(&self, relative_path: &str, content: &str) {
@@ -90,7 +105,7 @@ impl TestEnv {
 fn test_read_plans_shows_ics_vevent() {
     let env = TestEnv::new();
 
-    env.write_ics("inbox/plans/root.ics", &["My Plan"]);
+    env.write_plan_ics("inbox", "root.ics", &["My Plan"]);
 
     env.command()
         .arg("read")
@@ -118,11 +133,7 @@ fn test_import_plans_splits_multi_event_ics_into_vdir_files() {
         .success()
         .stdout(predicate::str::contains("Imported 2 plan(s) into charter 'bulk-export'"));
 
-    let plans_dir = env
-        .data_dir
-        .join("charters")
-        .join("bulk-export")
-        .join("plans");
+    let plans_dir = env.data_dir.join("plans").join("bulk-export");
     assert!(plans_dir.join("plan-one@example.com.ics").exists());
     assert!(plans_dir.join("plan-two@example.com.ics").exists());
 }
@@ -149,9 +160,8 @@ fn test_import_plans_honors_explicit_charter_flag() {
 
     let imported = env
         .data_dir
-        .join("charters")
-        .join("inbox")
         .join("plans")
+        .join("inbox")
         .join("focus@example.com.ics");
     assert!(imported.exists());
 }
@@ -161,9 +171,8 @@ fn test_import_plans_errors_on_existing_uid_without_overwrite() {
     let env = TestEnv::new();
     let existing = env
         .data_dir
-        .join("charters")
-        .join("inbox")
         .join("plans")
+        .join("inbox")
         .join("focus@example.com.ics");
     if let Some(parent) = existing.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -200,9 +209,8 @@ fn test_import_plans_overwrites_existing_uid_with_flag() {
     let env = TestEnv::new();
     let existing = env
         .data_dir
-        .join("charters")
-        .join("inbox")
         .join("plans")
+        .join("inbox")
         .join("focus@example.com.ics");
     if let Some(parent) = existing.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -652,7 +660,7 @@ fn test_add_command() {
         .success(); // outputs UUID to stdout
 
     // Check file content
-    let plans_dir = env.data_dir.join("charters").join("inbox").join("plans");
+    let plans_dir = env.data_dir.join("plans").join("inbox");
     let written = fs::read_dir(&plans_dir).unwrap().next().unwrap().unwrap().path();
     let content = fs::read_to_string(written).unwrap();
     assert!(content.contains("SUMMARY:New Task"));
@@ -681,7 +689,7 @@ fn test_add_command_with_options() {
         .assert()
         .success();
 
-    let plans_dir = env.data_dir.join("charters").join("inbox").join("plans");
+    let plans_dir = env.data_dir.join("plans").join("inbox");
     let written = fs::read_dir(&plans_dir).unwrap().next().unwrap().unwrap().path();
     let content = fs::read_to_string(written).unwrap();
     assert!(content.contains("SUMMARY:High Priority Task"));
@@ -696,9 +704,8 @@ fn test_add_plan_file_flag_writes_single_event_file_to_explicit_path() {
     let env = TestEnv::new();
     let output = env
         .data_dir
-        .join("charters")
-        .join("focus")
         .join("plans")
+        .join("focus")
         .join("focus-block.ics");
 
     env.command()
@@ -720,7 +727,7 @@ fn test_add_plan_file_flag_writes_single_event_file_to_explicit_path() {
 #[test]
 fn test_add_plan_file_flag_rejects_non_ics_path() {
     let env = TestEnv::new();
-    let output = env.data_dir.join("charters").join("focus").join("plans");
+    let output = env.data_dir.join("plans").join("focus");
 
     env.command()
         .arg("add")
@@ -996,12 +1003,12 @@ fn test_read_empty_workspace() {
 fn test_read_plans_charter_filter() {
     let env = TestEnv::new();
 
-    // Seed the domain model with the charter (needed for --charter resolution)
-    env.write_text("build_clearhead/next.actions", "");
-    env.write_ics("build_clearhead/plans/top-level-plan.ics", &["Top level plan"]);
-    env.write_ics("build_clearhead/subcharter/plans/sub-plan.ics", &["Sub plan"]);
+    // Seed the charter with an actions file and plans in the new flat layout
+    env.write_actions("build_clearhead.actions", "");
+    env.write_plan_ics("build_clearhead", "top-level-plan.ics", &["Top level plan"]);
+    env.write_plan_ics("build_clearhead-subcharter", "sub-plan.ics", &["Sub plan"]);
 
-    // Charter filter scopes to the matched charter's ICS file
+    // Charter filter scopes to the matched charter's ICS files
     env.command()
         .arg("read")
         .arg("plans")
@@ -1050,7 +1057,7 @@ fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
     let env = TestEnv::new();
 
     env.write_text(
-        "charters/focus/plans/focus.ics",
+        "plans/focus/focus.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20991201T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
 
@@ -1075,14 +1082,14 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
     let env = TestEnv::new();
 
     env.write_text(
-        "charters/bad/plans/bad.ics",
+        "plans/bad/bad.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20991201T090000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     let bad_content = "not valid actions syntax !!!\n[ ] preserve me\n";
     env.write_text("charters/bad.actions", bad_content);
 
     env.write_text(
-        "charters/good/plans/good.ics",
+        "plans/good/good.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20991201T110000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/good.actions", "[ ] already here\n");

@@ -273,15 +273,19 @@ fn plan_file_name(plan: &clearhead_core::Plan) -> String {
     format!("{}.ics", slug(&uid))
 }
 
-fn plans_dir_path(charter_root: &Path, key: &str, acts_file: Option<&Path>) -> PathBuf {
+fn plans_dir_path(plans_root: &Path, key: &str, parent: Option<&str>, acts_file: Option<&Path>) -> PathBuf {
     let is_root = acts_file
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .is_some_and(|n| n == "next.actions");
     if is_root {
-        charter_root.join("plans")
+        plans_root.join("next")
     } else {
-        charter_root.join(slug(key)).join("plans")
+        let dir = match parent {
+            Some(p) => format!("{}-{}", slug(p), slug(key)),
+            None => slug(key),
+        };
+        plans_root.join(dir)
     }
 }
 
@@ -294,6 +298,7 @@ fn resolve_plans_dir(
         return Ok(path.clone());
     }
 
+    let plans_root = clearhead_core::plans_root(&ctx.data_dir);
     let charter_root = clearhead_core::charter_root(&ctx.data_dir);
 
     if let Some(query) = charter {
@@ -301,14 +306,15 @@ fn resolve_plans_dir(
             clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
         if let Some(charter) = resolve_markdown_charter(&charters, query) {
             if let Some(path) = &charter.plans_dir {
-                return Ok(charter_root.join(path));
+                return Ok(plans_root.join(path));
             }
 
             let key = charter.alias.as_deref().unwrap_or(&charter.title);
-            return Ok(plans_dir_path(&charter_root, key, charter.acts_file.as_deref()));
+            let parent = charter.parent.as_deref();
+            return Ok(plans_dir_path(&plans_root, key, parent, charter.acts_file.as_deref()));
         }
 
-        return Ok(charter_root.join(slug(query)).join("plans"));
+        return Ok(plans_root.join(slug(query)));
     }
 
     let default_actions = ctx.resolve_action_file(None);
@@ -317,7 +323,7 @@ fn resolve_plans_dir(
         .unwrap_or(default_actions.as_path());
     let charter_name = clearhead_core::infer_charter_name(relative)
         .ok_or_else(|| format!("Cannot infer charter name from '{}'", default_actions.display()))?;
-    Ok(plans_dir_path(&charter_root, &charter_name, Some(relative)))
+    Ok(plans_dir_path(&plans_root, &charter_name, None, Some(relative)))
 }
 
 fn resolve_add_plan_output_path(
