@@ -17,7 +17,7 @@ SELECT ?plan_name ?priority_level ?status ?due_date ?scheduled_at WHERE {
           actions:hasPriority ?priority_level ;
           cco:ont00001942 ?act .
 
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 ?status .
 
     FILTER(?status != actions:Completed && ?status != actions:Cancelled)

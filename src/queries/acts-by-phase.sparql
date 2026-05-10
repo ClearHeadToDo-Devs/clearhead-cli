@@ -1,7 +1,7 @@
 # =============================================================================
-# Query: PlannedActs by Status
+# Query: Actions by Status
 # =============================================================================
-# Purpose: Filter PlannedActs by their execution status
+# Purpose: Filter Actions by their execution status
 # Parameters:
 #   - ?STATUS_FILTER: actions:NotStarted, actions:InProgress, actions:Completed,
 #                     actions:Blocked, actions:Cancelled
@@ -14,7 +14,7 @@ PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
 SELECT ?act ?plan_name ?phase ?completion_date WHERE {
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 ?status .
 
     ?plan cco:ont00001942 ?act ;

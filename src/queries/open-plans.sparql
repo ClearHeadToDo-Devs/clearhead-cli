@@ -15,7 +15,7 @@ SELECT ?plan_name ?phase ?due_date ?priority_level WHERE {
           rdfs:label ?plan_name ;
           cco:ont00001942 ?act .
 
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 ?status .
 
     FILTER(?status != actions:Completed && ?status != actions:Cancelled)

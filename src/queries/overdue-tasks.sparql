@@ -1,7 +1,7 @@
 # =============================================================================
 # Query: Overdue Tasks
 # =============================================================================
-# Purpose: Find PlannedActs that are past their due date and not completed
+# Purpose: Find Actions that are past their due date and not completed
 # Parameters:
 #   - ?CUTOFF_DATE: injected as current UTC datetime at query time
 # Returns: plan_name, due_date, scheduled_at, status, priority_level
@@ -16,7 +16,7 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 SELECT ?plan_name ?due_date ?scheduled_at ?phase ?priority_level WHERE {
     VALUES ?cutoff { ?CUTOFF_DATE }
 
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 ?status ;
          actions:hasDueDateTime ?due_date .
 

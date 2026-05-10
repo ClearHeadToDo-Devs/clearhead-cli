@@ -1,18 +1,18 @@
 # =============================================================================
-# Query: Orphaned PlannedActs
+# Query: Orphaned Actions
 # =============================================================================
-# Purpose: Find PlannedActs that are not prescribed by any Plan (data quality)
+# Purpose: Find Actions that are not prescribed by any Plan (data quality)
 # Returns: orphaned_act, status
 # Usage: Data validation and integrity checking
-# Notes: Every PlannedAct should have exactly one Plan that prescribes it
+# Notes: Actions prescribed by a Plan should have exactly one prescribing Plan
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 
 SELECT ?orphaned_act ?status WHERE {
-    # Find all PlannedActs
-    ?orphaned_act a cco:ont00000228 ;
+    # Find all Actions not prescribed by any Plan
+    ?orphaned_act a actions:Action ;
                   cco:ont00001868 ?status .  # is_measured_by_nominal
 
     # Check that no Plan prescribes this act

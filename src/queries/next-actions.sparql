@@ -14,7 +14,7 @@ PREFIX bfo: <http://purl.obolibrary.org/obo/>
 
 SELECT DISTINCT ?act ?plan_name ?context ?priority_level ?scheduled_at ?due_date WHERE {
     # Find not-started acts
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 actions:NotStarted .  # is_measured_by_nominal
 
     # Get the plan

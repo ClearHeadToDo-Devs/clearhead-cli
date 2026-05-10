@@ -18,7 +18,7 @@ SELECT ?context (COUNT(?act) AS ?completed_count)
        (AVG(?duration_days) AS ?avg_duration_days) WHERE {
 
     # Find completed acts in date range
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 actions:Completed ;  # is_measured_by_nominal
          actions:hasCompletedDateTime ?completion_date .
 

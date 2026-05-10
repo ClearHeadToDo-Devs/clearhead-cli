@@ -2,7 +2,7 @@
 # Query: Agenda (Root Plans with Actionable Open Acts)
 # =============================================================================
 # Purpose: Find root plans (part_of Charter) where the plan itself or any
-#          descendant plan has an open PlannedAct that is scheduled or due now.
+#          descendant plan has an open Action that is scheduled or due now.
 # Parameters:
 #   - ?NOW: Current date/time (e.g., "2026-04-12T09:00:00Z"^^xsd:dateTime)
 # Returns: root_plan, root_plan_name, act, scheduled_at, due_date, status
@@ -30,7 +30,7 @@ SELECT DISTINCT ?root_plan ?root_plan_name ?act ?scheduled_at ?due_date ?status 
                      cco:ont00001942 ?act .
 
     # Open acts only
-    ?act a cco:ont00000228 ;
+    ?act a actions:Action ;
          cco:ont00001868 ?status .
     FILTER(?status != actions:Completed && ?status != actions:Cancelled)
 
