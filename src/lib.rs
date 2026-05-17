@@ -33,6 +33,10 @@ pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, reso
 pub mod environment_reader;
 pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
 
+/// Exposes the CLI argument parser so tooling (e.g. `gen-man`) can build the
+/// `clap::Command` tree without depending on the binary entry point.
+pub mod argparser;
+
 pub mod telemetry;
 pub use telemetry::{
     TelemetryEvent, TelemetryRecord, Tool, emit, emit_event, event_from_field_change,

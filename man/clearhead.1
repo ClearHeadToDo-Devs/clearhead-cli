@@ -1,0 +1,88 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH clearhead 1  "clearhead 0.2.1" 
+.SH NAME
+clearhead \- A CLI tool and library for working with the clearhead framework
+.SH SYNOPSIS
+\fBclearhead\fR [\fB\-c\fR|\fB\-\-config\fR] [\fB\-d\fR|\fB\-\-debug\fR]... [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+A CLI tool and library for working with the clearhead framework
+.SH OPTIONS
+.TP
+\fB\-c\fR, \fB\-\-config\fR \fI<FILE>\fR
+Sets a custom config file
+.TP
+\fB\-d\fR, \fB\-\-debug\fR
+Turn debugging information on
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+clearhead\-read(1)
+Read and list items (plans, actions, charters)
+.TP
+clearhead\-show(1)
+Show details of a single item
+.TP
+clearhead\-add(1)
+Add a new item
+.TP
+clearhead\-update(1)
+Update an existing item
+.TP
+clearhead\-complete(1)
+Mark an item as completed
+.TP
+clearhead\-delete(1)
+Delete an item
+.TP
+clearhead\-format(1)
+Format a file
+.TP
+clearhead\-lint(1)
+Lint a file for errors and warnings
+.TP
+clearhead\-normalize(1)
+Normalize a file (ensure UUIDs, format)
+.TP
+clearhead\-patch(1)
+Apply changes from a patch file
+.TP
+clearhead\-archive(1)
+Archive completed items
+.TP
+clearhead\-export(1)
+Export items to external formats
+.TP
+clearhead\-import(1)
+Import external formats into canonical workspace storage
+.TP
+clearhead\-expand(1)
+Expand schedule plans into Action instances
+.TP
+clearhead\-cancel(1)
+Cancel an item (sets state to Cancelled without deleting)
+.TP
+clearhead\-apply(1)
+Apply a template or pattern to a charter
+.TP
+clearhead\-start(1)
+Start a service
+.TP
+clearhead\-sync(1)
+Synchronize data with external systems
+.TP
+clearhead\-query(1)
+Execute SPARQL queries against the workspace RDF graph
+.TP
+clearhead\-debug(1)
+Show resolved config and workspace diagnostics
+.TP
+clearhead\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.2.1

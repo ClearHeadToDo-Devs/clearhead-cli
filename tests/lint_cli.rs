@@ -4,7 +4,7 @@ use std::fs;
 
 /// Helper to get the binary path using the non-deprecated macro
 fn get_cmd() -> Command {
-    Command::new(assert_cmd::cargo::cargo_bin!("clearhead_cli"))
+    Command::new(assert_cmd::cargo::cargo_bin!("clearhead"))
 }
 
 #[test]
@@ -41,7 +41,9 @@ fn test_lint_cli_success() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.arg("lint").arg("file").arg(file_path);
 
-    cmd.assert().success().stdout(predicate::str::is_empty());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("no issues found"));
 
     fs::remove_file(file_path)?;
 

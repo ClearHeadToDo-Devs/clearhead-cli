@@ -7,6 +7,10 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ClearHeadToDo-Devs/clearhead_cli.git"
 
+[[bin]]
+name = "clearhead"
+path = "src/main.rs"
+
 [dependencies]
 # Core library with pure business logic
 clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
@@ -14,6 +18,7 @@ clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
 # CLI-specific dependencies
 clap = { version = "4.0", features = ["derive"] }
 clap_complete = "4.0"
+clap_mangen = "0.2"
 comfy-table = "7.1"
 config = "0.15.19"
 dashmap = "6.1.0"

@@ -90,14 +90,14 @@ impl ActionStateArg {
     }
 }
 
-impl From<ActionStateArg> for clearhead_cli::ActionState {
+impl From<ActionStateArg> for clearhead_core::ActionState {
     fn from(s: ActionStateArg) -> Self {
         match s {
-            ActionStateArg::NotStarted => clearhead_cli::ActionState::NotStarted,
-            ActionStateArg::InProgress => clearhead_cli::ActionState::InProgress,
-            ActionStateArg::Blocked => clearhead_cli::ActionState::BlockedOrAwaiting,
-            ActionStateArg::Completed => clearhead_cli::ActionState::Completed,
-            ActionStateArg::Cancelled => clearhead_cli::ActionState::Cancelled,
+            ActionStateArg::NotStarted => clearhead_core::ActionState::NotStarted,
+            ActionStateArg::InProgress => clearhead_core::ActionState::InProgress,
+            ActionStateArg::Blocked => clearhead_core::ActionState::BlockedOrAwaiting,
+            ActionStateArg::Completed => clearhead_core::ActionState::Completed,
+            ActionStateArg::Cancelled => clearhead_core::ActionState::Cancelled,
         }
     }
 }
@@ -903,13 +903,13 @@ pub enum Format {
     Table,
 }
 
-impl From<Format> for clearhead_cli::OutputFormat {
+impl From<Format> for clearhead_core::OutputFormat {
     fn from(f: Format) -> Self {
         match f {
-            Format::Actions => clearhead_cli::OutputFormat::Actions,
-            Format::Json => clearhead_cli::OutputFormat::Json,
-            Format::Xml => clearhead_cli::OutputFormat::Xml,
-            Format::Table => clearhead_cli::OutputFormat::Table,
+            Format::Actions => clearhead_core::OutputFormat::Actions,
+            Format::Json => clearhead_core::OutputFormat::Json,
+            Format::Xml => clearhead_core::OutputFormat::Xml,
+            Format::Table => clearhead_core::OutputFormat::Table,
         }
     }
 }
@@ -923,11 +923,11 @@ pub enum Style {
     List,
 }
 
-impl From<Style> for clearhead_cli::FormatStyle {
+impl From<Style> for clearhead_core::format::FormatStyle {
     fn from(s: Style) -> Self {
         match s {
-            Style::Compact => clearhead_cli::FormatStyle::Compact,
-            Style::List => clearhead_cli::FormatStyle::List,
+            Style::Compact => clearhead_core::format::FormatStyle::Compact,
+            Style::List => clearhead_core::format::FormatStyle::List,
         }
     }
 }
@@ -941,11 +941,11 @@ pub enum Indent {
     Tabs,
 }
 
-impl From<Indent> for clearhead_cli::IndentStyle {
+impl From<Indent> for clearhead_core::format::IndentStyle {
     fn from(i: Indent) -> Self {
         match i {
-            Indent::Spaces => clearhead_cli::IndentStyle::Spaces,
-            Indent::Tabs => clearhead_cli::IndentStyle::Tabs,
+            Indent::Spaces => clearhead_core::format::IndentStyle::Spaces,
+            Indent::Tabs => clearhead_core::format::IndentStyle::Tabs,
         }
     }
 }

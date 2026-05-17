@@ -85,7 +85,7 @@ impl TestEnv {
     }
 
     pub fn command(&self) -> Command {
-        let bin = assert_cmd::cargo::cargo_bin!("clearhead_cli");
+        let bin = assert_cmd::cargo::cargo_bin!("clearhead");
         let mut cmd = Command::new(bin);
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
