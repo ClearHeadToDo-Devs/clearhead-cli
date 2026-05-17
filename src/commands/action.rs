@@ -100,24 +100,24 @@ fn resolve_acts_file(
     Err("Specify --charter <name> or --file <path> to target a charter's actions file".to_string())
 }
 
-/// Expand ICS schedule VEVENTs into actions in the charter's `.actions` file.
-///
-/// Actions are written to `<charter>.actions`. Expansion is idempotent: action UUIDs
-/// are derived from `(VEVENT.UID, occurrence_rfc3339)` so re-running never
-/// creates duplicates. Only occurrences within `now..now+days` are generated.
+/// Expand ICS schedule VEVENTs into actions in the charter's `.actions` and
+/// `.upcoming.actions` files.
 pub fn expand_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
-    days: u32,
     dry_run: bool,
 ) -> Result<(), String> {
-    use chrono::Duration;
     use clearhead_core::workspace::ics::parse_ics_file;
     use clearhead_core::workspace::plans::collect_plan_files;
+    use clearhead_core::{ExpansionConfig, upcoming_acts_path};
 
     let data_root = clearhead_core::charter_root(&ctx.data_dir);
     let now = Local::now();
-    let horizon = now + Duration::days(days as i64);
+
+    let expansion_config = ExpansionConfig {
+        total_instances: ctx.config.expansion_total_instances,
+        primary_instances: ctx.config.expansion_primary_instances,
+    };
 
     let all_entries = collect_plan_files(&ctx.data_dir)
         .map_err(|e| format!("Failed to discover ICS files: {}", e))?;
@@ -159,8 +159,10 @@ pub fn expand_actions(
 
     for (charter_name, charter_entries) in by_charter {
         let actions_path = resolve_acts_file(ctx, &Some(charter_name.clone()), &None)?;
+        let upcoming_path = upcoming_acts_path(&actions_path);
+        let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
 
-        let mut action_list = match super::load_file_for_mutation(&actions_path, "expand actions") {
+        let primary_list = match super::load_file_for_mutation(&actions_path, "expand actions") {
             Ok(actions) => actions,
             Err(err) => {
                 warn!(path = %actions_path.display(), error = %err, "Skipping charter due to parse issues");
@@ -168,8 +170,19 @@ pub fn expand_actions(
                 continue;
             }
         };
-        let existing_ids: HashSet<uuid::Uuid> = action_list.iter().map(|a| a.id).collect();
-        let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
+
+        // Load existing upcoming file (empty list if file doesn't exist yet)
+        let upcoming_list = if upcoming_path.exists() {
+            match super::load_file_for_mutation(&upcoming_path, "expand actions (upcoming)") {
+                Ok(actions) => actions,
+                Err(err) => {
+                    warn!(path = %upcoming_path.display(), error = %err, "Could not read upcoming file — treating as empty");
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
 
         let mut all_plans = Vec::new();
         for entry in &charter_entries {
@@ -179,14 +192,21 @@ pub fn expand_actions(
             }
         }
 
-        let new_base = clearhead_core::expand_plans_into_acts(&all_plans, &existing_ids, now, horizon);
-        if new_base.is_empty() {
+        let expand_result = clearhead_core::expand_plans_into_acts(
+            &all_plans,
+            &primary_list,
+            &upcoming_list,
+            now,
+            &expansion_config,
+        );
+
+        if expand_result.primary.is_empty() && expand_result.upcoming.is_empty() {
             continue;
         }
 
-        // Template children require filesystem access — handled here after core expansion.
-        let mut template_additions = Vec::new();
-        for act in &new_base {
+        // Template children for primary actions
+        let mut primary_template_additions = Vec::new();
+        for act in &expand_result.primary {
             if let Some(dt) = act.do_date_time {
                 let occ_key = dt.to_rfc3339();
                 for plan in &all_plans {
@@ -199,7 +219,7 @@ pub fn expand_actions(
                                 act.id,
                                 charter_dir,
                                 &data_root,
-                                &mut template_additions,
+                                &mut primary_template_additions,
                             );
                             break;
                         }
@@ -208,18 +228,62 @@ pub fn expand_actions(
             }
         }
 
-        let new_count = new_base.len() + template_additions.len();
-        action_list.extend(new_base);
-        action_list.extend(template_additions);
+        // Template children for upcoming actions
+        let mut upcoming_template_additions = Vec::new();
+        for act in &expand_result.upcoming {
+            if let Some(dt) = act.do_date_time {
+                let occ_key = dt.to_rfc3339();
+                for plan in &all_plans {
+                    if let Some(uid) = &plan.external_id {
+                        if clearhead_core::occurrence_act_id(uid, &occ_key) == act.id {
+                            expand_template_children(
+                                plan,
+                                uid,
+                                &occ_key,
+                                act.id,
+                                charter_dir,
+                                &data_root,
+                                &mut upcoming_template_additions,
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let new_primary_count = expand_result.primary.len() + primary_template_additions.len();
+        let new_upcoming_count = expand_result.upcoming.len() + upcoming_template_additions.len();
+        let new_count = new_primary_count + new_upcoming_count;
 
         if dry_run {
-            println!("Would add {} action(s) to {}", new_count, actions_path.display());
+            if new_primary_count > 0 {
+                println!("Would add {} action(s) to {}", new_primary_count, actions_path.display());
+            }
+            if new_upcoming_count > 0 {
+                println!("Would add {} action(s) to {}", new_upcoming_count, upcoming_path.display());
+            }
         } else {
-            super::save_file(&actions_path, &action_list)?;
-            info!(count = new_count, path = %actions_path.display(), "Actions expanded");
-            println!("Added {} action(s) to {}", new_count, actions_path.display());
-            total_added += new_count;
-            charters_touched += 1;
+            if new_primary_count > 0 {
+                let mut updated_primary = primary_list;
+                updated_primary.extend(expand_result.primary);
+                updated_primary.extend(primary_template_additions);
+                super::save_file(&actions_path, &updated_primary)?;
+                info!(count = new_primary_count, path = %actions_path.display(), "Actions expanded (primary)");
+                println!("Added {} action(s) to {}", new_primary_count, actions_path.display());
+            }
+            if new_upcoming_count > 0 {
+                let mut updated_upcoming = upcoming_list;
+                updated_upcoming.extend(expand_result.upcoming);
+                updated_upcoming.extend(upcoming_template_additions);
+                super::save_file(&upcoming_path, &updated_upcoming)?;
+                info!(count = new_upcoming_count, path = %upcoming_path.display(), "Actions expanded (upcoming)");
+                println!("Added {} action(s) to {}", new_upcoming_count, upcoming_path.display());
+            }
+            if new_count > 0 {
+                total_added += new_count;
+                charters_touched += 1;
+            }
         }
     }
 

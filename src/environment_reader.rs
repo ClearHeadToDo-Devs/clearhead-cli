@@ -23,6 +23,14 @@ pub struct Config {
     #[serde(default)]
     pub tag_hierarchies: HashMap<String, Vec<String>>,
 
+    // Expansion: total instances generated per schedule across both files
+    #[serde(default = "default_expansion_total_instances")]
+    pub expansion_total_instances: u32,
+
+    // Expansion: instances placed in the primary .actions file
+    #[serde(default = "default_expansion_primary_instances")]
+    pub expansion_primary_instances: u32,
+
     // CLI-specific settings (cli_ prefix)
     #[serde(default = "default_format")]
     pub cli_format: String,
@@ -109,6 +117,14 @@ fn default_indent_width() -> usize {
     4
 }
 
+fn default_expansion_total_instances() -> u32 {
+    2
+}
+
+fn default_expansion_primary_instances() -> u32 {
+    1
+}
+
 /// Get XDG config directory for clearhead
 pub fn get_config_dir() -> PathBuf {
     config_dir()
@@ -164,6 +180,8 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
         .set_default("cli_format", default_format())?
         .set_default("cli_indent_style", default_indent_style())?
         .set_default("cli_indent_width", default_indent_width() as i64)?
+        .set_default("expansion_total_instances", default_expansion_total_instances() as i64)?
+        .set_default("expansion_primary_instances", default_expansion_primary_instances() as i64)?
         // 2. Load global config (JSON format)
         .add_source(
             File::from(global_config_path)

@@ -756,10 +756,6 @@ pub enum ExpandTarget {
         /// File to expand (.actions format). If not provided, uses the default file.
         file: Option<PathBuf>,
 
-        /// Number of days to project forward
-        #[arg(long, default_value = "90")]
-        days: u32,
-
         /// Preview what would be written without writing
         #[arg(long)]
         dry_run: bool,

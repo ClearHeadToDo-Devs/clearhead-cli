@@ -281,9 +281,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Verb::Expand { target } => match target {
             argparser::ExpandTarget::Actions {
                 file,
-                days,
                 dry_run,
-            } => commands::action::expand_actions(&ctx, file, *days, *dry_run),
+            } => commands::action::expand_actions(&ctx, file, *dry_run),
         },
         Verb::Cancel { target } => match target {
             argparser::CancelTarget::Action {
