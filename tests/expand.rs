@@ -76,3 +76,31 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
     assert!(good_after.contains("already here"));
     assert!(good_after.contains("Good schedule"));
 }
+
+#[test]
+fn test_expand_acts_applies_global_template_to_recurring_event() {
+    let env = TestEnv::new();
+
+    // ICS with a recurring plan that references a global template
+    env.write_text(
+        "plans/review/review.ics",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:weekly-review-tpl@example.com\r\nSUMMARY:Weekly Review\r\nDTSTART:20260518T100000\r\nRRULE:FREQ=WEEKLY\r\nDESCRIPTION:template: weekly-review\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    );
+
+    // Global template at <data_root>/templates/weekly-review.actions
+    env.write_text(
+        "templates/weekly-review.actions",
+        "[ ] Get Clear\n\t[ ] Collect loose papers\n[ ] Get Current\n",
+    );
+
+    env.write_text("charters/review.actions", "");
+
+    env.command().arg("expand").arg("acts").assert().success();
+
+    let primary = fs::read_to_string(env.data_dir.join("charters").join("review.actions")).unwrap();
+
+    assert!(primary.contains("Weekly Review"), "root action must be present");
+    assert!(primary.contains("Get Clear"), "template child must be present");
+    assert!(primary.contains("Get Current"), "template child must be present");
+    assert!(primary.contains("Collect loose papers"), "nested template child must be present");
+}

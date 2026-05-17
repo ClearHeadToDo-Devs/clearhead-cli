@@ -111,7 +111,7 @@ pub fn expand_actions(
     use clearhead_core::workspace::plans::collect_plan_files;
     use clearhead_core::{ExpansionConfig, upcoming_acts_path};
 
-    let data_root = clearhead_core::charter_root(&ctx.data_dir);
+    let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
     let now = Local::now();
 
     let expansion_config = ExpansionConfig {
