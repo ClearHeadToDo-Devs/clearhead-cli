@@ -18,7 +18,7 @@ clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
 # CLI-specific dependencies
 clap = { version = "4.0", features = ["derive"] }
 clap_complete = "4.0"
-clap_mangen = "0.2"
+clap_mangen = "0.3"
 comfy-table = "7.1"
 config = "0.15.19"
 dashmap = "6.1.0"
