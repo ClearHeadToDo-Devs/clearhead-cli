@@ -81,16 +81,17 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
 fn test_expand_acts_applies_global_template_to_recurring_event() {
     let env = TestEnv::new();
 
-    // ICS with a recurring plan that references a global template
+    // ICS with a recurring plan that references a global template.
+    // SUMMARY is "Weekly Review" — this should NOT appear; template content replaces it.
     env.write_text(
         "plans/review/review.ics",
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:weekly-review-tpl@example.com\r\nSUMMARY:Weekly Review\r\nDTSTART:20260518T100000\r\nRRULE:FREQ=WEEKLY\r\nDESCRIPTION:template: weekly-review\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
 
-    // Global template at <data_root>/templates/weekly-review.actions
+    // Template has its own named root — structurally replaces the VEVENT flat action.
     env.write_text(
         "templates/weekly-review.actions",
-        "[ ] Get Clear\n\t[ ] Collect loose papers\n[ ] Get Current\n",
+        "[ ] Review Root\n\t[ ] Get Clear\n\t\t[ ] Collect loose papers\n\t[ ] Get Current\n",
     );
 
     env.write_text("charters/review.actions", "");
@@ -99,8 +100,11 @@ fn test_expand_acts_applies_global_template_to_recurring_event() {
 
     let primary = fs::read_to_string(env.data_dir.join("charters").join("review.actions")).unwrap();
 
-    assert!(primary.contains("Weekly Review"), "root action must be present");
+    // Template content must be present
+    assert!(primary.contains("Review Root"), "template root must be present");
     assert!(primary.contains("Get Clear"), "template child must be present");
-    assert!(primary.contains("Get Current"), "template child must be present");
     assert!(primary.contains("Collect loose papers"), "nested template child must be present");
+
+    // The VEVENT SUMMARY must NOT appear as a separate wrapper action
+    assert!(!primary.contains("Weekly Review"), "VEVENT flat wrapper must not be written when template is applied");
 }

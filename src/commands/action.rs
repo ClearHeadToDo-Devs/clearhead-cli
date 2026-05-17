@@ -204,56 +204,23 @@ pub fn expand_actions(
             continue;
         }
 
-        // Template children for primary actions
-        let mut primary_template_additions = Vec::new();
-        for act in &expand_result.primary {
-            if let Some(dt) = act.scheduled_at {
-                let occ_key = dt.to_rfc3339();
-                for plan in &all_plans {
-                    if let Some(uid) = &plan.external_id {
-                        if clearhead_core::occurrence_act_id(uid, &occ_key) == act.id {
-                            expand_template_children(
-                                plan,
-                                uid,
-                                &occ_key,
-                                act.id,
-                                charter_dir,
-                                &data_root,
-                                &mut primary_template_additions,
-                            );
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // Resolve template expansions: when a plan has a template, the template
+        // replaces the flat root action rather than being appended as its children.
+        let primary_expanded = resolve_expanded_acts(
+            expand_result.primary,
+            &all_plans,
+            charter_dir,
+            &data_root,
+        );
+        let upcoming_expanded = resolve_expanded_acts(
+            expand_result.upcoming,
+            &all_plans,
+            charter_dir,
+            &data_root,
+        );
 
-        // Template children for upcoming actions
-        let mut upcoming_template_additions = Vec::new();
-        for act in &expand_result.upcoming {
-            if let Some(dt) = act.scheduled_at {
-                let occ_key = dt.to_rfc3339();
-                for plan in &all_plans {
-                    if let Some(uid) = &plan.external_id {
-                        if clearhead_core::occurrence_act_id(uid, &occ_key) == act.id {
-                            expand_template_children(
-                                plan,
-                                uid,
-                                &occ_key,
-                                act.id,
-                                charter_dir,
-                                &data_root,
-                                &mut upcoming_template_additions,
-                            );
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        let new_primary_count = expand_result.primary.len() + primary_template_additions.len();
-        let new_upcoming_count = expand_result.upcoming.len() + upcoming_template_additions.len();
+        let new_primary_count = primary_expanded.len();
+        let new_upcoming_count = upcoming_expanded.len();
         let new_count = new_primary_count + new_upcoming_count;
 
         if dry_run {
@@ -266,16 +233,14 @@ pub fn expand_actions(
         } else {
             if new_primary_count > 0 {
                 let mut updated_primary = primary_list;
-                updated_primary.extend(expand_result.primary);
-                updated_primary.extend(primary_template_additions);
+                updated_primary.extend(primary_expanded);
                 super::save_file(&actions_path, &updated_primary)?;
                 info!(count = new_primary_count, path = %actions_path.display(), "Actions expanded (primary)");
                 println!("Added {} action(s) to {}", new_primary_count, actions_path.display());
             }
             if new_upcoming_count > 0 {
                 let mut updated_upcoming = upcoming_list;
-                updated_upcoming.extend(expand_result.upcoming);
-                updated_upcoming.extend(upcoming_template_additions);
+                updated_upcoming.extend(upcoming_expanded);
                 super::save_file(&upcoming_path, &updated_upcoming)?;
                 info!(count = new_upcoming_count, path = %upcoming_path.display(), "Actions expanded (upcoming)");
                 println!("Added {} action(s) to {}", new_upcoming_count, upcoming_path.display());
@@ -716,32 +681,66 @@ fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, Acti
     Err(format!("No open action found matching '{}'", query))
 }
 
-/// If the plan references a template, resolve and instantiate it as children of `root_id`.
-/// Returns the number of template children added.
-fn expand_template_children(
+/// For each act in `acts`, if its plan has a template, replace it with the instantiated
+/// template (template root gets the occurrence UUID + scheduled_at for idempotency).
+/// Acts with no template are passed through unchanged.
+fn resolve_expanded_acts(
+    acts: Vec<Action>,
+    all_plans: &[clearhead_core::domain::Plan],
+    charter_dir: &Path,
+    data_root: &Path,
+) -> Vec<Action> {
+    let mut out: Vec<Action> = Vec::new();
+    for act in acts {
+        let occ_key = act.scheduled_at.map(|dt| dt.to_rfc3339()).unwrap_or_default();
+        let matching_plan = all_plans.iter().find(|p| {
+            p.external_id
+                .as_deref()
+                .map(|uid| clearhead_core::occurrence_act_id(uid, &occ_key) == act.id)
+                .unwrap_or(false)
+        });
+
+        let template_applied = matching_plan.and_then(|plan| {
+            plan.external_id.as_deref().and_then(|uid| {
+                apply_template_in_place(plan, uid, &occ_key, act.id, act.scheduled_at, charter_dir, data_root)
+            })
+        });
+
+        match template_applied {
+            Some(instantiated) => out.extend(instantiated),
+            None => out.push(act),
+        }
+    }
+    out
+}
+
+/// Load and instantiate a template for one occurrence. Returns `None` when the plan has no
+/// template or the template file can't be found/read (caller falls back to the flat action).
+///
+/// The first template root action receives `root_id` (the deterministic occurrence UUID) so
+/// that idempotency checks in future expansion runs find it correctly.
+fn apply_template_in_place(
     plan: &clearhead_core::domain::Plan,
     vevent_uid: &str,
     occ_key: &str,
     root_id: uuid::Uuid,
+    scheduled_at: Option<chrono::DateTime<Local>>,
     charter_dir: &Path,
     data_root: &Path,
-    action_list: &mut ActionList,
-) -> usize {
+) -> Option<Vec<Action>> {
     use clearhead_core::workspace::ics::occurrence_act_id;
 
-    let Some(ref tpl_name) = plan.template_name else {
-        return 0;
-    };
+    let tpl_name = plan.template_name.as_deref()?;
 
     let tpl_path = match templates::resolve_template(charter_dir, data_root, tpl_name) {
         Ok(Some(p)) => p,
         Ok(None) => {
             warn!(template = %tpl_name, "Template not found, expanding flat action only");
-            return 0;
+            return None;
         }
         Err(e) => {
             warn!(template = %tpl_name, error = %e, "Failed to resolve template");
-            return 0;
+            return None;
         }
     };
 
@@ -749,21 +748,35 @@ fn expand_template_children(
         Ok(acts) => acts,
         Err(e) => {
             warn!(template = %tpl_name, path = %tpl_path.display(), error = %e, "Failed to read template");
-            return 0;
+            return None;
         }
     };
 
+    // First template root gets the occurrence UUID so idempotency works on re-runs.
+    let first_root_tpl_id = tpl_acts.iter().find(|a| a.parent_id.is_none()).map(|a| a.id);
     let uid = vevent_uid.to_string();
     let key = occ_key.to_string();
-    let children = templates::instantiate_template(
+
+    let mut instantiated = templates::instantiate_template(
         &tpl_acts,
-        |tid| occurrence_act_id(&format!("{}:tpl:{}", uid, tid), &key),
-        Some(root_id),
+        |tid| {
+            if Some(tid) == first_root_tpl_id {
+                root_id
+            } else {
+                occurrence_act_id(&format!("{}:tpl:{}", uid, tid), &key)
+            }
+        },
+        None,
     );
 
-    let count = children.len();
-    action_list.extend(children);
-    count
+    // Stamp scheduled_at onto root-level actions (parent_id == None after instantiation).
+    for action in &mut instantiated {
+        if action.parent_id.is_none() {
+            action.scheduled_at = scheduled_at;
+        }
+    }
+
+    Some(instantiated)
 }
 
 fn act_matches(act: &Action, query: &str) -> bool {
