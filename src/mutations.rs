@@ -115,7 +115,7 @@ pub fn apply_updates(action: &mut Action, updates: ActionUpdate) {
         action.priority = Some(priority);
     }
     if let Some(context) = updates.context {
-        action.context_list = if context.is_empty() {
+        action.contexts = if context.is_empty() {
             None
         } else {
             Some(context)
@@ -126,9 +126,9 @@ pub fn apply_updates(action: &mut Action, updates: ActionUpdate) {
     }
     if let Some(state) = updates.state {
         action.state = state;
-        // If completing, set completed_date_time
-        if state == ActionState::Completed && action.completed_date_time.is_none() {
-            action.completed_date_time = Some(chrono::Local::now());
+        // If completing, set completed_at
+        if state == ActionState::Completed && action.completed_at.is_none() {
+            action.completed_at = Some(chrono::Local::now());
         }
     }
 }

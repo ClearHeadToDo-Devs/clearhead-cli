@@ -113,7 +113,7 @@ fn parse_action_with_context_from_grammar_examples() {
     assert_eq!(actions[0].state, ActionState::NotStarted);
     assert_eq!(actions[0].name, "send email");
 
-    let contexts = actions[0].context_list.as_ref().unwrap();
+    let contexts = actions[0].contexts.as_ref().unwrap();
     assert_eq!(contexts.len(), 2);
     assert!(contexts.contains(&"office".to_string()));
     assert!(contexts.contains(&"computer".to_string()));
@@ -151,7 +151,7 @@ fn parse_action_with_everything_from_grammar_examples() {
     assert!(root.description.is_some());
     assert_eq!(root.priority, Some(1));
     assert!(root.charter.is_some());
-    assert!(root.context_list.is_some());
+    assert!(root.contexts.is_some());
     assert!(root.id.to_string().starts_with("01951111"));
 }
 
@@ -274,7 +274,7 @@ fn roundtrip_action_with_everything() {
         assert_eq!(a1.description, a2.description, "Descriptions should match");
         assert_eq!(a1.priority, a2.priority, "Priorities should match");
         assert_eq!(
-            a1.context_list, a2.context_list,
+            a1.contexts, a2.contexts,
             "Context lists should match"
         );
         assert_eq!(a1.charter, a2.charter, "Charters should match");

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local, Utc};
 use clearhead_core::domain::Action;
-use clearhead_core::{ActPhase, DomainModel, Plan};
+use clearhead_core::{ActionState, DomainModel, Plan};
 use icalendar::{Calendar, Component, Event, EventLike, EventStatus};
 
 // ============================================================================
@@ -38,14 +38,14 @@ pub fn map_priority_to_ical(priority: u32) -> u32 {
     }
 }
 
-/// Map ActPhase to iCalendar EventStatus.
-pub fn map_phase_to_event_status(phase: ActPhase) -> EventStatus {
-    match phase {
-        ActPhase::NotStarted => EventStatus::Tentative,
-        ActPhase::InProgress => EventStatus::Confirmed,
-        ActPhase::Completed => EventStatus::Confirmed,
-        ActPhase::Blocked => EventStatus::Tentative,
-        ActPhase::Cancelled => EventStatus::Cancelled,
+/// Map ActionState to iCalendar EventStatus.
+pub fn map_state_to_event_status(state: ActionState) -> EventStatus {
+    match state {
+        ActionState::NotStarted => EventStatus::Tentative,
+        ActionState::InProgress => EventStatus::Confirmed,
+        ActionState::Completed => EventStatus::Confirmed,
+        ActionState::BlockedOrAwaiting => EventStatus::Tentative,
+        ActionState::Cancelled => EventStatus::Cancelled,
     }
 }
 
@@ -60,8 +60,8 @@ pub fn should_include_action(action: &Action, open_only: bool) -> bool {
 
     if open_only {
         matches!(
-            action.phase,
-            ActPhase::NotStarted | ActPhase::InProgress | ActPhase::Blocked
+            action.state,
+            ActionState::NotStarted | ActionState::InProgress | ActionState::BlockedOrAwaiting
         )
     } else {
         true
@@ -96,9 +96,9 @@ fn build_ical_event(
         event.add_property("RRULE", rrule);
     }
 
-    event.status(map_phase_to_event_status(action.phase));
+    event.status(map_state_to_event_status(action.state));
 
-    if action.phase == ActPhase::Completed {
+    if action.state == ActionState::Completed {
         if let Some(completed_at) = action.completed_at {
             event.timestamp(completed_at.with_timezone(&Utc));
         }
@@ -224,13 +224,13 @@ mod tests {
 
     fn make_action(
         plan_id: Uuid,
-        phase: ActPhase,
+        state: ActionState,
         scheduled_at: Option<DateTime<Local>>,
     ) -> Action {
         Action {
             id: Uuid::new_v5(&plan_id, b"act-0"),
             plan_id: Some(plan_id),
-            phase,
+            state,
             scheduled_at,
             ..Default::default()
         }
@@ -271,25 +271,25 @@ mod tests {
     }
 
     #[test]
-    fn test_map_phase_to_event_status() {
+    fn test_map_state_to_event_status() {
         assert_eq!(
-            map_phase_to_event_status(ActPhase::NotStarted),
+            map_state_to_event_status(ActionState::NotStarted),
             EventStatus::Tentative
         );
         assert_eq!(
-            map_phase_to_event_status(ActPhase::InProgress),
+            map_state_to_event_status(ActionState::InProgress),
             EventStatus::Confirmed
         );
         assert_eq!(
-            map_phase_to_event_status(ActPhase::Completed),
+            map_state_to_event_status(ActionState::Completed),
             EventStatus::Confirmed
         );
         assert_eq!(
-            map_phase_to_event_status(ActPhase::Blocked),
+            map_state_to_event_status(ActionState::BlockedOrAwaiting),
             EventStatus::Tentative
         );
         assert_eq!(
-            map_phase_to_event_status(ActPhase::Cancelled),
+            map_state_to_event_status(ActionState::Cancelled),
             EventStatus::Cancelled
         );
     }
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_should_include_action_no_scheduled_at() {
         let plan = make_plan("Task");
-        let action = make_action(plan.id, ActPhase::NotStarted, None);
+        let action = make_action(plan.id, ActionState::NotStarted, None);
         assert!(!should_include_action(&action, false));
         assert!(!should_include_action(&action, true));
     }
@@ -306,7 +306,7 @@ mod tests {
     fn test_should_include_action_with_scheduled_at() {
         let plan = make_plan("Task");
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
-        let action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
+        let action = make_action(plan.id, ActionState::NotStarted, Some(dt));
         assert!(should_include_action(&action, false));
         assert!(should_include_action(&action, true));
     }
@@ -315,7 +315,7 @@ mod tests {
     fn test_should_include_action_open_only_excludes_completed() {
         let plan = make_plan("Task");
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
-        let action = make_action(plan.id, ActPhase::Completed, Some(dt));
+        let action = make_action(plan.id, ActionState::Completed, Some(dt));
         assert!(should_include_action(&action, false));
         assert!(!should_include_action(&action, true));
     }
@@ -326,7 +326,7 @@ mod tests {
         plan.description = Some("Test description".to_string());
         plan.priority = Some(1);
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
-        let action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
+        let action = make_action(plan.id, ActionState::NotStarted, Some(dt));
 
         let event = action_to_ical_event(&plan, &action).expect("Event should be created");
         let event_str = event.to_string();
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn test_action_to_ical_event_no_scheduled_at() {
         let plan = make_plan("Task");
-        let action = make_action(plan.id, ActPhase::NotStarted, None);
+        let action = make_action(plan.id, ActionState::NotStarted, None);
         assert!(action_to_ical_event(&plan, &action).is_none());
     }
 
@@ -362,7 +362,7 @@ mod tests {
             week_start: None,
         });
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 9, 0, 0).unwrap();
-        let action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
+        let action = make_action(plan.id, ActionState::NotStarted, Some(dt));
 
         let event = action_to_ical_event(&plan, &action).expect("Event should be created");
         let event_str = event.to_string();
@@ -374,7 +374,7 @@ mod tests {
     fn test_action_duration_drives_calendar_length() {
         let plan = make_plan("Task");
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 9, 0, 0).unwrap();
-        let mut action = make_action(plan.id, ActPhase::NotStarted, Some(dt));
+        let mut action = make_action(plan.id, ActionState::NotStarted, Some(dt));
         action.duration = Some(30);
 
         let (start, end) = calculate_event_times(dt, action.duration);

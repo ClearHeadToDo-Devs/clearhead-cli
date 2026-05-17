@@ -81,7 +81,7 @@ impl ActionBuilder {
     }
 
     pub fn context(mut self, contexts: Vec<&str>) -> Self {
-        self.action.context_list = Some(contexts.iter().map(|s| s.to_string()).collect());
+        self.action.contexts = Some(contexts.iter().map(|s| s.to_string()).collect());
         self
     }
 

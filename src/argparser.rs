@@ -95,7 +95,7 @@ impl From<ActionStateArg> for clearhead_cli::ActionState {
         match s {
             ActionStateArg::NotStarted => clearhead_cli::ActionState::NotStarted,
             ActionStateArg::InProgress => clearhead_cli::ActionState::InProgress,
-            ActionStateArg::Blocked => clearhead_cli::ActionState::BlockedorAwaiting,
+            ActionStateArg::Blocked => clearhead_cli::ActionState::BlockedOrAwaiting,
             ActionStateArg::Completed => clearhead_cli::ActionState::Completed,
             ActionStateArg::Cancelled => clearhead_cli::ActionState::Cancelled,
         }

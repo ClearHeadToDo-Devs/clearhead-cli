@@ -9,8 +9,8 @@ use clearhead_core::WorkspaceConfig;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
-    ActPhase, Action, ActionList, ActionState, Charter, DomainModel, OutputFormat, ParseFailure,
-    ParseMode, ParseOutcome, ParsedDocument, Plan, PlannedAct, RecoveryReport, SourceMetadata,
+    Action, ActionList, ActionState, Charter, DomainModel, OutputFormat, ParseFailure,
+    ParseMode, ParseOutcome, ParsedDocument, Plan, RecoveryReport, SourceMetadata,
     SourceRange, format, format_charter, implicit_charter, parse_actions, parse_actions_with_mode,
     parse_charter, parse_document, parse_tree, patch_action_list,
 };
@@ -84,8 +84,9 @@ pub fn load_workspace_domain_model(
 
 /// Build a [`WorkspaceConfig`] from a tag hierarchy map.
 ///
-/// Extracts the semantic fields core understands, leaving tool-specific
-/// config behind. Call with `&config.tag_hierarchies`.
+/// Maps the semantic fields core understands for graph operations.
+/// Expansion config (`expansion_total_instances`, `expansion_primary_instances`)
+/// is not passed here — it only affects file expansion, not graph queries.
 pub fn workspace_config_from(tag_hierarchies: &std::collections::HashMap<String, Vec<String>>) -> WorkspaceConfig {
     WorkspaceConfig {
         tag_hierarchies: tag_hierarchies.clone(),

@@ -781,11 +781,11 @@ fn test_complete_command_idempotent_fail() {
 
     env.command()
         .arg("complete")
-        .arg("act")
+        .arg("action")
         .arg("Already Done")
         .assert()
         .failure() // Should fail as no *open* action found
-        .stderr(predicate::str::contains("No open act found"));
+        .stderr(predicate::str::contains("No open action found"));
 }
 
 #[test]
@@ -799,7 +799,7 @@ fn test_complete_plan_explains_state_lives_on_acts() {
         .arg("Scheduled Plan")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("use `complete act`"));
+        .stderr(predicate::str::contains("use `complete action`"));
 }
 
 #[test]
@@ -813,7 +813,7 @@ fn test_archive_plans_explains_schedule_archival_is_unresolved() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("Plan archival is not implemented"))
-        .stderr(predicate::str::contains("archive acts"));
+        .stderr(predicate::str::contains("archive actions"));
 }
 
 #[test]
@@ -1053,12 +1053,70 @@ fn test_read_acts_skips_hidden_directories() {
 }
 
 #[test]
+fn test_expand_acts_writes_primary_and_upcoming_files() {
+    let env = TestEnv::new();
+
+    // A recurring weekly schedule starting in the near future
+    env.write_text(
+        "plans/work/work.ics",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:work-standup@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    );
+    env.write_text("charters/work.actions", "");
+
+    env.command()
+        .arg("expand")
+        .arg("acts")
+        .assert()
+        .success();
+
+    // Default config: primary=1, total=2 → one in .actions, one in .upcoming.actions
+    let primary = fs::read_to_string(
+        env.data_dir.join("charters").join("work.actions")
+    ).unwrap();
+    let upcoming = fs::read_to_string(
+        env.data_dir.join("charters").join("work.upcoming.actions")
+    ).unwrap();
+
+    assert!(primary.contains("Weekly Standup"), "primary should have one instance");
+    assert!(upcoming.contains("Weekly Standup"), "upcoming should have one instance");
+
+    // The two instances must be different occurrences (different do dates)
+    assert_ne!(primary, upcoming, "primary and upcoming should be different occurrences");
+}
+
+#[test]
+fn test_expand_acts_idempotent_across_runs() {
+    let env = TestEnv::new();
+
+    env.write_text(
+        "plans/work/work.ics",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:work-standup-idem@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    );
+    env.write_text("charters/work.actions", "");
+
+    // Run expand twice
+    env.command().arg("expand").arg("acts").assert().success();
+    env.command().arg("expand").arg("acts").assert().success();
+
+    let primary = fs::read_to_string(
+        env.data_dir.join("charters").join("work.actions")
+    ).unwrap();
+    let upcoming = fs::read_to_string(
+        env.data_dir.join("charters").join("work.upcoming.actions")
+    ).unwrap();
+
+    // Still exactly one instance in each file — no duplicates
+    assert_eq!(primary.matches("Weekly Standup").count(), 1, "primary must not duplicate");
+    assert_eq!(upcoming.matches("Weekly Standup").count(), 1, "upcoming must not duplicate");
+}
+
+#[test]
 fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
     let env = TestEnv::new();
 
     env.write_text(
         "plans/focus/focus.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20991201T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20260601T100000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
 
     let malformed = "not valid actions syntax !!!\n[ ] existing stable action\n";
@@ -1067,8 +1125,6 @@ fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
     env.command()
         .arg("expand")
         .arg("acts")
-        .arg("--days")
-        .arg("36500")
         .assert()
         .failure()
         .stderr(predicate::str::contains("skipped due to parse issues"));
@@ -1083,26 +1139,24 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
 
     env.write_text(
         "plans/bad/bad.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20991201T090000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20260601T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     let bad_content = "not valid actions syntax !!!\n[ ] preserve me\n";
     env.write_text("charters/bad.actions", bad_content);
 
     env.write_text(
         "plans/good/good.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20991201T110000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20260601T110000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/good.actions", "[ ] already here\n");
 
     env.command()
         .arg("expand")
         .arg("acts")
-        .arg("--days")
-        .arg("36500")
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "expand acts failed for 1 charter file",
+            "expand actions failed for 1 charter file",
         ));
 
     let bad_after = fs::read_to_string(env.data_dir.join("charters").join("bad.actions")).unwrap();

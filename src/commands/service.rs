@@ -33,7 +33,7 @@ pub fn sync_events(
             println!("Would sync: {} #{}", action.name, uuid_str);
         } else {
             let timestamp = action
-                .created_date_time
+                .created_at
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .unwrap_or_else(chrono::Utc::now);
 

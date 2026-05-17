@@ -30,7 +30,7 @@ pub fn complete_action(actions: &mut ActionList, query: &str) -> Result<Completi
     let action_name = action.name.clone();
 
     action.state = ActionState::Completed;
-    action.completed_date_time = Some(Local::now());
+    action.completed_at = Some(Local::now());
 
     let completed_at = chrono::Utc::now().to_rfc3339();
     let event = TelemetryEvent::ActionCompleted {

@@ -1,6 +1,6 @@
 //! Handlers for action commands (expand, complete, cancel, update, read, archive).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
@@ -56,9 +56,9 @@ pub fn add_action(
         priority,
         state: state.map(Into::into).unwrap_or(ActionState::NotStarted),
         alias: alias.clone(),
-        do_date_time: new_scheduled,
-        do_duration: duration,
-        created_date_time: Some(Local::now()),
+        scheduled_at: new_scheduled,
+        duration: duration,
+        created_at: Some(Local::now()),
         ..Default::default()
     };
 
@@ -207,7 +207,7 @@ pub fn expand_actions(
         // Template children for primary actions
         let mut primary_template_additions = Vec::new();
         for act in &expand_result.primary {
-            if let Some(dt) = act.do_date_time {
+            if let Some(dt) = act.scheduled_at {
                 let occ_key = dt.to_rfc3339();
                 for plan in &all_plans {
                     if let Some(uid) = &plan.external_id {
@@ -231,7 +231,7 @@ pub fn expand_actions(
         // Template children for upcoming actions
         let mut upcoming_template_additions = Vec::new();
         for act in &expand_result.upcoming {
-            if let Some(dt) = act.do_date_time {
+            if let Some(dt) = act.scheduled_at {
                 let occ_key = dt.to_rfc3339();
                 for plan in &all_plans {
                     if let Some(uid) = &plan.external_id {
@@ -329,7 +329,7 @@ pub fn complete_action(
         let id = act.id;
         if !dry_run {
             act.state = ActionState::Completed;
-            act.completed_date_time = Some(Local::now());
+            act.completed_at = Some(Local::now());
         }
         (id, act.clone())
     };
@@ -390,10 +390,10 @@ pub fn update_action(
                 act.state = s.into();
             }
             if let Some(dt) = new_scheduled {
-                act.do_date_time = Some(dt);
+                act.scheduled_at = Some(dt);
             }
             if let Some(dur) = duration {
-                act.do_duration = Some(*dur);
+                act.duration = Some(*dur);
             }
         }
         id
@@ -575,22 +575,22 @@ pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) ->
     if let Some(parent_id) = act.parent_id {
         println!("parent:      {}", parent_id);
     }
-    if let Some(dt) = act.do_date_time {
+    if let Some(dt) = act.scheduled_at {
         println!("scheduled:   {}", dt.format("%Y-%m-%d %H:%M"));
     }
-    if let Some(duration) = act.do_duration {
+    if let Some(duration) = act.duration {
         println!("duration:    {}m", duration);
     }
     if let Some(priority) = act.priority {
         println!("priority:    {}", priority);
     }
-    if let Some(contexts) = &act.context_list {
+    if let Some(contexts) = &act.contexts {
         println!("contexts:    {}", contexts.join(", "));
     }
-    if let Some(created) = act.created_date_time {
+    if let Some(created) = act.created_at {
         println!("created:     {}", created.format("%Y-%m-%d %H:%M"));
     }
-    if let Some(completed) = act.completed_date_time {
+    if let Some(completed) = act.completed_at {
         println!("completed:   {}", completed.format("%Y-%m-%d %H:%M"));
     }
     if let Some(description) = &act.description {
@@ -899,7 +899,7 @@ fn state_sigil(state: &ActionState) -> &'static str {
         ActionState::NotStarted => "[ ]",
         ActionState::Completed => "[x]",
         ActionState::InProgress => "[-]",
-        ActionState::BlockedorAwaiting => "[=]",
+        ActionState::BlockedOrAwaiting => "[=]",
         ActionState::Cancelled => "[_]",
     }
 }
@@ -914,11 +914,11 @@ fn print_acts_table(acts: &[&Action]) {
         let short_id = &act.id.to_string()[..8];
         let state = format!("{:?}", act.state);
         let scheduled = act
-            .do_date_time
+            .scheduled_at
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "—".to_string());
         let duration = act
-            .do_duration
+            .duration
             .map(|d| format!("{}m", d))
             .unwrap_or_else(|| "—".to_string());
 

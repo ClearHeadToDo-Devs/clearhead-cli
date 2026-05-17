@@ -4,7 +4,7 @@ use tracing::info;
 
 use crate::argparser;
 use crate::commands::CommandContext;
-use clearhead_core::{ActPhase, Charter};
+use clearhead_core::{ActionState, Charter};
 
 pub fn read_charters(
     ctx: &CommandContext,
@@ -204,7 +204,7 @@ fn open_act_count(charter: &Charter) -> usize {
     charter
         .actions
         .iter()
-        .filter(|a| !matches!(a.phase, ActPhase::Completed | ActPhase::Cancelled))
+        .filter(|a| !matches!(a.state, ActionState::Completed | ActionState::Cancelled))
         .count()
 }
 

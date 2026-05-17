@@ -93,7 +93,7 @@ pub fn compute_code_actions(
 
                 // 2. Add Completion Date
                 if action.state == clearhead_cli::ActionState::Completed
-                    && action.completed_date_time.is_none()
+                    && action.completed_at.is_none()
                 {
                     let now = Local::now();
                     actions.push(create_quick_fix(
@@ -105,7 +105,7 @@ pub fn compute_code_actions(
                 }
 
                 // 3. Add Creation Date
-                if action.created_date_time.is_none() {
+                if action.created_at.is_none() {
                     let now = Local::now();
                     actions.push(create_quick_fix(
                         uri.clone(),
@@ -147,7 +147,7 @@ pub fn compute_inlay_hints(
     for action in &doc.actions {
         if let Some(metadata) = doc.source_map.get(&action.id) {
             // Do Date Hint
-            if let (Some(dt), Some(range)) = (action.do_date_time, metadata.do_date) {
+            if let (Some(dt), Some(range)) = (action.scheduled_at, metadata.do_date) {
                 let diff = dt.signed_duration_since(now);
                 let label = if diff.num_days() > 0 {
                     format!(" (due in {}d)", diff.num_days())
@@ -171,7 +171,7 @@ pub fn compute_inlay_hints(
             }
 
             // Completed Date Hint
-            if let (Some(dt), Some(range)) = (action.completed_date_time, metadata.completed_date) {
+            if let (Some(dt), Some(range)) = (action.completed_at, metadata.completed_date) {
                 let diff = now.signed_duration_since(dt);
                 let label = format!(" (done {}d ago)", diff.num_days());
 

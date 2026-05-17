@@ -255,6 +255,8 @@ mod tests {
             cli_format: String::new(),
             cli_indent_style: String::new(),
             cli_indent_width: 4,
+            expansion_total_instances: 2,
+            expansion_primary_instances: 1,
         }
     }
 

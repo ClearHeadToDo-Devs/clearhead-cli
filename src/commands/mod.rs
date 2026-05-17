@@ -171,7 +171,7 @@ pub fn save_file(path: &Path, actions: &ActionList) -> Result<(), String> {
 
 /// Ensure every action in the list has an entry in the charter sidecar.
 ///
-/// New entries get `created` set to either the action's `created_date_time`
+/// New entries get `created` set to either the action's `created_at`
 /// (if present in the DSL) or `now()`. Existing entries are not overwritten.
 pub fn update_sidecar(actions_path: &Path, actions: &ActionList) -> Result<(), String> {
     use clearhead_core::workspace::sidecar;
@@ -183,7 +183,7 @@ pub fn update_sidecar(actions_path: &Path, actions: &ActionList) -> Result<(), S
     for action in actions.iter() {
         let key = action.id.to_string();
         meta.acts.entry(key).or_insert_with(|| sidecar::ActMeta {
-            created: Some(action.created_date_time.unwrap_or_else(Local::now)),
+            created: Some(action.created_at.unwrap_or_else(Local::now)),
             source_vevent: None,
         });
     }
