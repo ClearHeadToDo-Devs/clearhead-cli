@@ -7,7 +7,7 @@ use chrono::Local;
 use tracing::{info, warn};
 
 use clearhead_core::workspace::{acts, read_acts, templates};
-use clearhead_core::{Action, ActionList, ActionState};
+use clearhead_core::{Action, ActionList, ActionState, WorkspaceConfig};
 
 use super::CommandContext;
 
@@ -470,12 +470,13 @@ pub fn cancel_action(
 // read actions
 // ============================================================================
 
-/// List actions, optionally filtered by charter and/or plan name.
+/// List actions, optionally filtered by charter, plan name, and/or context tags.
 pub fn read_actions_cmd(
     ctx: &CommandContext,
     format: Option<crate::argparser::ActFormat>,
     plan_filter: Option<&str>,
     charter_filter: Option<&str>,
+    context_filter: &[String],
     open_only: bool,
     file: &Option<PathBuf>,
 ) -> Result<(), String> {
@@ -496,16 +497,34 @@ pub fn read_actions_cmd(
     let effective_file = charter_acts_file.as_ref().or(file.as_ref()).cloned();
     let acts = collect_all_actions(ctx, &effective_file, open_only)?;
 
+    // Build the filter set: lowercase raw filter tags. Each action's tags are expanded upward
+    // (tag + all ancestors) and checked for intersection — so filtering by +computer matches
+    // actions tagged +neovim because neovim → terminal → computer.
+    let wc = WorkspaceConfig {
+        tag_hierarchies: ctx.config.tag_hierarchies.clone(),
+        ..Default::default()
+    };
+    let filter_set: std::collections::HashSet<String> =
+        context_filter.iter().map(|t| t.to_lowercase()).collect();
+
     let acts: Vec<&Action> = acts
         .iter()
         .filter(|a| {
             if let Some(filter) = plan_filter {
                 let id_str = a.id.to_string();
                 let short = &id_str[..8.min(id_str.len())];
-                id_str == filter || short == filter || a.name.contains(filter)
-            } else {
-                true
+                if !(id_str == filter || short == filter || a.name.contains(filter)) {
+                    return false;
+                }
             }
+            if !filter_set.is_empty() {
+                return a.contexts.as_ref().map_or(false, |cs| {
+                    cs.iter().any(|c| {
+                        wc.expand_tag(c).iter().any(|t| filter_set.contains(t))
+                    })
+                });
+            }
+            true
         })
         .collect();
 

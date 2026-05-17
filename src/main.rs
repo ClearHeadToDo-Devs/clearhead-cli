@@ -78,6 +78,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 plan,
                 charter,
+                context,
                 open_only,
                 file,
             } => commands::action::read_actions_cmd(
@@ -85,6 +86,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 *format,
                 plan.as_deref(),
                 charter.as_deref(),
+                context,
                 *open_only,
                 file,
             ),

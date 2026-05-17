@@ -206,3 +206,54 @@ fn test_read_acts_file_fails_on_malformed_input() {
         .arg("read").arg("acts").arg("--file").arg(&path)
         .assert().failure();
 }
+
+#[test]
+fn test_read_actions_context_filter_exact_match() {
+    let env = TestEnv::new();
+    env.write_actions(
+        "inbox.actions",
+        "[ ] Write tests +work\n[ ] Buy milk +personal\n",
+    );
+    env.command()
+        .arg("read").arg("actions")
+        .arg("--context").arg("work")
+        .assert().success()
+        .stdout(predicate::str::contains("Write tests"))
+        .stdout(predicate::str::contains("Buy milk").not());
+}
+
+#[test]
+fn test_read_actions_context_filter_expands_hierarchy() {
+    let env = TestEnv::new();
+    // Config: computer → terminal → neovim
+    env.write_config(r#"{"tag_hierarchies": {"computer": ["terminal"], "terminal": ["neovim"]}}"#);
+    env.write_actions(
+        "inbox.actions",
+        "[ ] Edit config +neovim\n[ ] Browse web +browser\n[ ] Read a book +personal\n",
+    );
+    // Filtering by +computer should match +neovim (child of terminal, which is child of computer)
+    env.command()
+        .arg("read").arg("actions")
+        .arg("--context").arg("computer")
+        .assert().success()
+        .stdout(predicate::str::contains("Edit config"))
+        .stdout(predicate::str::contains("Browse web").not())
+        .stdout(predicate::str::contains("Read a book").not());
+}
+
+#[test]
+fn test_read_actions_context_filter_multiple_flags() {
+    let env = TestEnv::new();
+    env.write_actions(
+        "inbox.actions",
+        "[ ] Work task +work\n[ ] Personal task +personal\n[ ] Other task +other\n",
+    );
+    env.command()
+        .arg("read").arg("actions")
+        .arg("--context").arg("work")
+        .arg("--context").arg("personal")
+        .assert().success()
+        .stdout(predicate::str::contains("Work task"))
+        .stdout(predicate::str::contains("Personal task"))
+        .stdout(predicate::str::contains("Other task").not());
+}

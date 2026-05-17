@@ -346,6 +346,10 @@ pub enum ReadTarget {
         #[arg(long)]
         charter: Option<String>,
 
+        /// Filter by context tag (can be specified multiple times; includes tag hierarchy ancestors)
+        #[arg(long)]
+        context: Vec<String>,
+
         /// Only show open actions (excludes Completed and Cancelled)
         #[arg(long)]
         open_only: bool,
