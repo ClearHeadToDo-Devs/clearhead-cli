@@ -41,7 +41,7 @@ pub fn query_workspace(
     };
 
     let rows =
-        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None))?;
+        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None), Some(&clearhead_cli::workspace_config_from(&ctx.config.tag_hierarchies)))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -189,6 +189,7 @@ pub fn run_named_query(
     let rows = clearhead_cli::run_workspace_raw_query(
         &ctx.data_dir,
         &inject_params(&named.sparql, status),
+        Some(&clearhead_cli::workspace_config_from(&ctx.config.tag_hierarchies)),
     )?;
 
     if rows.is_empty() {

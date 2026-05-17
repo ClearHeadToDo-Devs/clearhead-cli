@@ -5,6 +5,7 @@
 
 use serde_json::{Map, Value};
 use tree_sitter::Tree;
+use clearhead_core::WorkspaceConfig;
 
 // Re-export core library types and functions
 pub use clearhead_core::{
@@ -81,6 +82,17 @@ pub fn load_workspace_domain_model(
     clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())
 }
 
+/// Build a [`WorkspaceConfig`] from a tag hierarchy map.
+///
+/// Extracts the semantic fields core understands, leaving tool-specific
+/// config behind. Call with `&config.tag_hierarchies`.
+pub fn workspace_config_from(tag_hierarchies: &std::collections::HashMap<String, Vec<String>>) -> WorkspaceConfig {
+    WorkspaceConfig {
+        tag_hierarchies: tag_hierarchies.clone(),
+        ..WorkspaceConfig::default()
+    }
+}
+
 /// Load all actions from the workspace as a flat ActionList.
 pub fn load_workspace_actions(data_dir: &std::path::Path) -> Result<ActionList, String> {
     use clearhead_core::workspace::actions::convert;
@@ -101,7 +113,7 @@ pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionL
         objectives: vec![],
         charters: vec![charter],
     };
-    clearhead_core::graph::load_domain_model(&store, &model)
+    clearhead_core::graph::load_domain_model(&store, &model, None)
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
     let matching_ids = clearhead_core::graph::query_action_ids(&store, sparql_query)
@@ -133,9 +145,11 @@ pub fn run_sql_where(
 ///
 /// Loads the workspace as a full DomainModel (preserving Charter → Plan hierarchy)
 /// so that charter-based SPARQL patterns (bfo:has_part) resolve correctly.
+/// Pass `config` to materialise tag hierarchies as contextBroader triples.
 pub fn run_workspace_sql_query(
     data_dir: &std::path::Path,
     sparql_query: &str,
+    config: Option<&WorkspaceConfig>,
 ) -> Result<ActionList, String> {
     use clearhead_core::graph;
     use clearhead_core::workspace::actions::convert;
@@ -143,7 +157,7 @@ pub fn run_workspace_sql_query(
 
     let model = load_workspace_domain_model(data_dir)?;
     let store = graph::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
-    graph::load_domain_model(&store, &model)
+    graph::load_domain_model(&store, &model, config)
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
     let matching_ids = graph::query_action_ids(&store, sparql_query)
@@ -161,11 +175,12 @@ pub fn run_workspace_sql_query(
 pub fn run_workspace_raw_query(
     data_dir: &std::path::Path,
     sparql: &str,
+    config: Option<&WorkspaceConfig>,
 ) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
     let model = load_workspace_domain_model(data_dir)?;
     let store = clearhead_core::graph::create_store()
         .map_err(|e| format!("Failed to create store: {}", e))?;
-    clearhead_core::graph::load_domain_model(&store, &model)
+    clearhead_core::graph::load_domain_model(&store, &model, config)
         .map_err(|e| format!("Failed to load domain model: {}", e))?;
     clearhead_core::graph::query_raw(&store, sparql)
         .map_err(|e| format!("SPARQL query failed: {}", e))
@@ -177,7 +192,7 @@ pub fn run_workspace_raw_where(
     where_clause: &str,
 ) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
     let query = clearhead_core::graph::build_raw_where_query(where_clause);
-    run_workspace_raw_query(data_dir, &query)
+    run_workspace_raw_query(data_dir, &query, None)
 }
 
 /// Run a SPARQL WHERE clause query across all workspace actions
@@ -188,5 +203,5 @@ pub fn run_workspace_sql_where(
     from: Option<&str>,
 ) -> Result<ActionList, String> {
     let query = clearhead_core::graph::build_where_query(where_clause, select, from);
-    run_workspace_sql_query(data_dir, &query)
+    run_workspace_sql_query(data_dir, &query, None)
 }
