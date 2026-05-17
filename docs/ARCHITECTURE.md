@@ -60,6 +60,23 @@ What needs to be known is that converting between different file formats is a co
 
 By getting these structures in place we can easily deliver functionality by simply making different structures available in different formats
 
+#### Calendar Export Boundary
+
+When plans are exported as `.ics` files, the CLI writes them to:
+
+```
+$XDG_DATA_HOME/clearhead/plans/<charter-slug>/<plan-uid>.ics
+```
+
+This is an **output boundary** — the CLI's responsibility ends at writing a valid iCalendar file to that path. Sync to external calendar systems (Google Calendar, CalDAV servers, etc.) is handled entirely by external tooling (e.g., vdirsyncer). The CLI has no dependency on any sync tool and makes no assumptions about what, if anything, consumes these files.
+
+This is intentional. Keeping sync out of the CLI means:
+- the CLI remains testable without network or credentials
+- operators choose their own sync strategy
+- the `.ics` files are usable standalone by any CalDAV-aware tool
+
+Project-local workspaces (those with a `.clearhead/` directory at the project root) write plans to `.clearhead/plans/` within that project. These are development workspace files and are not expected to be in the personal calendar sync path.
+
 
 ## Relationship to Library
 
