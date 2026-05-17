@@ -430,7 +430,10 @@ fn parse_local_datetime(value: Option<&str>) -> Result<Option<DateTime<Local>>, 
         .map(|value| {
             DateTime::parse_from_rfc3339(value)
                 .map(|dt| dt.with_timezone(&Local))
-                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", value, e))
+                .map_err(|_| format!(
+                    "Invalid --scheduled-at '{}': expected ISO 8601 with timezone (e.g. 2026-05-17T18:00:00Z or 2026-05-17T11:00:00-07:00)",
+                    value
+                ))
         })
         .transpose()
 }

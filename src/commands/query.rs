@@ -4,10 +4,36 @@ use chrono::Utc;
 use std::collections::HashMap;
 use tracing::debug;
 
+/// Prepend standard PREFIX declarations for any prefix not already declared.
+/// Lets ad-hoc `query run` queries use short names (actions:, rdfs:, cco:, etc.)
+/// without requiring the user to know the full IRIs.
+fn inject_prefixes(sparql: &str) -> String {
+    let lower = sparql.to_lowercase();
+    const STANDARD: &[(&str, &str)] = &[
+        ("actions", "https://clearhead.us/vocab/actions/v4#"),
+        ("cco", "https://www.commoncoreontologies.org/"),
+        ("rdfs", "http://www.w3.org/2000/01/rdf-schema#"),
+        ("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"),
+        ("bfo", "http://purl.obolibrary.org/obo/"),
+        ("xsd", "http://www.w3.org/2001/XMLSchema#"),
+    ];
+    let missing: String = STANDARD
+        .iter()
+        .filter(|(p, _)| !lower.contains(&format!("prefix {}:", p)))
+        .map(|(p, iri)| format!("PREFIX {}: <{}>\n", p, iri))
+        .collect();
+    if missing.is_empty() {
+        sparql.to_string()
+    } else {
+        format!("{}{}", missing, sparql)
+    }
+}
+
 /// Replace well-known placeholders before query execution.
 /// Time: ?NOW, ?CUTOFF_DATE → current UTC datetime literal
 /// Status: ?STATUS_FILTER → full v4 IRI (e.g. <actions:InProgress>)
 fn inject_params(sparql: &str, status: Option<&str>) -> String {
+    let sparql = inject_prefixes(sparql);
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let datetime = format!("\"{}\"^^xsd:dateTime", now);
     let mut out = sparql

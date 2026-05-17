@@ -61,7 +61,7 @@ pub fn lint_file(path: &Option<std::path::PathBuf>) -> Result<(), String> {
     let results = clearhead_cli::lint_document(&parsed);
 
     if results.errors.is_empty() && results.warnings.is_empty() && results.info.is_empty() {
-        tracing::info!("No linting errors found");
+        println!("no issues found");
         return Ok(());
     }
 
