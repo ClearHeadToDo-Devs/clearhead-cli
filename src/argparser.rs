@@ -83,7 +83,7 @@ impl ActionStateArg {
         match self {
             ActionStateArg::NotStarted => "<https://clearhead.us/vocab/actions/v4#NotStarted>",
             ActionStateArg::InProgress => "<https://clearhead.us/vocab/actions/v4#InProgress>",
-            ActionStateArg::Blocked => "<https://clearhead.us/vocab/actions/v4#Blocked>",
+            ActionStateArg::Blocked => "<https://clearhead.us/vocab/actions/v4#BlockedOrAwaiting>",
             ActionStateArg::Completed => "<https://clearhead.us/vocab/actions/v4#Completed>",
             ActionStateArg::Cancelled => "<https://clearhead.us/vocab/actions/v4#Cancelled>",
         }
