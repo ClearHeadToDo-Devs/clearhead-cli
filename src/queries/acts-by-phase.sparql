@@ -1,29 +1,27 @@
 # =============================================================================
 # Query: Actions by Status
 # =============================================================================
-# Purpose: Filter Actions by their execution status
+# Purpose: Filter Actions by execution status
 # Parameters:
-#   - ?STATUS_FILTER: actions:NotStarted, actions:InProgress, actions:Completed,
-#                     actions:Blocked, actions:Cancelled
-# Returns: act, plan_name, status, completion_date
-# Usage: Find all acts in a specific status (e.g., in progress tasks)
+#   ?STATUS_FILTER — pass via --status flag:
+#     actions:NotStarted | actions:InProgress | actions:Completed |
+#     actions:BlockedOrAwaiting | actions:Cancelled
+# Returns: name, state, scheduled_at, completion_date
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?act ?plan_name ?phase ?completion_date WHERE {
+SELECT ?name ?state ?scheduled_at ?completion_date WHERE {
     ?act a actions:Action ;
-         cco:ont00001868 ?status .
+         rdfs:label ?name ;
+         cco:ont00001868 ?raw_state .
 
-    ?plan cco:ont00001942 ?act ;
-          rdfs:label ?plan_name .
+    FILTER(?raw_state = ?STATUS_FILTER)
+    BIND(STRAFTER(STR(?raw_state), "#") AS ?state)
 
-    FILTER(?status = ?STATUS_FILTER)
-
-    BIND(STRAFTER(STR(?status), "#") AS ?phase)
-
+    OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
     OPTIONAL { ?act actions:hasCompletedDateTime ?completion_date }
 }
-ORDER BY ?plan_name
+ORDER BY ?name

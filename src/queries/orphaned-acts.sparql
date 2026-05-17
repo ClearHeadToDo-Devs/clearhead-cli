@@ -1,24 +1,28 @@
 # =============================================================================
-# Query: Orphaned Actions
+# Query: Unlinked Actions
 # =============================================================================
-# Purpose: Find Actions that are not prescribed by any Plan (data quality)
-# Returns: orphaned_act, status
-# Usage: Data validation and integrity checking
-# Notes: Actions prescribed by a Plan should have exactly one prescribing Plan
+# Purpose: Actions not referenced by any charter and with no parent action
+# Returns: name, state
+# Notes:
+#   Well-formed actions are either:
+#     (a) linked from a charter via bfo:BFO_0000051 (hasPart), or
+#     (b) children of another action via bfo:BFO_0000050 (partOf).
+#   Results here may indicate missing charter membership or import artifacts.
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
+PREFIX bfo: <http://purl.obolibrary.org/obo/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?orphaned_act ?status WHERE {
-    # Find all Actions not prescribed by any Plan
-    ?orphaned_act a actions:Action ;
-                  cco:ont00001868 ?status .  # is_measured_by_nominal
+SELECT ?name ?state WHERE {
+    ?act a actions:Action ;
+         rdfs:label ?name ;
+         cco:ont00001868 ?raw_state .
 
-    # Check that no Plan prescribes this act
-    FILTER NOT EXISTS {
-        ?plan a cco:ont00000974 ;
-              cco:ont00001942 ?orphaned_act .
-    }
+    BIND(STRAFTER(STR(?raw_state), "#") AS ?state)
+
+    FILTER NOT EXISTS { ?charter a actions:Charter ; bfo:BFO_0000051 ?act . }
+    FILTER NOT EXISTS { ?act bfo:BFO_0000050 ?parent . }
 }
-ORDER BY ?orphaned_act
+ORDER BY ?name

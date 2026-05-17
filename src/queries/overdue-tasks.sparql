@@ -1,11 +1,10 @@
 # =============================================================================
-# Query: Overdue Tasks
+# Query: Overdue Actions
 # =============================================================================
-# Purpose: Find Actions that are past their due date and not completed
+# Purpose: Open actions past their due date
 # Parameters:
-#   - ?CUTOFF_DATE: injected as current UTC datetime at query time
-# Returns: plan_name, due_date, scheduled_at, status, priority_level
-# Usage: Daily/weekly overdue task review
+#   ?CUTOFF_DATE — injected as current UTC datetime at query time
+# Returns: name, due_date, scheduled_at, state, priority
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
@@ -13,22 +12,19 @@ PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?plan_name ?due_date ?scheduled_at ?phase ?priority_level WHERE {
+SELECT ?name ?due_date ?scheduled_at ?state ?priority WHERE {
     VALUES ?cutoff { ?CUTOFF_DATE }
 
     ?act a actions:Action ;
-         cco:ont00001868 ?status ;
+         rdfs:label ?name ;
+         cco:ont00001868 ?raw_state ;
          actions:hasDueDateTime ?due_date .
 
-    FILTER(?status != actions:Completed && ?status != actions:Cancelled)
+    FILTER(?raw_state != actions:Completed && ?raw_state != actions:Cancelled)
     FILTER(?due_date <= ?cutoff)
-
-    ?plan cco:ont00001942 ?act ;
-          rdfs:label ?plan_name .
-
-    BIND(STRAFTER(STR(?status), "#") AS ?phase)
+    BIND(STRAFTER(STR(?raw_state), "#") AS ?state)
 
     OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
-    OPTIONAL { ?plan actions:hasPriority ?priority_level }
+    OPTIONAL { ?act actions:hasPriority ?priority }
 }
-ORDER BY ?priority_level ?due_date
+ORDER BY ?priority ?due_date

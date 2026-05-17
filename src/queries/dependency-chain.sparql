@@ -1,48 +1,25 @@
 # =============================================================================
 # Query: Dependency Chain
 # =============================================================================
-# Purpose: Traverse the full dependency graph to understand task relationships
-# Parameters:
-#   - ?ROOT_PLAN: Starting plan URI (e.g., <urn:uuid:some-plan-id>)
-# Returns: plan, plan_name, dependency_level, predecessor_name
-# Usage: Critical path analysis and project planning
-# Notes: Uses SPARQL 1.1 property paths for transitive dependency traversal
-#        Uses is_successor_of (ont00001775) for plan ordering
+# Purpose: All action dependencies in the workspace (what blocks what)
+# Returns: name, depends_on
+# Notes:
+#   Uses cco:ont00001775 (is_successor_of) — action depends on its predecessors.
+#   Read as: "?name cannot start until ?depends_on is done."
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?plan ?plan_name ?dependency_level ?predecessor_name WHERE {
-    # Start from root plan and traverse all dependencies
-    # Parameter substitution: VALUES ?root_plan { <urn:uuid:some-plan-id> }
-    VALUES ?root_plan { ?ROOT_PLAN }
+SELECT ?name ?depends_on ?dep_state WHERE {
+    ?act a actions:Action ;
+         rdfs:label ?name ;
+         cco:ont00001775 ?dep .
 
-    {
-        # Level 0: Root plan itself
-        BIND(?root_plan AS ?plan)
-        BIND(0 AS ?dependency_level)
-        BIND("" AS ?predecessor_name)
-    } UNION {
-        # Level 1+: Direct and indirect predecessors
-        ?root_plan cco:ont00001775+ ?plan .  # is_successor_of (transitive)
-        ?plan cco:ont00001775 ?direct_pred .
+    ?dep rdfs:label ?depends_on ;
+         cco:ont00001868 ?raw_dep_state .
 
-        # Calculate dependency level (simplified - counts direct predecessors)
-        SELECT ?plan ?direct_pred (COUNT(*) AS ?dependency_level) WHERE {
-            ?root_plan cco:ont00001775* ?plan .
-            ?plan cco:ont00001775 ?direct_pred .
-        }
-        GROUP BY ?plan ?direct_pred
-
-        ?direct_pred rdfs:label ?predecessor_name .
-    }
-
-    # Get plan name
-    ?plan rdfs:label ?plan_name .
+    BIND(STRAFTER(STR(?raw_dep_state), "#") AS ?dep_state)
 }
-ORDER BY ?dependency_level ?plan_name
-
-# Note: This query is simplified. Full dependency level calculation
-# requires recursive traversal which is complex in SPARQL.
+ORDER BY ?name ?depends_on

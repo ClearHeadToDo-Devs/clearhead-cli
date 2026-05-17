@@ -1,28 +1,23 @@
 # =============================================================================
-# Query: Open Plans
+# Query: Open Actions (Backlog)
 # =============================================================================
-# Purpose: Find Plans with an act that is not yet Completed or Cancelled
-# Returns: plan_name, phase, due_date, priority_level
-# Usage: Full backlog view — everything still in flight
+# Purpose: All actions that are not complete or cancelled — full backlog view
+# Returns: name, state, priority, due_date
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?plan_name ?phase ?due_date ?priority_level WHERE {
-    ?plan a cco:ont00000974 ;
-          rdfs:label ?plan_name ;
-          cco:ont00001942 ?act .
-
+SELECT ?name ?state ?priority ?due_date WHERE {
     ?act a actions:Action ;
-         cco:ont00001868 ?status .
+         rdfs:label ?name ;
+         cco:ont00001868 ?raw_state .
 
-    FILTER(?status != actions:Completed && ?status != actions:Cancelled)
+    FILTER(?raw_state != actions:Completed && ?raw_state != actions:Cancelled)
+    BIND(STRAFTER(STR(?raw_state), "#") AS ?state)
 
-    BIND(STRAFTER(STR(?status), "#") AS ?phase)
-
+    OPTIONAL { ?act actions:hasPriority ?priority }
     OPTIONAL { ?act actions:hasDueDateTime ?due_date }
-    OPTIONAL { ?plan actions:hasPriority ?priority_level }
 }
-ORDER BY ?priority_level ?due_date ?plan_name
+ORDER BY ?priority ?due_date ?name
