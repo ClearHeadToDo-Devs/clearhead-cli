@@ -1,0 +1,1 @@
+[x] fix stale integration tests from Decision 25 rename  $ Config.expand_tags exists in environment_reader.rs but is never applied when filtering actions by context tag; searching +terminal should match +neovim actions per the spec $ +ux  %2026-05-17T15:22 #019df000-0020-7000-0000-000000000001
