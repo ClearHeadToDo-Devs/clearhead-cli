@@ -395,17 +395,6 @@ fn plan_to_event(plan: &clearhead_core::Plan) -> Event {
     if let Some(dtstart) = plan.dtstart {
         event.starts(dtstart.with_timezone(&Utc));
     }
-    if let Some(priority) = plan.priority {
-        event.priority(priority);
-    }
-    if let Some(contexts) = &plan.contexts {
-        if !contexts.is_empty() {
-            event.add_property("CATEGORIES", &contexts.join(","));
-        }
-    }
-    if let Some(alias) = &plan.alias {
-        event.add_property("X-CLEARHEAD-ALIAS", alias);
-    }
     if let Some(recurrence) = &plan.recurrence {
         let rrule = recurrence.to_string();
         event.add_property("RRULE", rrule.strip_prefix("R:").unwrap_or(&rrule));
@@ -490,11 +479,6 @@ fn plan_matches(plan: &clearhead_core::Plan, query: &str) -> bool {
             .as_deref()
             .map(|uid| uid.eq_ignore_ascii_case(query) || uid.to_lowercase().contains(&query_lower))
             .unwrap_or(false)
-        || plan
-            .alias
-            .as_deref()
-            .map(|alias| alias.eq_ignore_ascii_case(query))
-            .unwrap_or(false)
         || plan.name.to_lowercase().contains(&query_lower)
 }
 
@@ -559,9 +543,6 @@ pub fn add_plan(
         id: new_id,
         name: name.to_string(),
         description: fields.description.clone(),
-        priority: fields.priority,
-        contexts: (!fields.context.is_empty()).then(|| fields.context.clone()),
-        alias: fields.alias.clone(),
         recurrence: rrule,
         dtstart: parse_local_datetime(schedule.scheduled_at.as_deref())?,
         external_id: Some(uid.clone()),
@@ -609,17 +590,8 @@ pub fn update_plan(
     if let Some(name) = name {
         plan.name = name.clone();
     }
-    if let Some(priority) = fields.priority {
-        plan.priority = Some(priority);
-    }
-    if !fields.context.is_empty() {
-        plan.contexts = Some(fields.context.clone());
-    }
     if let Some(description) = &fields.description {
         plan.description = Some(description.clone());
-    }
-    if let Some(alias) = &fields.alias {
-        plan.alias = Some(alias.clone());
     }
     if schedule.scheduled_at.is_some() {
         plan.dtstart = parse_local_datetime(schedule.scheduled_at.as_deref())?;

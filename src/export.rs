@@ -131,8 +131,8 @@ pub fn action_to_ical_event(plan: &Plan, action: &Action) -> Option<Event> {
         action,
         &plan.name,
         plan.description.as_deref(),
-        plan.priority,
-        plan.contexts.as_ref(),
+        action.priority,
+        action.contexts.as_ref(),
         recurrence_rrule.as_deref(),
     )
 }
@@ -324,7 +324,6 @@ mod tests {
     fn test_action_to_ical_event_basic() {
         let mut plan = make_plan("Test Event");
         plan.description = Some("Test description".to_string());
-        plan.priority = Some(1);
         let dt = Local.with_ymd_and_hms(2025, 1, 10, 14, 0, 0).unwrap();
         let action = make_action(plan.id, ActionState::NotStarted, Some(dt));
 

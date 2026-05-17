@@ -102,8 +102,6 @@ fn test_add_command_with_options() {
     let written = fs::read_dir(&plans_dir).unwrap().next().unwrap().unwrap().path();
     let content = fs::read_to_string(written).unwrap();
     assert!(content.contains("SUMMARY:High Priority Task"));
-    assert!(content.contains("PRIORITY:1"));
-    assert!(content.contains("CATEGORIES:work\\,urgent"));
     assert!(content.contains("DESCRIPTION:Do it now"));
     assert!(content.contains("RRULE:FREQ=WEEKLY;BYDAY=MO"));
 }
@@ -115,6 +113,7 @@ fn test_add_plan_file_flag_writes_single_event_file_to_explicit_path() {
     env.command()
         .arg("add").arg("plan").arg("Focus Block")
         .arg("--file").arg(&output)
+        .arg("--rrule").arg("FREQ=WEEKLY;BYDAY=TU")
         .arg("--scheduled-at").arg("2026-04-28T10:00:00Z")
         .assert().success();
     let content = fs::read_to_string(&output).unwrap();
@@ -128,6 +127,7 @@ fn test_add_plan_file_flag_rejects_non_ics_path() {
     env.command()
         .arg("add").arg("plan").arg("Focus Block")
         .arg("--file").arg(env.data_dir.join("plans").join("focus"))
+        .arg("--rrule").arg("FREQ=WEEKLY;BYDAY=TU")
         .assert().failure()
         .stderr(predicate::str::contains("must end with '.ics'"));
 }

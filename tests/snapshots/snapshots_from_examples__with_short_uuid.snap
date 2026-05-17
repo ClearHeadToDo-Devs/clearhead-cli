@@ -1,11 +1,11 @@
 ---
 source: tests/snapshots_from_examples.rs
-assertion_line: 19
 expression: actions
 ---
 [
   Action(
     id: "[uuid]",
+    parent_id: "[uuid]",
     state: not_started,
     name: "First task in workflow",
     description: Some("This task has a full UUID that can be referenced by short form"),
@@ -13,10 +13,22 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
-    story: Some("Workflow"),
+    scheduled_at: None,
+    duration: None,
+    due_date: None,
+    completed_at: None,
+    created_at: None,
+    predecessors: None,
+    charter: Some("Workflow"),
+    alias: None,
+    is_sequential: None,
+    plan_id: None,
+    external_schedule_id: None,
+    external_occurrence_key: None,
   ),
   Action(
     id: "[uuid]",
+    parent_id: "[uuid]",
     state: not_started,
     name: "Second task depends on first via short UUID",
     description: Some("Using 8-character short UUID reference"),
@@ -24,15 +36,26 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
+    scheduled_at: None,
+    duration: None,
+    due_date: None,
+    completed_at: None,
+    created_at: None,
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
       ),
     ]),
-    story: Some("Workflow"),
+    charter: Some("Workflow"),
+    alias: None,
+    is_sequential: None,
+    plan_id: None,
+    external_schedule_id: None,
+    external_occurrence_key: None,
   ),
   Action(
     id: "[uuid]",
+    parent_id: "[uuid]",
     state: not_started,
     name: "Third task with full UUID reference",
     description: Some("Demonstrating full UUID still works"),
@@ -40,16 +63,27 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
+    scheduled_at: None,
+    duration: None,
+    due_date: None,
+    completed_at: None,
+    created_at: None,
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
         resolved_uuid: "[uuid]",
       ),
     ]),
-    story: Some("Workflow"),
+    charter: Some("Workflow"),
+    alias: None,
+    is_sequential: None,
+    plan_id: None,
+    external_schedule_id: None,
+    external_occurrence_key: None,
   ),
   Action(
     id: "[uuid]",
+    parent_id: "[uuid]",
     state: not_started,
     name: "Task referencing by name",
     description: Some("Name-based references still work"),
@@ -57,15 +91,26 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
+    scheduled_at: None,
+    duration: None,
+    due_date: None,
+    completed_at: None,
+    created_at: None,
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
       ),
     ]),
-    story: Some("Workflow"),
+    charter: Some("Workflow"),
+    alias: None,
+    is_sequential: None,
+    plan_id: None,
+    external_schedule_id: None,
+    external_occurrence_key: None,
   ),
   Action(
     id: "[uuid]",
+    parent_id: "[uuid]",
     state: not_started,
     name: "Task with multiple reference styles",
     description: Some("Combining short UUID and name references"),
@@ -73,6 +118,11 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
+    scheduled_at: None,
+    duration: None,
+    due_date: None,
+    completed_at: None,
+    created_at: None,
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -81,6 +131,11 @@ expression: actions
         raw_ref: "[predecessor_ref]",
       ),
     ]),
-    story: Some("Workflow"),
+    charter: Some("Workflow"),
+    alias: None,
+    is_sequential: None,
+    plan_id: None,
+    external_schedule_id: None,
+    external_occurrence_key: None,
   ),
 ]
