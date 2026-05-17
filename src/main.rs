@@ -73,9 +73,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 explicit_only,
             } => commands::charter::read_charters(&ctx, format, *explicit_only),
-            argparser::ReadTarget::Agenda { file, days } => {
-                commands::agenda::run_agenda(&ctx, file, *days)
-            }
+            argparser::ReadTarget::Agenda => commands::agenda::run_agenda(&ctx),
             argparser::ReadTarget::Actions {
                 format,
                 plan,

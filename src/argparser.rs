@@ -119,7 +119,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Verb {
-    /// Read and list items (plans, charters, agenda)
+    /// Read and list items (plans, actions, charters)
     Read {
         #[command(subcommand)]
         target: ReadTarget,
@@ -203,7 +203,7 @@ pub enum Verb {
         target: ExpandTarget,
     },
 
-    /// Cancel an item (sets phase to Cancelled without deleting)
+    /// Cancel an item (sets state to Cancelled without deleting)
     Cancel {
         #[command(subcommand)]
         target: CancelTarget,
@@ -329,14 +329,7 @@ pub enum ReadTarget {
     },
 
     /// Show an agenda of upcoming actions
-    Agenda {
-        /// File to read (.actions format). If not provided, uses the default file
-        file: Option<PathBuf>,
-
-        /// Number of days to project forward
-        #[arg(short, long, default_value = "7")]
-        days: u32,
-    },
+    Agenda,
 
     /// Read and display actions
     #[command(alias = "acts")]
@@ -793,7 +786,7 @@ pub enum ApplyTarget {
 
 #[derive(Subcommand)]
 pub enum CancelTarget {
-    /// Cancel an action (sets phase to Cancelled)
+    /// Cancel an action (sets state to Cancelled)
     Action {
         /// UUID or 8-char prefix of the action
         query: String,
