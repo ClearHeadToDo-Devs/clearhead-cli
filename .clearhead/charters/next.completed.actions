@@ -33,3 +33,19 @@
 [x] restore recurring action feedback on complete  $ silent success on complete is right for normal plans but loses signal for recurring — completing a recurring plan has different semantics (template advances) and deserves a note, even if terse $ %2026-04-29T22:23 ^2026-03-18T13:24 #019d029e-b875-7ee0-a2e3-e2ad0b5d5bd0
 [x] add CLI integration tests for charter commands  $ display layer is still in flux so deferred — when it stabilizes, cover: read charters listing, --explicit-only, --charter alias filter, --recursive with human-readable title (the collect_charter_tree bug regression) $ +testing  %2026-04-27T23:03 ^2026-04-09T00:00 #019d7100-0002-7000-0000-000000000001
 [x] wire the json sidecar work from core so that we can start populating it and using it for action definitions  %2026-04-27T23:05 ^2026-04-26T09:57 #019dcab9-4724-7760-bab6-f138bf288238
+[x] add act-related CLI commands  %2026-05-17T16:39 #019daba1-54e4-7ad3-834b-acfa025a2b01
+    >[x] add act command  %2026-04-25T11:20 #20fd6025-8790-4033-94c8-28a4252767e5
+    >[x] extend update act command  %2026-04-25T11:20 #11a3d23e-c8c6-4c0e-903e-3dbf06c15a90
+    >[x] add delete act command  %2026-04-25T11:20 #019d20ff-d6c5-74c1-960f-b47cf07769fc
+    >[x] add move action command  $ reparent an action to a different charter or make it a child of another; currently requires editing raw files $ +cli  %2026-05-17T16:39 #019d20ff-e4b9-7eb1-a0f1-3aad340c95de
+[x] stop emitting created date in the action itself and rely on sidecar  %2026-05-17T16:39 #019dcab9-7652-7b03-a864-6b0de2b63ce3
+[x] update CLI for Action model from Decision 25  $ rename done; plan/help text partially done $ %2026-05-17T16:38 #019de698-9b6a-7963-914a-563b01661abc
+    >[x] rename act commands to action commands throughout CLI  %2026-05-09T00:00 #019de698-b6ce-7ff1-a181-7279575f4f9e
+    >[x] update plan commands - Plans are recurrence-only, remove single-date Plan assumptions  $ add plan now requires RRULE but help text and edge cases still reflect old one-off plan model $ %2026-05-17T16:38 #019de698-b6d8-75a0-a802-06553d27fbf1
+    >[x] update help text to reflect Decision 25 model  $ expand/complete/cancel help still describes plan→act pairing rather than action-first model $ %2026-05-17T16:38 #019de698-b6e2-7891-bf6e-c11e56b1170e
+    >[x] surface tag hierarchy in debug/info output so users can see what expansion will produce  %2026-05-17T16:38 #019df000-0022-7000-0000-000000000001
+[x] charter command UX polish  %2026-05-17T16:39 #019d1efe-cd82-7373-aafb-a8a9aaebf312
+    >[x] sort charter list hierarchically  $ children now appear immediately after their parent in read charters output $ +arguments  %2026-05-09T00:00 #019d029e-b86c-7401-a0f0-a176229a2094
+[x] charter command UX polish  %2026-05-17T16:39 #019d1efe-cd82-7373-aafb-a8a9aaebf312
+    >[x] sort charter list hierarchically  $ children now appear immediately after their parent in read charters output $ +arguments  %2026-05-09T00:00 #019d029e-b86c-7401-a0f0-a176229a2094
+[x] warn when sub-file shares same name as parent directory  $ during workspace discovery, if a file like build_clearhead/build_clearhead.actions or build_clearhead/build_clearhead.md exists, hint to the user that this was likely meant to be the charter README or maybe we just make that a viable alternative to `next.actions` for the root file so that movement is easy $ +linting  %2026-05-17T16:40 #019cffb8-ab8f-7530-a830-4e439474d5b9

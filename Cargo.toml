@@ -53,3 +53,7 @@ insta = { version = "1.45.1", features = ["redactions", "ron"] }
 jsonschema = "0.18"
 predicates = "3.0"
 tempfile = "3.8"
+
+[build-dependencies]
+clap = { version = "4.0", features = ["derive"] }
+clap_mangen = "0.3"

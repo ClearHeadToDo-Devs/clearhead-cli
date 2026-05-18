@@ -63,6 +63,30 @@ pub struct PlanScheduleFields {
     pub template: Option<String>,
 }
 
+/// Charter state values for CLI
+#[derive(Clone, Copy, ValueEnum, Debug)]
+pub enum CharterStateArg {
+    /// Not yet active (default when omitted)
+    New,
+    /// Actively being worked on
+    Active,
+    /// Blocked on an external dependency
+    Blocked,
+    /// All work done; ready to archive
+    Closed,
+}
+
+impl From<CharterStateArg> for clearhead_core::CharterState {
+    fn from(s: CharterStateArg) -> Self {
+        match s {
+            CharterStateArg::New => clearhead_core::CharterState::New,
+            CharterStateArg::Active => clearhead_core::CharterState::Active,
+            CharterStateArg::Blocked => clearhead_core::CharterState::Blocked,
+            CharterStateArg::Closed => clearhead_core::CharterState::Closed,
+        }
+    }
+}
+
 /// Action state values for CLI
 #[derive(Clone, Copy, ValueEnum, Debug)]
 pub enum ActionStateArg {
@@ -568,6 +592,28 @@ pub enum UpdateTarget {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Update a charter's metadata (e.g. set state to Closed before archiving)
+    Charter {
+        /// UUID, alias, or name of the charter to update
+        query: String,
+
+        /// New lifecycle state
+        #[arg(short, long, value_enum)]
+        state: Option<CharterStateArg>,
+
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// New alias
+        #[arg(long)]
+        alias: Option<String>,
+
+        /// Preview what would be updated without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -736,6 +782,28 @@ pub enum ArchiveTarget {
         file: Option<PathBuf>,
 
         /// Dry run: show counts without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Sweep a closed charter's artifacts into `archive.ttl` and remove its source files.
+    ///
+    /// The charter must have `state: Closed` in its frontmatter. If the primary `.actions`
+    /// file still contains open actions the command refuses unless --force is given.
+    Charter {
+        /// Charter to archive (name, alias, or UUID prefix). Omit with --closed to sweep all closed charters.
+        #[arg(conflicts_with = "closed")]
+        query: Option<String>,
+
+        /// Archive all charters whose frontmatter carries `state: Closed`.
+        #[arg(long, conflicts_with = "query")]
+        closed: bool,
+
+        /// Archive even if open actions remain in the primary `.actions` file.
+        #[arg(long)]
+        force: bool,
+
+        /// Show what would be archived without writing or deleting anything.
         #[arg(long)]
         dry_run: bool,
     },

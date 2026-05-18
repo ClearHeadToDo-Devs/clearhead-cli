@@ -161,6 +161,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::action::update_action(
                 &ctx, query, name, *priority, *state, scheduled_at, duration, file, *dry_run,
             ),
+            argparser::UpdateTarget::Charter {
+                query,
+                state,
+                title,
+                alias,
+                dry_run,
+            } => commands::charter::update_charter(&ctx, query, state, title, alias, *dry_run),
         },
         Verb::Complete { target } => match target {
             argparser::CompleteTarget::Plan {
@@ -223,6 +230,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::action::archive_actions(&ctx, scope, file, *dry_run),
+            argparser::ArchiveTarget::Charter {
+                query,
+                closed,
+                force,
+                dry_run,
+            } => commands::charter::archive_charter(&ctx, query, *closed, *force, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {

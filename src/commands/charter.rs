@@ -280,6 +280,7 @@ pub fn add_charter(
         alias: alias.clone(),
         parent: parent.clone(),
         objectives: None,
+        state: None,
         plans: vec![],
         actions: vec![],
     };
@@ -334,6 +335,140 @@ pub fn add_charter(
             instantiated.len(),
             actions_path.display()
         );
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// archive charter
+// ============================================================================
+
+/// Archive a charter (or all closed charters) into `archive.ttl`.
+///
+/// Requires `state: Closed` in the charter frontmatter. Open actions in the
+/// primary `.actions` file are a hard stop unless `force` is true.
+pub fn archive_charter(
+    ctx: &CommandContext,
+    query: &Option<String>,
+    closed: bool,
+    force: bool,
+    dry_run: bool,
+) -> Result<(), String> {
+    use clearhead_core::{ArchiveCharterOptions, archive_charter as do_archive, archive_closed_charters};
+
+    let opts = ArchiveCharterOptions { force, dry_run };
+
+    if closed {
+        // Sweep every charter whose frontmatter carries `state: Closed`.
+        let results = archive_closed_charters(&ctx.data_dir, &opts)
+            .map_err(|e| e.to_string())?;
+
+        if results.is_empty() {
+            println!("No closed charters found to archive.");
+            return Ok(());
+        }
+
+        for r in &results {
+            print_archive_result(r);
+        }
+        return Ok(());
+    }
+
+    let q = query
+        .as_deref()
+        .ok_or_else(|| "Provide a charter name/alias/UUID or pass --closed".to_string())?;
+
+    let result = do_archive(&ctx.data_dir, q, &opts).map_err(|e| e.to_string())?;
+    print_archive_result(&result);
+    Ok(())
+}
+
+fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {
+    let prefix = if r.was_dry_run { "[dry-run] Would archive" } else { "Archived" };
+    println!(
+        "{} charter '{}': {} primary action(s), {} completed action(s), {} plan(s) → {}",
+        prefix,
+        r.charter_name,
+        r.primary_actions_swept,
+        r.completed_actions_swept,
+        r.plans_swept,
+        r.archive_ttl_path.display(),
+    );
+}
+
+// ============================================================================
+// update charter
+// ============================================================================
+
+/// Update a charter's metadata fields (currently: state, title, alias).
+///
+/// Writes the changes back to the charter's `.md` file. Errors if the charter
+/// has no `.md` file (implicit charters have no writable file).
+pub fn update_charter(
+    ctx: &CommandContext,
+    query: &str,
+    state: &Option<crate::argparser::CharterStateArg>,
+    title: &Option<String>,
+    alias: &Option<String>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let charters: Vec<Charter> = mcs.iter().cloned().map(Charter::from).collect();
+
+    let mc = resolve_charter(&charters, query)
+        .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+
+    // Find the MarkdownCharter so we have the file path
+    let mc_full = mcs
+        .iter()
+        .find(|c| c.id == mc.id)
+        .ok_or_else(|| format!("Internal: MarkdownCharter for '{}' missing", query))?;
+
+    let md_path_rel = mc_full
+        .md_file
+        .as_ref()
+        .ok_or_else(|| format!("Charter '{}' has no .md file; add one to make it writable", mc.title))?;
+
+    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+    let md_path = charter_root.join(md_path_rel);
+
+    // Build updated charter
+    let mut updated = mc.clone();
+    if let Some(s) = state {
+        updated.state = Some((*s).into());
+    }
+    if let Some(t) = title {
+        updated.title = t.clone();
+    }
+    if let Some(a) = alias {
+        updated.alias = Some(a.clone());
+    }
+
+    let formatted = clearhead_core::format_charter(&updated);
+
+    if dry_run {
+        println!("Would write to {}:\n{}", md_path.display(), formatted);
+        return Ok(());
+    }
+
+    std::fs::write(&md_path, &formatted)
+        .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
+
+    info!(
+        charter = %mc.title,
+        path = %md_path.display(),
+        state = ?updated.state,
+        "Charter updated"
+    );
+
+    if let Some(new_state) = &updated.state {
+        println!(
+            "Charter '{}' updated: state → {}",
+            updated.title, new_state
+        );
+    } else {
+        println!("Charter '{}' updated.", updated.title);
     }
 
     Ok(())
