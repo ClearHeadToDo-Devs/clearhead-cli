@@ -1,8 +1,13 @@
-//! Generate the `clearhead.1` man page from the clap `Cli` definition.
+//! Generate a structural skeleton `clearhead.1` from the clap `Cli` definition.
+//!
+//! The canonical man page at `man/clearhead.1` is **hand-authored** and should
+//! not be overwritten by this tool.  Run this only when you need to regenerate
+//! the skeleton after adding new subcommands, then merge the changes into the
+//! hand-authored file by hand.
 //!
 //! Usage:
-//!   cargo run --bin gen-man                    # writes to man/clearhead.1
-//!   cargo run --bin gen-man -- /custom/path    # writes to a custom directory
+//!   cargo run --bin gen-man                     # writes to man/clearhead.1.generated
+//!   cargo run --bin gen-man -- /custom/path     # writes to a custom directory
 
 use clap::CommandFactory;
 use clap_mangen::Man;
@@ -23,8 +28,9 @@ fn main() {
     let mut buf = Vec::new();
     man.render(&mut buf).expect("failed to render man page");
 
-    let out_path = out_dir.join("clearhead.1");
+    let out_path = out_dir.join("clearhead.1.generated");
     fs::write(&out_path, buf).expect("failed to write man page");
 
-    println!("Man page written to {}", out_path.display());
+    println!("Skeleton written to {}", out_path.display());
+    println!("NOTE: man/clearhead.1 is hand-authored. Merge changes manually.");
 }
