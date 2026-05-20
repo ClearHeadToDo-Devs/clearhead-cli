@@ -78,6 +78,19 @@ impl CommandContext {
             self.config.cli_indent_width,
         )
     }
+
+    /// Build a `WorkspaceConfig` from the loaded CLI config.
+    ///
+    /// Includes `workspace_id` (for named graph isolation) and `tag_hierarchies`.
+    pub fn workspace_config(&self) -> clearhead_core::WorkspaceConfig {
+        clearhead_core::WorkspaceConfig {
+            tag_hierarchies: self.config.tag_hierarchies.clone(),
+            workspace_id: self.config.workspace_id.clone(),
+            expansion_total_instances: self.config.expansion_total_instances,
+            expansion_primary_instances: self.config.expansion_primary_instances,
+            ..clearhead_core::WorkspaceConfig::default()
+        }
+    }
 }
 
 /// Load actions from a .actions file on disk.

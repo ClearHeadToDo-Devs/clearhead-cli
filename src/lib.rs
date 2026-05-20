@@ -18,6 +18,20 @@ pub use clearhead_core::{
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
 pub use clearhead_core::workspace::actions::TableFormatOptions;
 
+fn transient_graph() -> clearhead_core::graph::GraphName {
+    clearhead_core::graph::GraphName::NamedNode(
+        oxigraph::model::NamedNode::new(clearhead_core::graph::TRANSIENT_GRAPH_URI).unwrap(),
+    )
+}
+
+fn workspace_graph_name_from_config(config: Option<&WorkspaceConfig>) -> clearhead_core::graph::GraphName {
+    config
+        .and_then(|c| c.workspace_id.as_deref())
+        .map(clearhead_core::graph::workspace_graph_uri)
+        .map(clearhead_core::graph::GraphName::NamedNode)
+        .unwrap_or_else(transient_graph)
+}
+
 pub use clearhead_core::workspace::actions::{
     LintDiagnostic, LintResults, LintSeverity, lint_document,
 };
@@ -118,7 +132,7 @@ pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionL
         objectives: vec![],
         charters: vec![charter],
     };
-    clearhead_core::graph::load_domain_model(&store, &model, None)
+    clearhead_core::graph::load_domain_model(&store, &model, None, transient_graph())
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
     let matching_ids = clearhead_core::graph::query_action_ids(&store, sparql_query)
@@ -162,7 +176,7 @@ pub fn run_workspace_sql_query(
 
     let model = load_workspace_domain_model(data_dir)?;
     let store = graph::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
-    graph::load_domain_model(&store, &model, config)
+    graph::load_domain_model(&store, &model, config, workspace_graph_name_from_config(config))
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
     let matching_ids = graph::query_action_ids(&store, sparql_query)
@@ -185,7 +199,8 @@ pub fn run_workspace_raw_query(
     let model = load_workspace_domain_model(data_dir)?;
     let store = clearhead_core::graph::create_store()
         .map_err(|e| format!("Failed to create store: {}", e))?;
-    clearhead_core::graph::load_domain_model(&store, &model, config)
+    let gn = workspace_graph_name_from_config(config);
+    clearhead_core::graph::load_domain_model(&store, &model, config, gn)
         .map_err(|e| format!("Failed to load domain model: {}", e))?;
     clearhead_core::graph::query_raw(&store, sparql)
         .map_err(|e| format!("SPARQL query failed: {}", e))

@@ -7,7 +7,7 @@ use chrono::Local;
 use tracing::{info, warn};
 
 use clearhead_core::workspace::{acts, read_acts, templates};
-use clearhead_core::{Action, ActionList, ActionState, WorkspaceConfig};
+use clearhead_core::{Action, ActionList, ActionState};
 
 use super::CommandContext;
 
@@ -500,10 +500,7 @@ pub fn read_actions_cmd(
     // Build the filter set: lowercase raw filter tags. Each action's tags are expanded upward
     // (tag + all ancestors) and checked for intersection — so filtering by +computer matches
     // actions tagged +neovim because neovim → terminal → computer.
-    let wc = WorkspaceConfig {
-        tag_hierarchies: ctx.config.tag_hierarchies.clone(),
-        ..Default::default()
-    };
+    let wc = ctx.workspace_config();
     let filter_set: std::collections::HashSet<String> =
         context_filter.iter().map(|t| t.to_lowercase()).collect();
 

@@ -18,6 +18,11 @@ pub struct Config {
     #[serde(default = "default_file")]
     pub default_file: String,
 
+    // Stable UUID identifying this workspace's RDF named graph.
+    // Generated once by `clearhead init` and written to config.json.
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+
     // Tag hierarchies for implicit inheritance
     // Maps parent tag -> list of child tags
     #[serde(default)]
@@ -251,6 +256,7 @@ mod tests {
             data_dir: String::new(),
             config_dir: String::new(),
             default_file: String::new(),
+            workspace_id: None,
             tag_hierarchies,
             cli_format: String::new(),
             cli_indent_style: String::new(),

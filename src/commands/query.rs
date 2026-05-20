@@ -66,8 +66,9 @@ pub fn query_workspace(
         (Some(_), Some(_)) => return Err("Cannot combine positional query and --where".to_string()),
     };
 
+    let wc = ctx.workspace_config();
     let rows =
-        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None), Some(&clearhead_cli::workspace_config_from(&ctx.config.tag_hierarchies)))?;
+        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None), Some(&wc))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -212,10 +213,11 @@ pub fn run_named_query(
         )
     })?;
 
+    let wc = ctx.workspace_config();
     let rows = clearhead_cli::run_workspace_raw_query(
         &ctx.data_dir,
         &inject_params(&named.sparql, status),
-        Some(&clearhead_cli::workspace_config_from(&ctx.config.tag_hierarchies)),
+        Some(&wc),
     )?;
 
     if rows.is_empty() {
