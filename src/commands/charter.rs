@@ -283,6 +283,7 @@ pub fn add_charter(
         state: None,
         plans: vec![],
         actions: vec![],
+        workspace: None,
     };
 
     if dry_run {

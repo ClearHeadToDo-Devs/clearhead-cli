@@ -260,6 +260,9 @@ pub enum Verb {
     /// Show resolved config and workspace diagnostics
     Debug,
 
+    /// Initialize a clearhead workspace in the current directory
+    Init,
+
     /// Generate shell completion script
     #[command(hide = true)]
     Completion {

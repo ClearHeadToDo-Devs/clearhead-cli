@@ -4,6 +4,7 @@ pub mod charter;
 pub mod complete;
 pub mod debug;
 pub mod file;
+pub mod init;
 pub mod plan;
 pub mod query;
 pub mod resolver;
@@ -86,6 +87,7 @@ impl CommandContext {
         clearhead_core::WorkspaceConfig {
             tag_hierarchies: self.config.tag_hierarchies.clone(),
             workspace_id: self.config.workspace_id.clone(),
+            workspace_name: self.config.workspace_name.clone(),
             expansion_total_instances: self.config.expansion_total_instances,
             expansion_primary_instances: self.config.expansion_primary_instances,
             ..clearhead_core::WorkspaceConfig::default()

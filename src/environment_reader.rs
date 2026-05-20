@@ -23,6 +23,11 @@ pub struct Config {
     #[serde(default)]
     pub workspace_id: Option<String>,
 
+    // Human-readable name for this workspace, derived from the project directory
+    // on `clearhead init`. Used as outer scope in multi-workspace reference syntax.
+    #[serde(default)]
+    pub workspace_name: Option<String>,
+
     // Tag hierarchies for implicit inheritance
     // Maps parent tag -> list of child tags
     #[serde(default)]
@@ -257,6 +262,7 @@ mod tests {
             config_dir: String::new(),
             default_file: String::new(),
             workspace_id: None,
+            workspace_name: None,
             tag_hierarchies,
             cli_format: String::new(),
             cli_indent_style: String::new(),

@@ -8,6 +8,6 @@
         >[x] for subcommands  %2026-04-25T11:20 #019d9f52-6a49-7791-ae4c-9e89058b62b5
         >[ ] for queries available  #019d9f52-d661-7df2-ba0a-434b994e2700
 [ ] named graph isolation: CLI layer  $ Decision 28 — init command, workspace UUID loading, multi-workspace store building, wiring graph name through command handlers; depends on core layer changes #cf2f408a-2dba-4710-9dd0-04817fc5628f
-    >[ ] add init command  $ clearhead init — creates .clearhead/config.json with a generated UUID (skipped if present) and ensures charters/ directory exists; idempotent so safe to rerun #1678cdc7-e1c6-4e61-bdd1-3239f0f05598
+    >[x] add init command  $ clearhead init — creates .clearhead/config.json with a generated UUID (skipped if present) and ensures charters/ directory exists; idempotent so safe to rerun #1678cdc7-e1c6-4e61-bdd1-3239f0f05598
     >[x] read workspace_id and extra_workspaces from config  $ workspace_id added to CLI Config struct (environment_reader.rs); CommandContext::workspace_config() constructs full WorkspaceConfig including workspace_id; workspace_graph_name_from_config() in lib.rs derives the NamedNode URI %2026-05-19T00:00 #28f44d04-641a-4f36-a12b-7175c44b9636
     >[x] wire named graph URIs through store-building call sites  $ run_sql_query uses transient_graph(); run_workspace_sql_query and run_workspace_raw_query use workspace_graph_name_from_config(config); CommandContext::workspace_config() used throughout query/action commands %2026-05-19T00:00 #a2076a2c-4d4a-4dd2-92a0-221575b5f409

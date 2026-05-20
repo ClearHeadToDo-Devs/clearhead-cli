@@ -47,6 +47,12 @@ fn main() {
 }
 
 fn run_command(cli: &argparser::Cli) -> Result<(), String> {
+    // Init bootstraps the workspace — runs before CommandContext to avoid
+    // creating XDG dirs in a directory that isn't yet initialized.
+    if let Verb::Init = &cli.command {
+        return commands::init::run();
+    }
+
     let ctx = CommandContext::new(cli)?;
 
     debug!(data_dir = %ctx.data_dir.display(), "Data directory resolved");
@@ -312,5 +318,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 dry_run,
             } => commands::template::apply_template(&ctx, name, charter, file, *dry_run),
         },
+        Verb::Init => unreachable!("handled before CommandContext construction"),
     }
 }
