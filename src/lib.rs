@@ -123,47 +123,6 @@ pub fn load_workspace_actions(data_dir: &std::path::Path) -> Result<ActionList, 
     Ok(convert::to_action_list(&model))
 }
 
-/// Filter actions using a SPARQL query
-pub fn run_sql_query(actions: &ActionList, sparql_query: &str) -> Result<ActionList, String> {
-    use clearhead_core::workspace::actions::convert;
-    use std::collections::HashSet;
-
-    let store = clearhead_core::graph::create_database()
-        .map_err(|e| format!("Failed to create store: {}", e))?;
-
-    let charter = convert::from_actions_with_charter(actions, "_query".to_string());
-    let model = clearhead_core::DomainModel {
-        objectives: vec![],
-        charters: vec![charter],
-    };
-    clearhead_core::graph::load_domain_model(&store, &model, None, transient_graph())
-        .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
-
-    let matching_ids = clearhead_core::graph::query_action_ids(&store, sparql_query)
-        .map_err(|e| format!("SPARQL query failed: {}", e))?;
-
-    let id_set: HashSet<String> = matching_ids.into_iter().collect();
-
-    let filtered = actions
-        .iter()
-        .filter(|action| id_set.contains(&action.id.to_string()))
-        .cloned()
-        .collect();
-
-    Ok(filtered)
-}
-
-/// Build and execute a SPARQL query from a WHERE clause
-pub fn run_sql_where(
-    actions: &ActionList,
-    where_clause: &str,
-    select: Option<&str>,
-    from: Option<&str>,
-) -> Result<ActionList, String> {
-    let query = clearhead_core::graph::build_where_query(where_clause, select, from);
-    run_sql_query(actions, &query)
-}
-
 /// Load a single additional workspace into an existing store under its own named graph.
 ///
 /// Reads `<workspace_root>/.clearhead/config.json` to discover the workspace's
@@ -232,7 +191,7 @@ pub fn run_workspace_sql_query(
     use std::collections::HashSet;
 
     let model = load_workspace_domain_model(data_dir)?;
-    let store = graph::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
+    let store = graph::create_store().map_err(|e| format!("Failed to create store: {}", e))?;
     graph::load_domain_model(&store, &model, config, workspace_graph_name_from_config(config))
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
 
@@ -291,17 +250,6 @@ pub fn run_workspace_raw_where(
 ) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
     let query = clearhead_core::graph::build_raw_where_query(where_clause);
     run_workspace_raw_query(data_dir, &query, None)
-}
-
-/// Run a SPARQL WHERE clause query across all workspace actions
-pub fn run_workspace_sql_where(
-    data_dir: &std::path::Path,
-    where_clause: &str,
-    select: Option<&str>,
-    from: Option<&str>,
-) -> Result<ActionList, String> {
-    let query = clearhead_core::graph::build_where_query(where_clause, select, from);
-    run_workspace_sql_query(data_dir, &query, None)
 }
 
 #[cfg(test)]
