@@ -18,6 +18,10 @@ pub use clearhead_core::{
 pub use clearhead_core::format::{FormatConfig, FormatStyle, IndentStyle};
 pub use clearhead_core::workspace::actions::TableFormatOptions;
 
+// Re-export environment_reader so command handlers can call resolve_workspace_paths
+// without reaching back through the CLI binary layer.
+pub use environment_reader::resolve_workspace_paths;
+
 fn transient_graph() -> clearhead_core::graph::GraphName {
     clearhead_core::graph::GraphName::NamedNode(
         oxigraph::model::NamedNode::new(clearhead_core::graph::TRANSIENT_GRAPH_URI).unwrap(),
@@ -160,6 +164,59 @@ pub fn run_sql_where(
     run_sql_query(actions, &query)
 }
 
+/// Load a single additional workspace into an existing store under its own named graph.
+///
+/// Reads `<workspace_root>/.clearhead/config.json` to discover the workspace's
+/// stable `workspace_id`.  If the config is absent or has no `workspace_id`, the
+/// workspace is loaded into a derived transient graph so data still participates
+/// in cross-workspace queries — it will just lack a durable graph name.
+///
+/// Failures are returned as `Err(String)` so callers can decide whether to warn
+/// and continue or propagate.
+fn load_workspace_at_path_into_store(
+    store: &clearhead_core::graph::Store,
+    workspace_path: &std::path::Path,
+) -> Result<(), String> {
+    if !workspace_path.exists() {
+        return Err(format!(
+            "Additional workspace path does not exist: {}",
+            workspace_path.display()
+        ));
+    }
+
+    // Read workspace config to obtain the durable workspace_id.
+    let config_path = workspace_path.join(".clearhead").join("config.json");
+    let workspace_id: Option<String> = if config_path.exists() {
+        let json = std::fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed to read workspace config at {}: {}", config_path.display(), e))?;
+        let v: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse workspace config at {}: {}", config_path.display(), e))?;
+        v.get("workspace_id")
+            .and_then(|id| id.as_str())
+            .map(|s| s.to_string())
+    } else {
+        None
+    };
+
+    // Derive a workspace config for graph loading (tag hierarchies come from the
+    // loaded workspace's own config if present, but for cross-workspace queries we
+    // keep it simple and pass None; the caller's primary workspace config is used
+    // for its own graph; hierarchy injection per additional workspace is a future concern).
+    let graph_name = workspace_id
+        .as_deref()
+        .map(clearhead_core::graph::workspace_graph_uri)
+        .map(clearhead_core::graph::GraphName::NamedNode)
+        .unwrap_or_else(transient_graph);
+
+    let model = clearhead_core::load_domain_model(workspace_path)
+        .map_err(|e| format!("Failed to load workspace at {}: {}", workspace_path.display(), e))?;
+
+    clearhead_core::graph::load_domain_model(store, &model, None, graph_name)
+        .map_err(|e| format!("Failed to insert workspace {} into store: {}", workspace_path.display(), e))?;
+
+    Ok(())
+}
+
 /// Run a SPARQL query across all workspace actions
 ///
 /// Loads the workspace as a full DomainModel (preserving Charter → Plan hierarchy)
@@ -178,6 +235,16 @@ pub fn run_workspace_sql_query(
     let store = graph::create_database().map_err(|e| format!("Failed to create store: {}", e))?;
     graph::load_domain_model(&store, &model, config, workspace_graph_name_from_config(config))
         .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
+
+    // Load each additional workspace into its own named graph in the same store.
+    if let Some(cfg) = config {
+        for path_str in &cfg.additional_workspaces {
+            let path = std::path::Path::new(path_str);
+            if let Err(e) = load_workspace_at_path_into_store(&store, path) {
+                tracing::warn!("Skipping additional workspace '{}': {}", path_str, e);
+            }
+        }
+    }
 
     let matching_ids = graph::query_action_ids(&store, sparql_query)
         .map_err(|e| format!("SPARQL query failed: {}", e))?;
@@ -202,6 +269,17 @@ pub fn run_workspace_raw_query(
     let gn = workspace_graph_name_from_config(config);
     clearhead_core::graph::load_domain_model(&store, &model, config, gn)
         .map_err(|e| format!("Failed to load domain model: {}", e))?;
+
+    // Load each additional workspace into its own named graph in the same store.
+    if let Some(cfg) = config {
+        for path_str in &cfg.additional_workspaces {
+            let path = std::path::Path::new(path_str);
+            if let Err(e) = load_workspace_at_path_into_store(&store, path) {
+                tracing::warn!("Skipping additional workspace '{}': {}", path_str, e);
+            }
+        }
+    }
+
     clearhead_core::graph::query_raw(&store, sparql)
         .map_err(|e| format!("SPARQL query failed: {}", e))
 }
@@ -224,4 +302,122 @@ pub fn run_workspace_sql_where(
 ) -> Result<ActionList, String> {
     let query = clearhead_core::graph::build_where_query(where_clause, select, from);
     run_workspace_sql_query(data_dir, &query, None)
+}
+
+#[cfg(test)]
+mod multi_workspace_tests {
+    use super::*;
+    use clearhead_core::WorkspaceConfig;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Write a minimal workspace under `root` with one action and a config.json
+    /// that holds the given `workspace_id`.  Returns the workspace root.
+    fn make_workspace(root: &TempDir, name: &str, workspace_id: &str, action_name: &str) -> std::path::PathBuf {
+        let ws = root.path().join(name);
+        let charters = ws.join(".clearhead").join("charters");
+        fs::create_dir_all(&charters).unwrap();
+
+        // Write .clearhead/config.json
+        let cfg = serde_json::json!({ "workspace_id": workspace_id });
+        fs::write(
+            ws.join(".clearhead").join("config.json"),
+            serde_json::to_string_pretty(&cfg).unwrap(),
+        ).unwrap();
+
+        // Write a single .actions file with one action
+        let act_id = uuid::Uuid::now_v7();
+        let content = format!(
+            "[ ] {} #{}\n",
+            action_name,
+            act_id
+        );
+        fs::write(charters.join("inbox.actions"), content).unwrap();
+
+        ws
+    }
+
+    #[test]
+    fn load_workspace_at_path_loads_model_into_named_graph() {
+        let tmp = TempDir::new().unwrap();
+        let ws_id = "00000000-0000-7000-8000-000000000001";
+        let ws = make_workspace(&tmp, "alpha", ws_id, "Alpha task");
+
+        let store = clearhead_core::graph::create_store().expect("store");
+        load_workspace_at_path_into_store(&store, &ws).expect("load workspace");
+
+        // The named graph for this workspace should contain the Action triple.
+        let graph = clearhead_core::graph::workspace_graph_uri(ws_id);
+        let sparql = format!(
+            "PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+             SELECT ?label WHERE {{
+               GRAPH <{}> {{
+                 ?s a actions:Action ; <http://www.w3.org/2000/01/rdf-schema#label> ?label .
+               }}
+             }}",
+            graph.as_str()
+        );
+        let rows = clearhead_core::graph::query_raw(&store, &sparql).expect("query");
+        assert!(
+            rows.iter().any(|r| r.get("label").map(|l| l.as_str()) == Some("Alpha task")),
+            "expected 'Alpha task' in named graph; got: {:?}",
+            rows
+        );
+    }
+
+    #[test]
+    fn run_workspace_raw_query_merges_additional_workspaces() {
+        let tmp = TempDir::new().unwrap();
+
+        // Primary workspace
+        let primary_id = "00000000-0000-7000-8000-000000000002";
+        let primary = make_workspace(&tmp, "primary", primary_id, "Primary task");
+
+        // Additional workspace
+        let extra_id = "00000000-0000-7000-8000-000000000003";
+        let extra = make_workspace(&tmp, "extra", extra_id, "Extra task");
+
+        let config = WorkspaceConfig {
+            workspace_id: Some(primary_id.to_string()),
+            additional_workspaces: vec![extra.to_string_lossy().into_owned()],
+            ..WorkspaceConfig::default()
+        };
+
+        let sparql = "PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+                      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                      SELECT ?label WHERE { GRAPH ?g { ?s a actions:Action ; rdfs:label ?label . } }";
+
+        let rows = run_workspace_raw_query(&primary, sparql, Some(&config)).expect("query");
+        let labels: Vec<&str> = rows.iter()
+            .filter_map(|r| r.get("label").map(|s| s.as_str()))
+            .collect();
+
+        assert!(labels.contains(&"Primary task"), "expected primary task; got: {:?}", labels);
+        assert!(labels.contains(&"Extra task"), "expected extra task from additional workspace; got: {:?}", labels);
+    }
+
+    #[test]
+    fn missing_additional_workspace_warns_and_continues() {
+        let tmp = TempDir::new().unwrap();
+        let primary_id = "00000000-0000-7000-8000-000000000004";
+        let primary = make_workspace(&tmp, "primary", primary_id, "Primary task");
+
+        let config = WorkspaceConfig {
+            workspace_id: Some(primary_id.to_string()),
+            // This path does not exist — should warn, not crash.
+            additional_workspaces: vec!["/nonexistent/path/that/does/not/exist".to_string()],
+            ..WorkspaceConfig::default()
+        };
+
+        let sparql = "PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+                      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                      SELECT ?label WHERE { GRAPH ?g { ?s a actions:Action ; rdfs:label ?label . } }";
+
+        // Must succeed (warn internally, not error).
+        let rows = run_workspace_raw_query(&primary, sparql, Some(&config)).expect("query");
+        let labels: Vec<&str> = rows.iter()
+            .filter_map(|r| r.get("label").map(|s| s.as_str()))
+            .collect();
+        assert!(labels.contains(&"Primary task"), "primary task must still appear; got: {:?}", labels);
+    }
 }

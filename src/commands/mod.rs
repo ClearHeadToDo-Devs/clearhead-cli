@@ -82,14 +82,37 @@ impl CommandContext {
 
     /// Build a `WorkspaceConfig` from the loaded CLI config.
     ///
-    /// Includes `workspace_id` (for named graph isolation) and `tag_hierarchies`.
+    /// Includes `workspace_id` (for named graph isolation), `tag_hierarchies`,
+    /// and `additional_workspaces` (resolved to absolute paths so core never
+    /// has to reason about the config-file directory).  Expansion config is
+    /// also forwarded but only affects file expansion, not graph queries.
     pub fn workspace_config(&self) -> clearhead_core::WorkspaceConfig {
+        // Resolve additional workspace paths relative to the directory that
+        // contains the config file (project-local: <root>/.clearhead/;
+        // global: ~/.config/clearhead/).  If the config path has no parent
+        // (very unlikely), fall back to CWD.
+        let config_base = self
+            .config_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        let resolved_additional =
+            clearhead_cli::environment_reader::resolve_workspace_paths(
+                &self.config.additional_workspaces,
+                &config_base,
+            );
+
         clearhead_core::WorkspaceConfig {
             tag_hierarchies: self.config.tag_hierarchies.clone(),
             workspace_id: self.config.workspace_id.clone(),
             workspace_name: self.config.workspace_name.clone(),
             expansion_total_instances: self.config.expansion_total_instances,
             expansion_primary_instances: self.config.expansion_primary_instances,
+            additional_workspaces: resolved_additional
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect(),
             ..clearhead_core::WorkspaceConfig::default()
         }
     }

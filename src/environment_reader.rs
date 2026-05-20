@@ -28,6 +28,15 @@ pub struct Config {
     #[serde(default)]
     pub workspace_name: Option<String>,
 
+    // Additional workspace directories to include in multi-workspace queries.
+    // Each entry may be an absolute path, a path starting with `~/` (expanded to
+    // the user's home directory), a path with `$VAR` / `${VAR}` environment
+    // variable references, or a path relative to the directory that contains
+    // the config.json that declares it.
+    // Resolved at `CommandContext` construction time via `resolve_workspace_paths`.
+    #[serde(default)]
+    pub additional_workspaces: Vec<String>,
+
     // Tag hierarchies for implicit inheritance
     // Maps parent tag -> list of child tags
     #[serde(default)]
@@ -182,7 +191,13 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
     let global_config_path =
         custom_config_path.unwrap_or_else(|| get_config_dir().join("config.json"));
 
-    ConfigBuilder::builder()
+    // Project-local config lives at <project-root>/.clearhead/config.json and is
+    // written by `clearhead init`.  It overrides the global config for workspace-
+    // specific settings (workspace_id, workspace_name, additional_workspaces, …).
+    let project_config_path = find_project_data_dir()
+        .map(|root| root.join(".clearhead").join("config.json"));
+
+    let mut builder = ConfigBuilder::builder()
         // 1. Set defaults
         .set_default("data_dir", default_data_dir())?
         .set_default("config_dir", default_config_dir())?
@@ -197,8 +212,19 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
             File::from(global_config_path)
                 .format(FileFormat::Json)
                 .required(false),
-        )
-        // 3. Load environment variables with CLEARHEAD_ prefix
+        );
+
+    // 3. Layer in project-local config (higher priority than global)
+    if let Some(project_cfg) = project_config_path {
+        builder = builder.add_source(
+            File::from(project_cfg)
+                .format(FileFormat::Json)
+                .required(false),
+        );
+    }
+
+    builder
+        // 4. Load environment variables with CLEARHEAD_ prefix (highest priority)
         .add_source(
             Environment::with_prefix("CLEARHEAD")
                 .prefix_separator("_")
@@ -212,6 +238,35 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
 /// Resolve the config file path that would be loaded for this invocation.
 pub fn resolve_config_path(custom_config_path: Option<PathBuf>) -> PathBuf {
     custom_config_path.unwrap_or_else(|| get_config_dir().join("config.json"))
+}
+
+/// Resolve a list of `additional_workspaces` path strings to absolute `PathBuf`s.
+///
+/// Each entry is processed in order:
+/// 1. `~/…` — expanded to the user's home directory.
+/// 2. `$VAR` / `${VAR}` — environment-variable references expanded by
+///    [`shellexpand::env`].
+/// 3. Absolute paths — returned as-is after variable expansion.
+/// 4. Relative paths — joined onto `base`, which should be the directory that
+///    contains the `config.json` file that declared the entry (for a project-
+///    local config that is `<project-root>/.clearhead/`; for the global config
+///    it is `~/.config/clearhead/`).
+///
+/// Entries whose resolved path does not exist are **included** in the output —
+/// callers decide how to handle missing paths so that config errors surface at
+/// the point of use rather than silently here.
+pub fn resolve_workspace_paths(paths: &[String], base: &Path) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .map(|p| {
+            let expanded = expand_path(p);
+            if expanded.is_absolute() {
+                expanded
+            } else {
+                base.join(expanded)
+            }
+        })
+        .collect()
 }
 
 /// Ensure a directory exists, creating it if necessary
@@ -263,6 +318,7 @@ mod tests {
             default_file: String::new(),
             workspace_id: None,
             workspace_name: None,
+            additional_workspaces: Vec::new(),
             tag_hierarchies,
             cli_format: String::new(),
             cli_indent_style: String::new(),
