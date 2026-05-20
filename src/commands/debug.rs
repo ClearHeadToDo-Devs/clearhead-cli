@@ -11,14 +11,24 @@ pub fn run(ctx: &CommandContext) -> Result<(), String> {
 fn print_config_section(ctx: &CommandContext) {
     println!("config");
     println!(
-        "  config_file: {}{}",
+        "  global_config_file: {}{}",
         ctx.config_path.display(),
-        if ctx.config_path.exists() {
-            ""
-        } else {
-            " (missing)"
-        }
+        if ctx.config_path.exists() { "" } else { " (not found)" },
     );
+
+    // Project-local config — written by `clearhead init`, layered on top of the
+    // global config and overrides workspace-specific settings (workspace_id, etc.).
+    if let Some(ref root) = ctx.project_root {
+        let local_cfg = root.join(".clearhead").join("config.json");
+        println!(
+            "  project_config_file: {}{}",
+            local_cfg.display(),
+            if local_cfg.exists() { " (active)" } else { " (not found — run `clearhead init`)" },
+        );
+    } else {
+        println!("  project_config_file: none (not inside a clearhead workspace)");
+    }
+
     println!(
         "  data_dir: {}  [override: CLEARHEAD_DATA_DIR | {}]",
         display_config_value(&ctx.config.data_dir, "<project-root-or-xdg-default>"),
@@ -34,6 +44,25 @@ fn print_config_section(ctx: &CommandContext) {
         ctx.config.default_file,
         ctx.config_path.display()
     );
+
+    // Workspace identity — sourced from the project-local config via `clearhead init`.
+    match &ctx.config.workspace_id {
+        Some(id) => println!(
+            "  workspace_id: {}  (name: {})",
+            id,
+            ctx.config.workspace_name.as_deref().unwrap_or("<unnamed>")
+        ),
+        None => println!(
+            "  workspace_id: <unset> — run `clearhead init` to assign a stable graph URI"
+        ),
+    }
+
+    if !ctx.config.additional_workspaces.is_empty() {
+        println!("  additional_workspaces:");
+        for path in &ctx.config.additional_workspaces {
+            println!("    - {}", path);
+        }
+    }
 }
 
 fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
