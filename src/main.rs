@@ -4,6 +4,8 @@ use tracing::{Level, debug, error};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 mod argparser;
+
+mod display;
 use argparser::{Verb, parse_cli};
 
 mod lsp;

@@ -1,5 +1,6 @@
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
+use std::io::IsTerminal;
 use chrono::Utc;
 use std::collections::HashMap;
 use tracing::debug;
@@ -75,7 +76,13 @@ pub fn query_workspace(
         return Ok(());
     }
 
-    match format.unwrap_or(QueryFormat::Table) {
+    let default_format = if std::io::stdout().is_terminal() {
+        QueryFormat::Table
+    } else {
+        QueryFormat::Json
+    };
+
+    match format.unwrap_or(default_format) {
         QueryFormat::Json => format_as_json(&rows),
         QueryFormat::Table => format_as_table(&rows),
     }
@@ -225,7 +232,13 @@ pub fn run_named_query(
         return Ok(());
     }
 
-    match format.unwrap_or(QueryFormat::Table) {
+    let default_format = if std::io::stdout().is_terminal() {
+        QueryFormat::Table
+    } else {
+        QueryFormat::Json
+    };
+
+    match format.unwrap_or(default_format) {
         QueryFormat::Json => format_as_json(&rows),
         QueryFormat::Table => format_as_table(&rows),
     }

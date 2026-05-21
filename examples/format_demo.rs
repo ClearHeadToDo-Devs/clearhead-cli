@@ -32,8 +32,5 @@ fn main() {
     );
 
     println!("\n=== TABLE FORMAT ===");
-    println!(
-        "{}",
-        format(&actions, OutputFormat::Table, None, None).unwrap()
-    );
+    println!("(table rendering moved to clearhead-cli display layer)");
 }

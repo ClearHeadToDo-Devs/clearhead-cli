@@ -1,6 +1,7 @@
 //! Handlers for action commands (expand, complete, cancel, update, read, archive).
 
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
@@ -555,7 +556,53 @@ pub fn read_actions_cmd(
             println!("{}", json);
         }
         Some(crate::argparser::ActFormat::Table) => print_acts_table(&filtered, multi_ws),
-        None => print_acts_tree(&filtered, multi_ws),
+        None => {
+            let has_scope_filter = file.is_some() || open_only || !context_filter.is_empty();
+
+            if !std::io::stdout().is_terminal() {
+                // Pipe/redirect: emit .actions DSL so output can be saved or piped.
+                let acts: Vec<&Action> = filtered.iter().map(|(_, a)| *a).collect();
+                let list: clearhead_core::ActionList = acts.into_iter().cloned().collect();
+                let text = clearhead_core::format(&list, clearhead_core::OutputFormat::Actions, None, None)
+                    .map_err(|e| format!("Failed to format actions: {}", e))?;
+                print!("{}", text);
+            } else if has_scope_filter {
+                // TTY + active filters: flat action tree.
+                print_acts_tree(&filtered, multi_ws);
+            } else {
+                // TTY + no filters: full hierarchy tree.
+                let wc = ctx.workspace_config();
+                let primary = clearhead_core::load_domain_model(&ctx.data_dir)
+                    .map_err(|e| e.to_string())?;
+
+                let model = if let Some(query) = charter_filter {
+                    let charter = super::charter::resolve_charter(&primary.charters, query)
+                        .ok_or_else(|| format!("No charter found matching '{}'", query))?
+                        .clone();
+                    clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] }
+                } else {
+                    primary
+                };
+
+                if multi_ws {
+                    let ws_name = ctx.config.workspace_name.clone().unwrap_or_else(|| "primary".to_string());
+                    println!("▸ {}", ws_name);
+                    print!("{}", crate::display::render_domain_tree(&model));
+                    for path_str in &wc.additional_workspaces {
+                        let path = std::path::Path::new(path_str);
+                        match clearhead_core::load_domain_model(path) {
+                            Ok(ws_model) => {
+                                println!("▸ {}", super::workspace_name_from_path(path));
+                                print!("{}", crate::display::render_domain_tree(&ws_model));
+                            }
+                            Err(e) => tracing::warn!("Skipping workspace '{}': {}", path_str, e),
+                        }
+                    }
+                } else {
+                    print!("{}", crate::display::render_domain_tree(&model));
+                }
+            }
+        }
     }
 
     Ok(())

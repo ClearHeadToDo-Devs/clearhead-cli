@@ -40,6 +40,9 @@ pub use clearhead_core::workspace::actions::{
     LintDiagnostic, LintResults, LintSeverity, lint_document,
 };
 
+pub mod display;
+pub use display::{render_charter_tree, render_domain_tree};
+
 pub mod export;
 pub use export::format_as_icalendar;
 

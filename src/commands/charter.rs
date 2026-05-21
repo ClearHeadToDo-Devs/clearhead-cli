@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::path::Path;
 
 use tracing::{info, warn};
@@ -12,52 +13,72 @@ pub fn read_charters(
     format: &Option<argparser::Format>,
     explicit_only: bool,
 ) -> Result<(), String> {
-    let primary_model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
     let primary_name = ctx.config.workspace_name.clone().unwrap_or_else(|| "primary".to_string());
 
     let wc = ctx.workspace_config();
     let multi_ws = !wc.additional_workspaces.is_empty();
 
-    // Build list of (workspace_name, Vec<Charter>)
-    let mut workspaces: Vec<(String, Vec<Charter>)> = vec![(primary_name, primary_model.charters)];
+    // Load full models — tree view needs plans and actions, not just charters.
+    let mut models: Vec<(String, clearhead_core::DomainModel)> = {
+        let m = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
+        vec![(primary_name, m)]
+    };
     for path_str in &wc.additional_workspaces {
         let path = Path::new(path_str);
         let ws_name = super::workspace_name_from_path(path);
         match clearhead_core::load_domain_model(path) {
-            Ok(model) => workspaces.push((ws_name, model.charters)),
+            Ok(m) => models.push((ws_name, m)),
             Err(e) => warn!("Skipping workspace '{}': {}", path_str, e),
         }
     }
 
-    // Apply explicit_only filter across all workspaces.
-    let workspaces: Vec<(String, Vec<Charter>)> = workspaces
+    // Apply explicit_only filter.
+    let models: Vec<(String, clearhead_core::DomainModel)> = models
         .into_iter()
-        .map(|(name, mut charters)| {
+        .map(|(name, mut m)| {
             if explicit_only {
-                charters.retain(|c| c.alias.is_some() || c.description.is_some());
+                m.charters.retain(|c| c.alias.is_some() || c.description.is_some());
             }
-            (name, charters)
+            (name, m)
         })
-        .filter(|(_, cs)| !cs.is_empty())
+        .filter(|(_, m)| !m.charters.is_empty())
         .collect();
 
-    if workspaces.is_empty() {
+    if models.is_empty() {
         println!("No charters found.");
         return Ok(());
     }
 
     match format {
         Some(argparser::Format::Json) => {
-            let all: Vec<&Charter> = workspaces.iter().flat_map(|(_, cs)| cs.iter()).collect();
+            let all: Vec<&Charter> = models.iter().flat_map(|(_, m)| m.charters.iter()).collect();
             let json = serde_json::to_string_pretty(&all)
                 .map_err(|e| format!("Failed to serialize charters: {}", e))?;
             println!("{}", json);
         }
         Some(argparser::Format::Table) => {
+            let workspaces: Vec<(String, Vec<Charter>)> = models
+                .into_iter()
+                .map(|(n, m)| (n, m.charters))
+                .collect();
             print_charter_table(&workspaces, multi_ws);
         }
         _ => {
-            print_charter_tree(&workspaces, multi_ws);
+            // TTY: disciplined charter hierarchy with open counts.
+            // Pipe/redirect: JSON for downstream consumers.
+            if std::io::stdout().is_terminal() {
+                for (ws_name, model) in &models {
+                    if multi_ws {
+                        println!("▸ {}", ws_name);
+                    }
+                    print!("{}", crate::display::render_charter_tree(model));
+                }
+            } else {
+                let all: Vec<&Charter> = models.iter().flat_map(|(_, m)| m.charters.iter()).collect();
+                let json = serde_json::to_string_pretty(&all)
+                    .map_err(|e| format!("Failed to serialize charters: {}", e))?;
+                println!("{}", json);
+            }
         }
     }
     Ok(())

@@ -994,17 +994,6 @@ pub enum Format {
     Table,
 }
 
-impl From<Format> for clearhead_core::OutputFormat {
-    fn from(f: Format) -> Self {
-        match f {
-            Format::Actions => clearhead_core::OutputFormat::Actions,
-            Format::Json => clearhead_core::OutputFormat::Json,
-            Format::Xml => clearhead_core::OutputFormat::Xml,
-            Format::Table => clearhead_core::OutputFormat::Table,
-        }
-    }
-}
-
 /// CLI-specific style enum that maps to library's FormatStyle
 #[derive(Clone, Copy, ValueEnum)]
 pub enum Style {
