@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::path::Path;
 
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::argparser;
 use crate::commands::CommandContext;
@@ -11,60 +12,84 @@ pub fn read_charters(
     format: &Option<argparser::Format>,
     explicit_only: bool,
 ) -> Result<(), String> {
-    let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let primary_model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let primary_name = ctx.config.workspace_name.clone().unwrap_or_else(|| "primary".to_string());
 
-    let mut charters: Vec<&Charter> = model.charters.iter().collect();
+    let wc = ctx.workspace_config();
+    let multi_ws = !wc.additional_workspaces.is_empty();
 
-    if explicit_only {
-        // An explicit charter has metadata beyond just a title — id that is non-random,
-        // description, alias, or objectives. The simplest proxy: alias is set.
-        charters.retain(|c| c.alias.is_some() || c.description.is_some());
+    // Build list of (workspace_name, Vec<Charter>)
+    let mut workspaces: Vec<(String, Vec<Charter>)> = vec![(primary_name, primary_model.charters)];
+    for path_str in &wc.additional_workspaces {
+        let path = Path::new(path_str);
+        let ws_name = super::workspace_name_from_path(path);
+        match clearhead_core::load_domain_model(path) {
+            Ok(model) => workspaces.push((ws_name, model.charters)),
+            Err(e) => warn!("Skipping workspace '{}': {}", path_str, e),
+        }
     }
 
-    if charters.is_empty() {
+    // Apply explicit_only filter across all workspaces.
+    let workspaces: Vec<(String, Vec<Charter>)> = workspaces
+        .into_iter()
+        .map(|(name, mut charters)| {
+            if explicit_only {
+                charters.retain(|c| c.alias.is_some() || c.description.is_some());
+            }
+            (name, charters)
+        })
+        .filter(|(_, cs)| !cs.is_empty())
+        .collect();
+
+    if workspaces.is_empty() {
         println!("No charters found.");
         return Ok(());
     }
 
     match format {
         Some(argparser::Format::Json) => {
-            let json = serde_json::to_string_pretty(&charters)
+            let all: Vec<&Charter> = workspaces.iter().flat_map(|(_, cs)| cs.iter()).collect();
+            let json = serde_json::to_string_pretty(&all)
                 .map_err(|e| format!("Failed to serialize charters: {}", e))?;
             println!("{}", json);
         }
         Some(argparser::Format::Table) => {
-            print_charter_table(&charters);
+            print_charter_table(&workspaces, multi_ws);
         }
         _ => {
-            print_charter_tree(&charters);
+            print_charter_tree(&workspaces, multi_ws);
         }
     }
     Ok(())
 }
 
-fn print_charter_table(charters: &[&Charter]) {
+fn print_charter_table(workspaces: &[(String, Vec<Charter>)], multi_ws: bool) {
     use comfy_table::{Cell, Color, Table, presets::UTF8_FULL};
 
     let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_header(vec![
-            Cell::new("Title").fg(Color::Cyan),
-            Cell::new("Alias").fg(Color::Cyan),
-            Cell::new("Parent").fg(Color::Cyan),
-            Cell::new("Open Actions").fg(Color::Cyan),
-        ]);
+    let mut headers = vec![
+        Cell::new("Title").fg(Color::Cyan),
+        Cell::new("Alias").fg(Color::Cyan),
+        Cell::new("Parent").fg(Color::Cyan),
+        Cell::new("Open Actions").fg(Color::Cyan),
+    ];
+    if multi_ws { headers.insert(0, Cell::new("Workspace").fg(Color::Cyan)); }
+    table.load_preset(UTF8_FULL).set_header(headers);
 
-    let sorted = sort_charters_hierarchically(charters);
-
-    for charter in sorted {
-        let open = open_act_count(charter);
-        table.add_row(vec![
-            Cell::new(&charter.title),
-            Cell::new(charter.alias.as_deref().unwrap_or("-")),
-            Cell::new(charter.parent.as_deref().unwrap_or("-")),
-            Cell::new(if open > 0 { open.to_string() } else { "-".to_string() }),
-        ]);
+    for (ws_name, charters) in workspaces {
+        let refs: Vec<&Charter> = charters.iter().collect();
+        let sorted = sort_charters_hierarchically(&refs);
+        for charter in sorted {
+            let open = open_act_count(charter);
+            let mut row = vec![
+                Cell::new(&charter.title),
+                Cell::new(charter.alias.as_deref().unwrap_or("-")),
+                Cell::new(charter.parent.as_deref().unwrap_or("-")),
+                Cell::new(if open > 0 { open.to_string() } else { "-".to_string() }),
+            ];
+            if multi_ws { row.insert(0, Cell::new(ws_name)); }
+            table.add_row(row);
+        }
     }
 
     println!("{table}");
@@ -117,7 +142,20 @@ fn flatten_charter_hierarchy<'a>(
     }
 }
 
-fn print_charter_tree(charters: &[&Charter]) {
+fn print_charter_tree(workspaces: &[(String, Vec<Charter>)], multi_ws: bool) {
+    let mut first = true;
+    for (ws_name, charters) in workspaces {
+        if multi_ws {
+            if !first { println!(); }
+            println!("▸ {}", ws_name);
+            first = false;
+        }
+        let refs: Vec<&Charter> = charters.iter().collect();
+        render_charter_tree(&refs, if multi_ws { "  " } else { "" });
+    }
+}
+
+fn render_charter_tree(charters: &[&Charter], indent: &str) {
     let mut by_parent: HashMap<String, Vec<&Charter>> = HashMap::new();
     let mut roots: Vec<&Charter> = Vec::new();
 
@@ -141,16 +179,15 @@ fn print_charter_tree(charters: &[&Charter]) {
         }
     }
 
-    // Sort roots alphabetically
     roots.sort_by(|a, b| a.title.cmp(&b.title));
 
     for root in &roots {
         let open = open_act_count(root);
         let open_str = if open > 0 { format!("  ({open} open)") } else { String::new() };
-        println!("{}{}", root.title, open_str);
+        println!("{}{}{}", indent, root.title, open_str);
         let kids = charter_children(root, &by_parent);
         for (i, kid) in kids.iter().enumerate() {
-            print_charter_node(kid, &by_parent, "", i == kids.len() - 1);
+            print_charter_node(kid, &by_parent, indent, i == kids.len() - 1);
         }
     }
 }

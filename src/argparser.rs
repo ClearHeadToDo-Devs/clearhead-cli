@@ -564,7 +564,7 @@ pub enum UpdateTarget {
 
     /// Update an action's fields
     Action {
-        /// UUID or 8-char prefix of the action
+        /// UUID, 8-char prefix, alias, or name of the action
         query: String,
 
         /// New name
@@ -586,6 +586,10 @@ pub enum UpdateTarget {
         /// New duration in minutes
         #[arg(long)]
         duration: Option<u32>,
+
+        /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
+        #[arg(long)]
+        charter: Option<String>,
 
         /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
         #[arg(short, long)]
@@ -638,8 +642,12 @@ pub enum CompleteTarget {
     /// Mark an action as completed
     #[command(alias = "act")]
     Action {
-        /// UUID or 8-char prefix of the action
+        /// UUID, 8-char prefix, alias, or name of the action
         query: String,
+
+        /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
+        #[arg(long)]
+        charter: Option<String>,
 
         /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
         #[arg(short, long)]
@@ -671,6 +679,10 @@ pub enum DeleteTarget {
     Action {
         /// UUID, short UUID, alias, or name of the action to delete
         query: String,
+
+        /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
+        #[arg(long)]
+        charter: Option<String>,
 
         /// File containing the .actions file. If not provided, searches the workspace.
         #[arg(short, long)]
@@ -863,8 +875,12 @@ pub enum ApplyTarget {
 pub enum CancelTarget {
     /// Cancel an action (sets state to Cancelled)
     Action {
-        /// UUID or 8-char prefix of the action
+        /// UUID, 8-char prefix, alias, or name of the action
         query: String,
+
+        /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
+        #[arg(long)]
+        charter: Option<String>,
 
         /// File containing the .actions file (sidecar is derived). If not provided, workspace search.
         #[arg(short, long)]

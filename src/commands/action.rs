@@ -86,15 +86,12 @@ fn resolve_acts_file(
         return Ok(path.clone());
     }
     if let Some(query) = charter {
-        let mcs =
-            clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
-        let mc = resolve_markdown_charter(&mcs, query)
-            .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+        let (mc, ws_root) = resolve_charter_across_workspaces(ctx, query)?;
         let rel = mc
             .acts_file
             .as_ref()
             .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
-        let root = clearhead_core::charter_root(&ctx.data_dir);
+        let root = clearhead_core::charter_root(&ws_root);
         return Ok(root.join(rel));
     }
     Err("Specify --charter <name> or --file <path> to target a charter's actions file".to_string())
@@ -283,10 +280,11 @@ pub fn expand_actions(
 pub fn complete_action(
     ctx: &CommandContext,
     query: &str,
+    charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
+    let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, charter, query)?;
 
     let (act_id, completed_act) = {
         let act = find_act_mut(&mut open_acts, query)
@@ -326,10 +324,11 @@ pub fn update_action(
     state: Option<crate::argparser::ActionStateArg>,
     scheduled_at: &Option<String>,
     duration: &Option<u32>,
+    charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
+    let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, charter, query)?;
 
     let new_scheduled = scheduled_at
         .as_deref()
@@ -379,12 +378,20 @@ pub fn update_action(
 pub fn delete_action(
     ctx: &CommandContext,
     query: &str,
+    charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
     // Try open actions first, then completed.
     let action_files: Vec<PathBuf> = if let Some(path) = file {
         vec![path.clone()]
+    } else if let Some(charter_query) = charter {
+        let (mc, ws_root) = resolve_charter_across_workspaces(ctx, charter_query)?;
+        let rel = mc
+            .acts_file
+            .as_ref()
+            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
+        vec![clearhead_core::charter_root(&ws_root).join(rel)]
     } else {
         clearhead_core::list_action_files(&ctx.data_dir)
             .map_err(|e| format!("Failed to list workspace: {}", e))?
@@ -433,10 +440,11 @@ pub fn delete_action(
 pub fn cancel_action(
     ctx: &CommandContext,
     query: &str,
+    charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, query)?;
+    let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, charter, query)?;
 
     let (act_id, cancelled_act) = {
         let act = find_act_mut(&mut open_acts, query)
@@ -481,32 +489,39 @@ pub fn read_actions_cmd(
     file: &Option<PathBuf>,
 ) -> Result<(), String> {
     let charter_acts_file: Option<PathBuf> = if let Some(query) = charter_filter {
-        let mcs =
-            clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
-        let mc = resolve_markdown_charter(&mcs, query)
-            .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+        let (mc, ws_root) = resolve_charter_across_workspaces(ctx, query)?;
         let rel = mc
             .acts_file
             .as_ref()
             .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
-        let root = clearhead_core::charter_root(&ctx.data_dir);
+        let root = clearhead_core::charter_root(&ws_root);
         Some(root.join(rel))
     } else {
         None
     };
     let effective_file = charter_acts_file.as_ref().or(file.as_ref()).cloned();
-    let acts = collect_all_actions(ctx, &effective_file, open_only)?;
+
+    // Use workspace-aware collection only when no file/charter scope is pinned.
+    let wc = ctx.workspace_config();
+    let multi_ws = effective_file.is_none() && !wc.additional_workspaces.is_empty();
+    let ws_acts: Vec<(Option<String>, Action)> = if multi_ws {
+        collect_workspace_actions(ctx, open_only)?
+    } else {
+        collect_all_actions(ctx, &effective_file, open_only)?
+            .into_iter()
+            .map(|a| (None, a))
+            .collect()
+    };
 
     // Build the filter set: lowercase raw filter tags. Each action's tags are expanded upward
     // (tag + all ancestors) and checked for intersection — so filtering by +computer matches
     // actions tagged +neovim because neovim → terminal → computer.
-    let wc = ctx.workspace_config();
     let filter_set: std::collections::HashSet<String> =
         context_filter.iter().map(|t| t.to_lowercase()).collect();
 
-    let acts: Vec<&Action> = acts
+    let filtered: Vec<(Option<&str>, &Action)> = ws_acts
         .iter()
-        .filter(|a| {
+        .filter(|(_, a)| {
             if let Some(filter) = plan_filter {
                 let id_str = a.id.to_string();
                 let short = &id_str[..8.min(id_str.len())];
@@ -523,19 +538,64 @@ pub fn read_actions_cmd(
             }
             true
         })
+        .map(|(ws, a)| (ws.as_deref(), a))
         .collect();
 
     match format {
         Some(crate::argparser::ActFormat::Json) => {
+            let acts: Vec<&Action> = filtered.iter().map(|(_, a)| *a).collect();
             let json = serde_json::to_string_pretty(&acts)
                 .map_err(|e| format!("JSON serialization failed: {}", e))?;
             println!("{}", json);
         }
-        Some(crate::argparser::ActFormat::Table) => print_acts_table(&acts),
-        None => print_acts_tree(&acts),
+        Some(crate::argparser::ActFormat::Table) => print_acts_table(&filtered, multi_ws),
+        None => print_acts_tree(&filtered, multi_ws),
     }
 
     Ok(())
+}
+
+/// Collect actions from the primary workspace and all configured additional workspaces.
+/// Each action is paired with its workspace name (`None` when not in multi-workspace context).
+fn collect_workspace_actions(
+    ctx: &CommandContext,
+    open_only: bool,
+) -> Result<Vec<(Option<String>, Action)>, String> {
+    let primary_name = ctx.config.workspace_name.clone();
+    let mut result: Vec<(Option<String>, Action)> = collect_all_actions(ctx, &None, open_only)?
+        .into_iter()
+        .map(|a| (primary_name.clone(), a))
+        .collect();
+
+    let wc = ctx.workspace_config();
+    for path_str in &wc.additional_workspaces {
+        let path = Path::new(path_str);
+        let ws_name = Some(super::workspace_name_from_path(path));
+
+        let files = match clearhead_core::list_action_files(path) {
+            Ok(f) => f,
+            Err(e) => {
+                warn!("Skipping workspace '{}': {}", path_str, e);
+                continue;
+            }
+        };
+        for actions_path in files {
+            let mut open = match acts::read_acts(&actions_path) {
+                Ok(a) => a,
+                Err(e) => { warn!("Skipping {}: {}", actions_path.display(), e); continue; }
+            };
+            if open_only { open.retain(is_open_act); }
+            for act in open { result.push((ws_name.clone(), act)); }
+            if !open_only {
+                let completed_path = acts::completed_acts_path(&actions_path);
+                if let Ok(completed) = acts::read_acts(&completed_path) {
+                    for act in completed { result.push((ws_name.clone(), act)); }
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// Show details for one action from open and completed action stores.
@@ -670,11 +730,22 @@ pub fn archive_actions(
 fn find_and_load_open_acts(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
+    charter: &Option<String>,
     query: &str,
 ) -> Result<(PathBuf, ActionList), String> {
     if let Some(path) = file {
         let acts = super::load_file_for_mutation(path, "action lifecycle")?;
         return Ok((path.clone(), acts));
+    }
+    if let Some(charter_query) = charter {
+        let (mc, ws_root) = resolve_charter_across_workspaces(ctx, charter_query)?;
+        let rel = mc
+            .acts_file
+            .as_ref()
+            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
+        let path = clearhead_core::charter_root(&ws_root).join(rel);
+        let acts = super::load_file_for_mutation(&path, "action lifecycle")?;
+        return Ok((path, acts));
     }
     find_act_in_open_files(&ctx.data_dir, query)
 }
@@ -845,6 +916,35 @@ fn resolve_markdown_charter<'a>(
         .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
+/// Search all configured workspaces (primary + additional) for a charter matching `query`.
+///
+/// Returns the matched charter (owned) and the workspace root it came from.
+fn resolve_charter_across_workspaces(
+    ctx: &CommandContext,
+    query: &str,
+) -> Result<(clearhead_core::MarkdownCharter, PathBuf), String> {
+    // Primary workspace first.
+    let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    if let Some(mc) = resolve_markdown_charter(&mcs, query) {
+        return Ok((mc.clone(), ctx.data_dir.clone()));
+    }
+
+    // Walk additional workspaces.
+    let wc = ctx.workspace_config();
+    for path_str in &wc.additional_workspaces {
+        let ws_root = Path::new(path_str);
+        let mcs = match clearhead_core::load_workspace(ws_root) {
+            Ok(m) => m,
+            Err(e) => { warn!("Skipping workspace '{}': {}", path_str, e); continue; }
+        };
+        if let Some(mc) = resolve_markdown_charter(&mcs, query) {
+            return Ok((mc.clone(), ws_root.to_path_buf()));
+        }
+    }
+
+    Err(format!("No charter found matching '{}'", query))
+}
+
 fn collect_all_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
@@ -884,7 +984,28 @@ fn is_open_act(act: &Action) -> bool {
     !matches!(act.state, ActionState::Completed | ActionState::Cancelled)
 }
 
-fn print_acts_tree(acts: &[&Action]) {
+fn print_acts_tree(ws_acts: &[(Option<&str>, &Action)], multi_ws: bool) {
+    if multi_ws {
+        // Group by workspace, preserving first-seen order.
+        let mut seen: Vec<&str> = Vec::new();
+        let mut groups: HashMap<&str, Vec<&Action>> = HashMap::new();
+        for (ws, act) in ws_acts {
+            let key = ws.unwrap_or("unknown");
+            if !groups.contains_key(key) { seen.push(key); }
+            groups.entry(key).or_default().push(act);
+        }
+        for ws_name in seen {
+            println!("▸ {}", ws_name);
+            let group_acts: Vec<&Action> = groups[ws_name].iter().copied().collect();
+            render_acts_tree(&group_acts, "  ");
+        }
+    } else {
+        let acts: Vec<&Action> = ws_acts.iter().map(|(_, a)| *a).collect();
+        render_acts_tree(&acts, "");
+    }
+}
+
+fn render_acts_tree(acts: &[&Action], indent: &str) {
     let mut by_parent: HashMap<uuid::Uuid, Vec<&Action>> = HashMap::new();
     let mut roots: Vec<&Action> = Vec::new();
 
@@ -896,7 +1017,7 @@ fn print_acts_tree(acts: &[&Action]) {
     }
 
     for (i, root) in roots.iter().enumerate() {
-        print_act_node(root, &by_parent, "", true, i == roots.len() - 1);
+        print_act_node(root, &by_parent, indent, true, i == roots.len() - 1);
     }
 }
 
@@ -911,7 +1032,7 @@ fn print_act_node(
     println!("{}{}{} {}", prefix, connector, state_sigil(&act.state), act.name);
 
     let child_prefix = if is_root {
-        String::new()
+        prefix.to_string()
     } else {
         format!("{}{}", prefix, if is_last { "    " } else { "│   " })
     };
@@ -933,13 +1054,15 @@ fn state_sigil(state: &ActionState) -> &'static str {
     }
 }
 
-fn print_acts_table(acts: &[&Action]) {
+fn print_acts_table(ws_acts: &[(Option<&str>, &Action)], multi_ws: bool) {
     use comfy_table::{Cell, Table};
 
     let mut table = Table::new();
-    table.set_header(vec!["id", "state", "name", "scheduled_at", "duration"]);
+    let mut headers: Vec<&str> = vec!["id", "state", "name", "scheduled_at", "duration"];
+    if multi_ws { headers.insert(0, "workspace"); }
+    table.set_header(headers);
 
-    for act in acts {
+    for (ws, act) in ws_acts {
         let short_id = &act.id.to_string()[..8];
         let state = format!("{:?}", act.state);
         let scheduled = act
@@ -951,13 +1074,15 @@ fn print_acts_table(acts: &[&Action]) {
             .map(|d| format!("{}m", d))
             .unwrap_or_else(|| "—".to_string());
 
-        table.add_row(vec![
+        let mut row = vec![
             Cell::new(short_id),
             Cell::new(state),
             Cell::new(&act.name),
             Cell::new(scheduled),
             Cell::new(duration),
-        ]);
+        ];
+        if multi_ws { row.insert(0, Cell::new(ws.unwrap_or("—"))); }
+        table.add_row(row);
     }
 
     println!("{}", table);

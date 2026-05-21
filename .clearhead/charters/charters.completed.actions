@@ -1,2 +1,2 @@
-[x] fix stale integration tests from Decision 25 rename  $ Config.expand_tags exists in environment_reader.rs but is never applied when filtering actions by context tag; searching +terminal should match +neovim actions per the spec $ +ux  %2026-05-17T15:22 #019df000-0020-7000-0000-000000000001
-    >[x] apply Config.expand_tags when evaluating --context filters on read/query commands  %2026-05-17T15:37 #019df000-0021-7000-0000-000000000001
+[_] add --charter scope to complete, update, cancel mutation commands  #019e4839-53a9-7840-8ab3-0d12044a2297
+[x] add --charter scope filter to update, complete, delete  $ workspace search hits first match across all files which is unpredictable when plan names are similar across charters — --charter flag would scope the search and make resolution deterministic $ +arguments  %2026-05-20T19:30 #019d029e-b87d-7970-9f19-0733684a41f7

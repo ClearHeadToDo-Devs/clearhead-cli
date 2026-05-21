@@ -162,10 +162,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 state,
                 scheduled_at,
                 duration,
+                charter,
                 file,
                 dry_run,
             } => commands::action::update_action(
-                &ctx, query, name, *priority, *state, scheduled_at, duration, file, *dry_run,
+                &ctx, query, name, *priority, *state, scheduled_at, duration, charter, file, *dry_run,
             ),
             argparser::UpdateTarget::Charter {
                 query,
@@ -183,9 +184,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::complete_plan(&ctx, query, file, *dry_run),
             argparser::CompleteTarget::Action {
                 query,
+                charter,
                 file,
                 dry_run,
-            } => commands::action::complete_action(&ctx, query, file, *dry_run),
+            } => commands::action::complete_action(&ctx, query, charter, file, *dry_run),
         },
         Verb::Delete { target } => match target {
             argparser::DeleteTarget::Plan {
@@ -195,9 +197,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::plan::delete_plan(&ctx, query, file, *dry_run),
             argparser::DeleteTarget::Action {
                 query,
+                charter,
                 file,
                 dry_run,
-            } => commands::action::delete_action(&ctx, query, file, *dry_run),
+            } => commands::action::delete_action(&ctx, query, charter, file, *dry_run),
         },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {
@@ -306,9 +309,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Verb::Cancel { target } => match target {
             argparser::CancelTarget::Action {
                 query,
+                charter,
                 file,
                 dry_run,
-            } => commands::action::cancel_action(&ctx, query, file, *dry_run),
+            } => commands::action::cancel_action(&ctx, query, charter, file, *dry_run),
         },
         Verb::Apply { target } => match target {
             argparser::ApplyTarget::Template {

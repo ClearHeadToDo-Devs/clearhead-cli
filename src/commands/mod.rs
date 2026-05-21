@@ -87,14 +87,15 @@ impl CommandContext {
     /// has to reason about the config-file directory).  Expansion config is
     /// also forwarded but only affects file expansion, not graph queries.
     pub fn workspace_config(&self) -> clearhead_core::WorkspaceConfig {
-        // Resolve additional workspace paths relative to the directory that
-        // contains the config file (project-local: <root>/.clearhead/;
-        // global: ~/.config/clearhead/).  If the config path has no parent
-        // (very unlikely), fall back to CWD.
-        let config_base = self
-            .config_path
-            .parent()
-            .map(|p| p.to_path_buf())
+        // Resolve relative additional_workspaces paths against the project
+        // config location (<root>/.clearhead/).  config_path always holds the
+        // global config path even when a project config is active, so we
+        // prefer project_root/.clearhead/ when a project workspace exists.
+        // Fall back to config_path's parent (global config dir) otherwise.
+        let config_base = self.project_root
+            .as_ref()
+            .map(|r| r.join(".clearhead"))
+            .or_else(|| self.config_path.parent().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
         let resolved_additional =
@@ -116,6 +117,22 @@ impl CommandContext {
             ..clearhead_core::WorkspaceConfig::default()
         }
     }
+}
+
+/// Derive a human-readable workspace name from its root path.
+///
+/// Strips a trailing `.clearhead` component so that both
+/// `/path/to/project` and `/path/to/project/.clearhead` resolve to `project`.
+pub fn workspace_name_from_path(path: &Path) -> String {
+    let base = if path.ends_with(".clearhead") {
+        path.parent().unwrap_or(path)
+    } else {
+        path
+    };
+    base.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string()
 }
 
 /// Load actions from a .actions file on disk.
