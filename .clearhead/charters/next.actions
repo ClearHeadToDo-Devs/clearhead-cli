@@ -5,3 +5,5 @@
         >[ ] for queries available  #019d9f52-d661-7df2-ba0a-434b994e2700
 [ ] implement display/detail.rs — show action, charter, plan with consistent key-value property view  #019e494f-e119-79c1-904b-382a1685501a
 [ ] apply context and open-only filters in tree view — currently falls back to flat tree  #019e494f-e120-7530-813c-6cc5787b4457
+[ ] support workspace flag  $ for situations like this one where two workspaces might have the same charter otherwise the user should be able to just use the charter flag and have it find the proper one if there is only 1 $ #019e4952-b3fa-7d70-95f2-05764c7817f0
+[ ] add alias to charter names in tree view  $ so that we know which one to reference when we want to use the cli for stuff instead of searching for it $ #019e4953-4513-7420-866b-ab20dcdb15da
