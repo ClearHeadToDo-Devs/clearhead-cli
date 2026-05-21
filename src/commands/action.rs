@@ -307,7 +307,10 @@ pub fn complete_action(
 
     let completed_path = acts::completed_acts_path(&actions_path);
     let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
-    closed.push(completed_act);
+    // Clear parent_id — the completed file is a flat list with no parent context.
+    let mut archived = completed_act;
+    archived.parent_id = None;
+    closed.push(archived);
     acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Action marked completed");
@@ -466,7 +469,10 @@ pub fn cancel_action(
 
     let completed_path = acts::completed_acts_path(&actions_path);
     let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
-    closed.push(cancelled_act);
+    // Clear parent_id — the completed file is a flat list with no parent context.
+    let mut archived = cancelled_act;
+    archived.parent_id = None;
+    closed.push(archived);
     acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Action cancelled");

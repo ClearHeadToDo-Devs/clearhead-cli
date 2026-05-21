@@ -1,3 +1,1 @@
-[ ] Export to individual events  $ RRULE master event approach retired; export side (Actions → ICS) removed during PlannedAct → Action migration and needs reimplementing $ ^2026-02-03T19:32 #019c26b5-a16f-77b2-bca8-9b78a9e330a7
-        >[ ] change from RRULE based to individual event based for easier management and editing of single events  ^2026-02-03T19:32 #019c26b5-a16f-77b2-bca8-9b87d570a8dc
-        >[ ] Export events to ical format  ^2026-02-05T20:51 #019c314a-199a-7060-9e1a-c5697e0099f9
+
