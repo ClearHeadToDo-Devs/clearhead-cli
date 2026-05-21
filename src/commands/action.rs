@@ -698,7 +698,8 @@ pub fn archive_actions(
             let completed_path = acts::completed_acts_path(actions_path);
             let mut existing_closed =
                 acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
-            existing_closed.extend(to_close.iter().cloned());
+            // Clear parent_id — the completed file is a flat list with no parent context.
+            existing_closed.extend(to_close.iter().cloned().map(|mut a| { a.parent_id = None; a }));
             acts::write_acts(&existing_closed, &completed_path).map_err(|e| e.to_string())?;
 
             info!(
