@@ -678,10 +678,10 @@ pub fn archive_actions(
         vec![f.clone()]
     } else if let Some(s) = scope {
         use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
-        match resolve_domain_ref(&ctx.data_dir, s)? {
-            ResolvedScope::Charter { file_path } | ResolvedScope::Plan { file_path, .. } => {
-                vec![file_path]
-            }
+        match resolve_domain_ref(ctx, s)? {
+            ResolvedScope::Charter { file_path }
+            | ResolvedScope::Plan { file_path, .. }
+            | ResolvedScope::Action { file_path, .. } => vec![file_path],
         }
     } else {
         clearhead_core::list_action_files(&ctx.data_dir)
