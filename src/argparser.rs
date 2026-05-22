@@ -381,6 +381,10 @@ pub enum ReadTarget {
         #[arg(long)]
         open_only: bool,
 
+        /// Filter to specific state(s) (can be specified multiple times; overrides --open-only)
+        #[arg(long = "state", value_enum)]
+        states: Vec<ActionStateArg>,
+
         /// Read from a specific .actions file (also loads sibling .acts.jsonld)
         #[arg(long)]
         file: Option<PathBuf>,
@@ -494,6 +498,10 @@ pub enum AddTarget {
         #[arg(short, long)]
         alias: Option<String>,
 
+        /// Description / note for the action (the `$ ... $` inline note in the DSL)
+        #[arg(long)]
+        description: Option<String>,
+
         /// Scheduled datetime (RFC 3339, e.g. "2026-04-28T09:00:00-07:00")
         #[arg(long)]
         scheduled_at: Option<String>,
@@ -586,6 +594,10 @@ pub enum UpdateTarget {
         /// New duration in minutes
         #[arg(long)]
         duration: Option<u32>,
+
+        /// New description / note (replaces the existing `$ ... $` inline note)
+        #[arg(long)]
+        description: Option<String>,
 
         /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
         #[arg(long)]

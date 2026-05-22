@@ -272,7 +272,8 @@ pub fn add_charter(
         .to_lowercase()
         .replace(' ', "-")
         .replace('&', "and");
-    let file_path = ctx.data_dir.join(format!("{}.md", filename));
+    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+    let file_path = charter_root.join(format!("{}.md", filename));
 
     if file_path.exists() {
         return Err(format!("File already exists: {}", file_path.display()));
@@ -280,6 +281,12 @@ pub fn add_charter(
 
     let content = clearhead_core::format_charter(&charter);
     std::fs::write(&file_path, content).map_err(|e| format!("Failed to write charter: {}", e))?;
+
+    // Always create the companion .actions file so the charter is immediately usable.
+    let actions_path = charter_root.join(format!("{}.actions", filename));
+    if !actions_path.exists() {
+        std::fs::write(&actions_path, "").map_err(|e| format!("Failed to create actions file: {}", e))?;
+    }
 
     info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
     println!("{}", id);
@@ -298,7 +305,6 @@ pub fn add_charter(
         let instantiated =
             templates::instantiate_template(&tpl_acts, |_| uuid::Uuid::now_v7(), None);
 
-        let actions_path = ctx.data_dir.join(format!("{}.actions", filename));
         super::save_file(&actions_path, &instantiated)?;
 
         println!(

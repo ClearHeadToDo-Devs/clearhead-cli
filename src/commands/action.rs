@@ -26,6 +26,7 @@ pub fn add_action(
     priority: Option<u32>,
     state: Option<crate::argparser::ActionStateArg>,
     alias: &Option<String>,
+    description: &Option<String>,
     scheduled_at: &Option<String>,
     duration: Option<u32>,
     dry_run: bool,
@@ -57,6 +58,7 @@ pub fn add_action(
         priority,
         state: state.map(Into::into).unwrap_or(ActionState::NotStarted),
         alias: alias.clone(),
+        description: description.clone(),
         scheduled_at: new_scheduled,
         duration: duration,
         created_at: Some(Local::now()),
@@ -287,35 +289,44 @@ pub fn complete_action(
 ) -> Result<(), String> {
     let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, charter, query)?;
 
-    let (act_id, completed_act) = {
-        let act = find_act_mut(&mut open_acts, query)
-            .ok_or_else(|| format!("No open action found matching '{}'", query))?;
-        let id = act.id;
-        if !dry_run {
-            act.state = ActionState::Completed;
-            act.completed_at = Some(Local::now());
-        }
-        (id, act.clone())
-    };
+    let act_id = find_act_mut(&mut open_acts, query)
+        .ok_or_else(|| format!("No open action found matching '{}'", query))?
+        .id;
+
+    let subtree_ids = collect_subtree_ids(&open_acts, act_id);
 
     if dry_run {
-        println!("Would complete action {}", &act_id.to_string()[..8]);
+        println!(
+            "Would complete action {} and {} child(ren)",
+            &act_id.to_string()[..8],
+            subtree_ids.len() - 1,
+        );
         return Ok(());
     }
 
-    open_acts.retain(|a| a.id != act_id);
+    let now = Local::now();
+    let mut to_close: Vec<Action> = open_acts
+        .iter()
+        .filter(|a| subtree_ids.contains(&a.id))
+        .map(|a| {
+            let mut closed = a.clone();
+            closed.state = ActionState::Completed;
+            closed.completed_at = Some(now);
+            closed.parent_id = None;
+            closed
+        })
+        .collect();
+
+    open_acts.retain(|a| !subtree_ids.contains(&a.id));
     super::save_file(&actions_path, &open_acts)?;
 
     let completed_path = action_files::completed_actions_path(&actions_path);
     let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
-    // Clear parent_id — the completed file is a flat list with no parent context.
-    let mut archived = completed_act;
-    archived.parent_id = None;
-    closed.push(archived);
+    closed.append(&mut to_close);
     action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
 
-    info!(%act_id, "Action marked completed");
-    println!("Completed action {}", act_id);
+    info!(%act_id, children = subtree_ids.len() - 1, "Action subtree completed");
+    println!("Completed action {} (+{} children)", act_id, subtree_ids.len() - 1);
     Ok(())
 }
 
@@ -328,6 +339,7 @@ pub fn update_action(
     state: Option<crate::argparser::ActionStateArg>,
     scheduled_at: &Option<String>,
     duration: &Option<u32>,
+    description: &Option<String>,
     charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
@@ -362,6 +374,9 @@ pub fn update_action(
             }
             if let Some(dur) = duration {
                 act.duration = Some(*dur);
+            }
+            if let Some(d) = description {
+                act.description = Some(d.clone());
             }
         }
         id
@@ -408,36 +423,36 @@ pub fn delete_action(
 
     for actions_path in &action_files {
         let mut open = action_files::read_actions(actions_path).map_err(|e| e.to_string())?;
-        if let Some(pos) = open.iter().position(|a| act_matches(a, query)) {
-            let act = &open[pos];
-            let act_id = act.id;
-            let act_name = act.name.clone();
+        if let Some(act_id) = open.iter().find(|a| act_matches(a, query)).map(|a| a.id) {
+            let subtree_ids = collect_subtree_ids(&open, act_id);
             if dry_run {
-                println!("Would delete action {} ({})", &act_id.to_string()[..8], act_name);
+                println!(
+                    "Would delete action {} (+{} children)",
+                    &act_id.to_string()[..8],
+                    subtree_ids.len() - 1,
+                );
                 return Ok(());
             }
-            open.remove(pos);
+            open.retain(|a| !subtree_ids.contains(&a.id));
             super::save_file(actions_path, &open)?;
-            info!(%act_id, "Action deleted");
-            println!("Deleted action {} ({})", &act_id.to_string()[..8], act_name);
+            info!(%act_id, children = subtree_ids.len() - 1, "Action subtree deleted");
+            println!("Deleted action {} (+{} children)", &act_id.to_string()[..8], subtree_ids.len() - 1);
             return Ok(());
         }
 
-        // Check completed file too
+        // Check completed file — single action only (no tree context in closed file)
         let completed_path = action_files::completed_actions_path(actions_path);
         let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
         if let Some(pos) = closed.iter().position(|a| act_matches(a, query)) {
-            let act = &closed[pos];
-            let act_id = act.id;
-            let act_name = act.name.clone();
+            let act_id = closed[pos].id;
             if dry_run {
-                println!("Would delete action {} ({})", &act_id.to_string()[..8], act_name);
+                println!("Would delete action {}", &act_id.to_string()[..8]);
                 return Ok(());
             }
             closed.remove(pos);
             action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
             info!(%act_id, "Action deleted from completed");
-            println!("Deleted action {} ({})", &act_id.to_string()[..8], act_name);
+            println!("Deleted action {}", &act_id.to_string()[..8]);
             return Ok(());
         }
     }
@@ -445,7 +460,7 @@ pub fn delete_action(
     Err(format!("No action found matching '{}'", query))
 }
 
-/// Cancel an open action (moves to `.completed.actions` with Cancelled state).
+/// Cancel an open action and all its descendants (moves to `.completed.actions` with Cancelled state).
 pub fn cancel_action(
     ctx: &CommandContext,
     query: &str,
@@ -455,34 +470,44 @@ pub fn cancel_action(
 ) -> Result<(), String> {
     let (actions_path, mut open_acts) = find_and_load_open_acts(ctx, file, charter, query)?;
 
-    let (act_id, cancelled_act) = {
-        let act = find_act_mut(&mut open_acts, query)
-            .ok_or_else(|| format!("No open action found matching '{}'", query))?;
-        let id = act.id;
-        if !dry_run {
-            act.state = ActionState::Cancelled;
-        }
-        (id, act.clone())
-    };
+    let act_id = find_act_mut(&mut open_acts, query)
+        .ok_or_else(|| format!("No open action found matching '{}'", query))?
+        .id;
+
+    let subtree_ids = collect_subtree_ids(&open_acts, act_id);
 
     if dry_run {
-        println!("Would cancel action {}", &act_id.to_string()[..8]);
+        println!(
+            "Would cancel action {} and {} child(ren)",
+            &act_id.to_string()[..8],
+            subtree_ids.len() - 1,
+        );
         return Ok(());
     }
 
-    open_acts.retain(|a| a.id != act_id);
+    let now = Local::now();
+    let mut to_close: Vec<Action> = open_acts
+        .iter()
+        .filter(|a| subtree_ids.contains(&a.id))
+        .map(|a| {
+            let mut closed = a.clone();
+            closed.state = ActionState::Cancelled;
+            closed.completed_at = Some(now);
+            closed.parent_id = None;
+            closed
+        })
+        .collect();
+
+    open_acts.retain(|a| !subtree_ids.contains(&a.id));
     super::save_file(&actions_path, &open_acts)?;
 
     let completed_path = action_files::completed_actions_path(&actions_path);
     let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
-    // Clear parent_id — the completed file is a flat list with no parent context.
-    let mut archived = cancelled_act;
-    archived.parent_id = None;
-    closed.push(archived);
+    closed.append(&mut to_close);
     action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
 
-    info!(%act_id, "Action cancelled");
-    println!("Cancelled action {}", act_id);
+    info!(%act_id, children = subtree_ids.len() - 1, "Action subtree cancelled");
+    println!("Cancelled action {} (+{} children)", act_id, subtree_ids.len() - 1);
     Ok(())
 }
 
@@ -498,6 +523,7 @@ pub fn read_actions_cmd(
     charter_filter: Option<&str>,
     context_filter: &[String],
     open_only: bool,
+    states: &[crate::argparser::ActionStateArg],
     file: &Option<PathBuf>,
 ) -> Result<(), String> {
     let charter_acts_file: Option<PathBuf> = if let Some(query) = charter_filter {
@@ -525,6 +551,7 @@ pub fn read_actions_cmd(
         .collect();
     let action_filter = clearhead_core::ActionFilter {
         open_only,
+        states: states.iter().map(|s| (*s).into()).collect(),
         context_tags: expanded_context_tags,
         plan_ref: plan_filter.map(String::from),
     };
@@ -897,6 +924,22 @@ fn act_matches(act: &Action, query: &str) -> bool {
             .map(|alias| alias.eq_ignore_ascii_case(q))
             .unwrap_or(false)
         || act.name.to_lowercase().contains(&query_lower)
+}
+
+/// Collect the IDs of `root_id` and all its recursive descendants in `acts`.
+fn collect_subtree_ids(acts: &ActionList, root_id: uuid::Uuid) -> Vec<uuid::Uuid> {
+    let mut ids = vec![root_id];
+    let mut i = 0;
+    while i < ids.len() {
+        let parent = ids[i];
+        for a in acts.iter() {
+            if a.parent_id == Some(parent) && !ids.contains(&a.id) {
+                ids.push(a.id);
+            }
+        }
+        i += 1;
+    }
+    ids
 }
 
 fn find_act_mut<'a>(acts: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {

@@ -88,6 +88,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 charter,
                 context,
                 open_only,
+                states,
                 file,
             } => commands::action::read_actions_cmd(
                 &ctx,
@@ -96,6 +97,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 charter.as_deref(),
                 context,
                 *open_only,
+                states,
                 file,
             ),
         },
@@ -133,12 +135,13 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 priority,
                 state,
                 alias,
+                description,
                 scheduled_at,
                 duration,
                 dry_run,
             } => commands::action::add_action(
                 &ctx, name, charter, file, parent, *priority, *state, alias,
-                scheduled_at, *duration, *dry_run,
+                description, scheduled_at, *duration, *dry_run,
             ),
             argparser::AddTarget::Charter {
                 title,
@@ -164,11 +167,12 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 state,
                 scheduled_at,
                 duration,
+                description,
                 charter,
                 file,
                 dry_run,
             } => commands::action::update_action(
-                &ctx, query, name, *priority, *state, scheduled_at, duration, charter, file, *dry_run,
+                &ctx, query, name, *priority, *state, scheduled_at, duration, description, charter, file, *dry_run,
             ),
             argparser::UpdateTarget::Charter {
                 query,
