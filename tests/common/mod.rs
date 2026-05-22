@@ -1,11 +1,9 @@
 #![allow(dead_code)]
 use assert_cmd::Command;
-use clearhead_cli::{Action, ActionState};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use uuid::Uuid;
 
 /// Isolated environment with temp XDG directories for CLI integration tests.
 pub struct TestEnv {
@@ -132,55 +130,4 @@ pub fn get_examples() -> HashMap<String, String> {
         examples.insert(example_name.to_string(), content);
     }
     return examples;
-}
-
-pub struct ActionBuilder {
-    action: Action,
-}
-
-impl ActionBuilder {
-    pub fn new(name: &str) -> Self {
-        Self {
-            action: Action::new(name),
-        }
-    }
-
-    pub fn id(mut self, id: Uuid) -> Self {
-        self.action.id = id;
-        self
-    }
-
-    pub fn parent(mut self, parent_id: Uuid) -> Self {
-        self.action.parent_id = Some(parent_id);
-        self
-    }
-
-    pub fn state(mut self, state: ActionState) -> Self {
-        self.action.state = state;
-        self
-    }
-
-    pub fn description(mut self, desc: &str) -> Self {
-        self.action.description = Some(desc.to_string());
-        self
-    }
-
-    pub fn priority(mut self, priority: u32) -> Self {
-        self.action.priority = Some(priority);
-        self
-    }
-
-    pub fn context(mut self, contexts: Vec<&str>) -> Self {
-        self.action.contexts = Some(contexts.iter().map(|s| s.to_string()).collect());
-        self
-    }
-
-    pub fn story(mut self, story: &str) -> Self {
-        self.action.charter = Some(story.to_string());
-        self
-    }
-
-    pub fn build(self) -> Action {
-        self.action
-    }
 }

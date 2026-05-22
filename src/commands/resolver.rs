@@ -58,7 +58,7 @@ pub fn resolve_domain_ref(ctx: &CommandContext, ref_str: &str) -> Result<Resolve
             let file_path = charter_actions_path(model, charter_id, &ws_dir)?;
             Ok(ResolvedScope::Plan { file_path, plan_id })
         }
-        ReferenceTarget::Act(act_id) => {
+        ReferenceTarget::Action(act_id) => {
             let charter_id = model
                 .charters
                 .iter()

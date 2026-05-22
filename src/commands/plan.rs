@@ -716,7 +716,7 @@ pub fn export_plans(
 ) -> Result<(), String> {
     use crate::environment_reader::resolve_file_path;
     use clearhead_core::reference::{
-        ReferenceOptions, ReferenceTarget, filter_model_for_act, filter_model_for_charter,
+        ReferenceOptions, ReferenceTarget, filter_model_for_action, filter_model_for_charter,
         filter_model_for_plan, resolve_reference,
     };
 
@@ -757,7 +757,7 @@ pub fn export_plans(
             match target {
                 ReferenceTarget::Charter(id) => filter_model_for_charter(&model, id, recursive),
                 ReferenceTarget::Plan(id) => filter_model_for_plan(&model, id),
-                ReferenceTarget::Act(id) => filter_model_for_act(&model, id),
+                ReferenceTarget::Action(id) => filter_model_for_action(&model, id),
             }
         }
     } else {

@@ -171,11 +171,6 @@ pub fn workspace_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
-/// Load actions from a .actions file on disk.
-pub fn load_file(path: &Path) -> Result<ActionList, String> {
-    load_file_for_read(path, "load-file")
-}
-
 /// Load actions for read-only operations using recoverable parse mode.
 pub fn load_file_for_read(path: &Path, command: &str) -> Result<ActionList, String> {
     if !path.exists() {
