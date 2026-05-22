@@ -3,6 +3,7 @@ use tracing::{debug, info, warn};
 use crate::commands::{CommandContext, load_file_for_read};
 use clearhead_cli::telemetry::{TelemetryEvent, TelemetryRecord, Tool, emit};
 
+#[cfg(feature = "lsp")]
 pub fn start_lsp() -> Result<(), String> {
     info!("Starting Language Server");
     let rt = tokio::runtime::Builder::new_multi_thread()

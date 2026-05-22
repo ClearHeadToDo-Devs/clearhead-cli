@@ -236,49 +236,144 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
-        if let Some(doc) = self.documents.get(&uri) {
-            let position = params.text_document_position_params.position;
-            if let Some(node) = get_node_at_position(&doc.tree, position) {
-                if node.kind() == "story" || node.kind() == "context" {
-                    let tag_text = get_node_text(&node, &doc.text);
-                    if let Some(ref parsed) = doc.parsed {
-                        if let Some(ranges) = parsed.tag_index.get(&tag_text) {
-                            if let Some(first_range) = ranges.first() {
-                                return Ok(Some(GotoDefinitionResponse::Scalar(Location {
-                                    uri: uri.clone(),
-                                    range: source_range_to_lsp_range(*first_range),
-                                })));
-                            }
-                        }
-                    }
-                }
+        let position = params.text_document_position_params.position;
+
+        let (node_kind, ref_text, same_file_range) = {
+            let Some(doc) = self.documents.get(&uri) else {
+                return Ok(None);
+            };
+            let Some(node) = get_node_at_position(&doc.tree, position) else {
+                return Ok(None);
+            };
+            let kind = node.kind().to_string();
+            let text = get_node_text(&node, &doc.text);
+
+            // Same-file fast path: tags and UUID id nodes resolved from in-memory state
+            let same_file = match kind.as_str() {
+                // Context/story tags — existing behaviour
+                "story" | "context" => doc
+                    .parsed
+                    .as_ref()
+                    .and_then(|p| p.tag_index.get(&text))
+                    .and_then(|ranges| ranges.first().copied())
+                    .map(source_range_to_lsp_range),
+                // The `#uuid` id field — jump to the action itself (same file)
+                "uuid_value" => doc
+                    .parsed
+                    .as_ref()
+                    .and_then(|p| {
+                        uuid::Uuid::parse_str(&text)
+                            .ok()
+                            .and_then(|id| p.source_map.get(&id))
+                    })
+                    .map(|m| source_range_to_lsp_range(m.root)),
+                _ => None,
+            };
+
+            (kind, text, same_file)
+        };
+
+        if let Some(range) = same_file_range {
+            return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                uri: uri.clone(),
+                range,
+            })));
+        }
+
+        // Cross-file path: predecessor references, alias lookups, short UUIDs
+        let needs_workspace_lookup = matches!(
+            node_kind.as_str(),
+            "uuid_value" | "short_uuid_value" | "predecessor_reference"
+                | "predecessor_name" | "alias_name"
+        );
+
+        if needs_workspace_lookup {
+            let source_path = uri
+                .to_file_path()
+                .ok_or_else(|| internal_error("URI is not a file path"))?
+                .to_path_buf();
+
+            let result = tokio::task::spawn_blocking(move || {
+                find_definition_in_workspace(&source_path, &ref_text)
+            })
+            .await
+            .map_err(|e| internal_error(format!("Definition lookup panicked: {e}")))?
+            ;
+
+            if let Some((file_path, range)) = result {
+                let target_uri = Uri::from_file_path(&file_path)
+                    .ok_or_else(|| internal_error("Could not build URI from path"))?;
+                return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                    uri: target_uri,
+                    range,
+                })));
             }
         }
+
         Ok(None)
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
-        if let Some(doc) = self.documents.get(&uri) {
-            let position = params.text_document_position.position;
-            if let Some(node) = get_node_at_position(&doc.tree, position) {
-                if node.kind() == "story" || node.kind() == "context" {
-                    let tag_text = get_node_text(&node, &doc.text);
-                    if let Some(ref parsed) = doc.parsed {
-                        if let Some(ranges) = parsed.tag_index.get(&tag_text) {
-                            let locations = ranges
-                                .iter()
-                                .map(|r| Location {
-                                    uri: uri.clone(),
-                                    range: source_range_to_lsp_range(*r),
-                                })
-                                .collect();
-                            return Ok(Some(locations));
-                        }
-                    }
-                }
+        let position = params.text_document_position.position;
+
+        let (node_kind, ref_text, same_file_locations) = {
+            let Some(doc) = self.documents.get(&uri) else {
+                return Ok(None);
+            };
+            let Some(node) = get_node_at_position(&doc.tree, position) else {
+                return Ok(None);
+            };
+            let kind = node.kind().to_string();
+            let text = get_node_text(&node, &doc.text);
+
+            // Same-file: tags/contexts — existing behaviour
+            let same_file = match kind.as_str() {
+                "story" | "context" => doc
+                    .parsed
+                    .as_ref()
+                    .and_then(|p| p.tag_index.get(&text))
+                    .map(|ranges| {
+                        ranges
+                            .iter()
+                            .map(|r| Location {
+                                uri: uri.clone(),
+                                range: source_range_to_lsp_range(*r),
+                            })
+                            .collect::<Vec<_>>()
+                    }),
+                _ => None,
+            };
+
+            (kind, text, same_file)
+        };
+
+        if let Some(locs) = same_file_locations {
+            return Ok(Some(locs));
+        }
+
+        // Cross-file: find all predecessor references to this UUID across the workspace
+        let needs_workspace_lookup =
+            matches!(node_kind.as_str(), "uuid_value" | "short_uuid_value");
+
+        if needs_workspace_lookup {
+            let source_path = uri
+                .to_file_path()
+                .ok_or_else(|| internal_error("URI is not a file path"))?
+                .to_path_buf();
+
+            let result = tokio::task::spawn_blocking(move || {
+                find_references_in_workspace(&source_path, &ref_text)
+            })
+            .await
+            .map_err(|e| internal_error(format!("References lookup panicked: {e}")))?
+            ;
+
+            if let Some(locations) = result {
+                return Ok(Some(locations));
             }
         }
+
         Ok(None)
     }
 
@@ -578,4 +673,94 @@ fn emit_diff_telemetry(diff: &Diff, current: &ParsedDocument, file_path: &str) {
             }
         }
     }
+}
+
+// =============================================================================
+// Workspace reference resolution helpers
+// =============================================================================
+
+/// Resolve a reference string to a `(file_path, Range)` using the core reference resolver.
+///
+/// Handles full UUIDs, short UUID prefixes, alias names, and path notation.
+/// Returns `None` when the reference cannot be resolved or the workspace is unavailable.
+fn find_definition_in_workspace(
+    source_path: &std::path::Path,
+    ref_text: &str,
+) -> Option<(std::path::PathBuf, tower_lsp_server::ls_types::Range)> {
+    use clearhead_core::{
+        ReferenceOptions, ReferenceTarget, list_action_files, load_domain_model,
+        parse_document, resolve_reference,
+    };
+
+    let workspace_root = check_for_workspace(source_path)?;
+    let model = load_domain_model(&workspace_root).ok()?;
+    let opts = ReferenceOptions::default();
+    let target = resolve_reference(&model, ref_text, &opts).ok()?;
+
+    let target_uuid = match target {
+        ReferenceTarget::Action(id) | ReferenceTarget::Charter(id) | ReferenceTarget::Plan(id) => id,
+    };
+
+    // Walk all action files to find which one defines this UUID
+    let action_files = list_action_files(&workspace_root).ok()?;
+    for file_path in action_files {
+        let content = std::fs::read_to_string(&file_path).ok()?;
+        let parsed = parse_document(&content).ok()?;
+        if let Some(meta) = parsed.source_map.get(&target_uuid) {
+            return Some((file_path, source_range_to_lsp_range(meta.root)));
+        }
+    }
+
+    None
+}
+
+/// Find all locations in the workspace that reference a given UUID as a predecessor.
+///
+/// Returns `None` when the workspace is unavailable or no references exist.
+fn find_references_in_workspace(
+    source_path: &std::path::Path,
+    ref_text: &str,
+) -> Option<Vec<tower_lsp_server::ls_types::Location>> {
+    use clearhead_core::{list_action_files, parse_document};
+
+    let target_uuid = uuid::Uuid::parse_str(ref_text).ok();
+
+    let workspace_root = check_for_workspace(source_path)?;
+    let action_files = list_action_files(&workspace_root).ok()?;
+    let mut locations = Vec::new();
+
+    for file_path in &action_files {
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let parsed = match parse_document(&content) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let file_uri = match Uri::from_file_path(file_path) {
+            Some(u) => u,
+            None => continue,
+        };
+
+        for action in &parsed.actions {
+            let refs_target = action.predecessors.as_ref().map_or(false, |preds| {
+                preds.iter().any(|pred| match target_uuid {
+                    Some(uuid) => pred.resolved_uuid == Some(uuid),
+                    None => pred.raw_ref.starts_with(ref_text),
+                })
+            });
+
+            if refs_target {
+                if let Some(meta) = parsed.source_map.get(&action.id) {
+                    locations.push(tower_lsp_server::ls_types::Location {
+                        uri: file_uri.clone(),
+                        range: source_range_to_lsp_range(meta.root),
+                    });
+                }
+            }
+        }
+    }
+
+    if locations.is_empty() { None } else { Some(locations) }
 }

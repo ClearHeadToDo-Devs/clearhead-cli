@@ -11,6 +11,17 @@ repository = "https://github.com/ClearHeadToDo-Devs/clearhead_cli.git"
 name = "clearhead"
 path = "src/main.rs"
 
+[[bin]]
+name = "clearhead-lsp"
+path = "src/lsp_main.rs"
+required-features = ["lsp"]
+
+[features]
+default = ["lsp"]
+# The `lsp` feature enables the Language Server Protocol server.
+# Omit it for a lightweight CLI-only binary: `cargo build --no-default-features`
+lsp = ["dep:tower-lsp-server", "dep:tokio", "dep:dashmap"]
+
 [dependencies]
 # Core library with pure business logic
 clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
@@ -22,22 +33,23 @@ clap_mangen = "0.3"
 comfy-table = "7.1"
 termtree = "1.0.0"
 config = "0.15.19"
-dashmap = "6.1.0"
 dirs = "6.0.0"
 icalendar = "0.16.17"
 reqwest = { version = "0.11.27", features = ["blocking"] }
 shellexpand = "3.1"
-tokio = { version = "1.48.0", features = ["full"] }
-tower-lsp-server = "0.23.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-
 chrono = { version = "0.4", features = ["serde"] }
 oxigraph = "0.5.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tree-sitter = "0.26.3"
 tree-sitter-actions = { path = "../tree-sitter-actions", version = "0.9.2" }
+
+# LSP-only deps — only compiled when the `lsp` feature is enabled
+dashmap = { version = "6.1.0", optional = true }
+tokio = { version = "1.48.0", features = ["full"], optional = true }
+tower-lsp-server = { version = "0.23.0", optional = true }
 
 [dependencies.uuid]
 version = "1.0"
