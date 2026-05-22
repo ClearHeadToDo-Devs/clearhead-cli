@@ -328,6 +328,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 dry_run,
             } => commands::template::apply_template(&ctx, name, charter, file, *dry_run),
         },
+        Verb::CompleteValues { kind } => commands::complete_values(&ctx, *kind),
         Verb::Init => unreachable!("handled before CommandContext construction"),
     }
 }

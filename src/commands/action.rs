@@ -978,32 +978,24 @@ pub(super) fn resolve_markdown_charter<'a>(
         .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
-/// Search all configured workspaces (primary + additional) for a charter matching `query`.
+/// Search configured workspaces (respecting `--workspace` filter) for a charter matching `query`.
 ///
 /// Returns the matched charter (owned) and the workspace root it came from.
 pub(super) fn resolve_charter_across_workspaces(
     ctx: &CommandContext,
     query: &str,
 ) -> Result<(clearhead_core::MarkdownCharter, PathBuf), String> {
-    // Primary workspace first.
-    let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
-    if let Some(mc) = resolve_markdown_charter(&mcs, query) {
-        return Ok((mc.clone(), ctx.data_dir.clone()));
-    }
-
-    // Walk additional workspaces.
-    let wc = ctx.workspace_config();
-    for path_str in &wc.additional_workspaces {
-        let ws_root = Path::new(path_str);
-        let mcs = match clearhead_core::load_workspace(ws_root) {
+    for (_, ws_root) in ctx.workspace_dirs() {
+        let is_primary = ws_root == ctx.data_dir;
+        let mcs = match clearhead_core::load_workspace(&ws_root) {
             Ok(m) => m,
-            Err(e) => { warn!("Skipping workspace '{}': {}", path_str, e); continue; }
+            Err(e) if is_primary => return Err(e.to_string()),
+            Err(e) => { warn!("Skipping workspace '{}': {}", ws_root.display(), e); continue; }
         };
         if let Some(mc) = resolve_markdown_charter(&mcs, query) {
-            return Ok((mc.clone(), ws_root.to_path_buf()));
+            return Ok((mc.clone(), ws_root));
         }
     }
-
     Err(format!("No charter found matching '{}'", query))
 }
 

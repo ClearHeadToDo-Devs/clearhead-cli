@@ -32,6 +32,9 @@ pub struct CommandContext {
     pub config_dir: PathBuf,
     pub config_path: PathBuf,
     pub project_root: Option<PathBuf>,
+    /// When set, `workspace_dirs()` returns only the workspace whose name
+    /// matches (case-insensitive contains). Set via `--workspace <name>`.
+    pub workspace_filter: Option<String>,
 }
 
 impl CommandContext {
@@ -62,6 +65,7 @@ impl CommandContext {
             config_dir,
             config_path,
             project_root,
+            workspace_filter: cli.workspace.clone(),
         })
     }
 
@@ -102,6 +106,12 @@ impl CommandContext {
             let name = workspace_name_from_path(&path);
             dirs.push((name, path));
         }
+
+        if let Some(filter) = &self.workspace_filter {
+            let f = filter.to_lowercase();
+            dirs.retain(|(name, _)| name.to_lowercase().contains(&f));
+        }
+
         dirs
     }
 
@@ -286,6 +296,35 @@ pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> Res
         println!("{}", content);
         Ok(())
     }
+}
+
+/// Print completable values (one per line) for shell integration.
+///
+/// Intended for use with `clearhead _complete <kind>`. Shell completions can
+/// call this and feed the output to their completion engine, e.g. in fish:
+///   complete -c clearhead -l charter -a "(clearhead _complete charters 2>/dev/null)"
+pub fn complete_values(ctx: &CommandContext, kind: crate::argparser::CompleteKind) -> Result<(), String> {
+    use crate::argparser::CompleteKind;
+    match kind {
+        CompleteKind::Charters => {
+            for (_, ws_root) in ctx.workspace_dirs() {
+                let mcs = match clearhead_core::load_workspace(&ws_root) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                for mc in mcs {
+                    let label = mc.alias.as_deref().unwrap_or(&mc.title);
+                    println!("{}", label);
+                }
+            }
+        }
+        CompleteKind::Workspaces => {
+            for (name, _) in ctx.workspace_dirs() {
+                println!("{}", name);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Emit a telemetry event, logging a warning on failure instead of propagating.

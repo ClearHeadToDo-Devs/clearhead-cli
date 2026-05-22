@@ -137,6 +137,10 @@ pub struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub debug: u8,
 
+    /// Restrict commands to a specific workspace by name (e.g. clearhead-cli)
+    #[arg(long, global = true)]
+    pub workspace: Option<String>,
+
     #[command(subcommand)]
     pub command: Verb,
 }
@@ -269,6 +273,21 @@ pub enum Verb {
         /// Shell to generate completions for
         shell: clap_complete::Shell,
     },
+
+    /// Internal: list completable values (one per line) for shell integration
+    #[command(name = "_complete", hide = true)]
+    CompleteValues {
+        kind: CompleteKind,
+    },
+}
+
+/// Types of values that can be completed
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum CompleteKind {
+    /// Charter aliases (falling back to title if no alias)
+    Charters,
+    /// Workspace names
+    Workspaces,
 }
 
 // =============================================================================
