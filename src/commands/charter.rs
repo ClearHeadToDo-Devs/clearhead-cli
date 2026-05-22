@@ -292,7 +292,7 @@ pub fn add_charter(
             .map_err(|e| format!("Failed to resolve template: {}", e))?
             .ok_or_else(|| format!("Template '{}' not found", tpl_name))?;
 
-        let tpl_acts = clearhead_core::workspace::read_acts(&tpl_path)
+        let tpl_acts = clearhead_core::workspace::read_actions(&tpl_path)
             .map_err(|e| format!("Failed to read template: {}", e))?;
 
         let instantiated =

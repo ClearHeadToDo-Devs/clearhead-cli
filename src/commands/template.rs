@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tracing::info;
 use uuid::Uuid;
 
-use clearhead_core::workspace::{read_acts, templates};
+use clearhead_core::workspace::{read_actions, templates};
 
 use super::CommandContext;
 
@@ -29,7 +29,7 @@ pub fn apply_template(
         .map_err(|e| format!("Failed to resolve template: {}", e))?
         .ok_or_else(|| format!("Template '{}' not found", name))?;
 
-    let tpl_acts = read_acts(&tpl_path).map_err(|e| {
+    let tpl_acts = read_actions(&tpl_path).map_err(|e| {
         format!(
             "Failed to read template '{}' at {}: {}",
             name,

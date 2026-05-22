@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use chrono::Local;
 use tracing::{info, warn};
 
-use clearhead_core::workspace::{acts, read_acts, templates};
+use clearhead_core::workspace::{action_files as acts, read_actions, templates};
 use clearhead_core::{Action, ActionList, ActionState};
 
 use super::CommandContext;
@@ -35,7 +35,7 @@ pub fn add_action(
     let parent_id = parent
         .as_deref()
         .map(|q| {
-            let mut list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+            let mut list = acts::read_actions(&actions_path).map_err(|e| e.to_string())?;
             find_act_mut(&mut list, q)
                 .map(|a| a.id)
                 .ok_or_else(|| format!("No action found matching parent '{}'", q))
@@ -68,7 +68,7 @@ pub fn add_action(
         return Ok(());
     }
 
-    let mut list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+    let mut list = acts::read_actions(&actions_path).map_err(|e| e.to_string())?;
     list.push(act.clone());
     super::save_file(&actions_path, &list)?;
 
@@ -107,7 +107,7 @@ pub fn expand_actions(
 ) -> Result<(), String> {
     use clearhead_core::workspace::ics::parse_ics_file;
     use clearhead_core::workspace::plans::collect_plan_files;
-    use clearhead_core::{ExpansionConfig, upcoming_acts_path};
+    use clearhead_core::{ExpansionConfig, upcoming_actions_path};
 
     let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
     let now = Local::now();
@@ -157,7 +157,7 @@ pub fn expand_actions(
 
     for (charter_name, charter_entries) in by_charter {
         let actions_path = resolve_acts_file(ctx, &Some(charter_name.clone()), &None)?;
-        let upcoming_path = upcoming_acts_path(&actions_path);
+        let upcoming_path = upcoming_actions_path(&actions_path);
         let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
 
         let primary_list = match super::load_file_for_mutation(&actions_path, "expand actions") {
@@ -306,13 +306,13 @@ pub fn complete_action(
     open_acts.retain(|a| a.id != act_id);
     super::save_file(&actions_path, &open_acts)?;
 
-    let completed_path = acts::completed_acts_path(&actions_path);
-    let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+    let completed_path = acts::completed_actions_path(&actions_path);
+    let mut closed = acts::read_actions(&completed_path).map_err(|e| e.to_string())?;
     // Clear parent_id — the completed file is a flat list with no parent context.
     let mut archived = completed_act;
     archived.parent_id = None;
     closed.push(archived);
-    acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
+    acts::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Action marked completed");
     println!("Completed action {}", act_id);
@@ -407,7 +407,7 @@ pub fn delete_action(
     };
 
     for actions_path in &action_files {
-        let mut open = acts::read_acts(actions_path).map_err(|e| e.to_string())?;
+        let mut open = acts::read_actions(actions_path).map_err(|e| e.to_string())?;
         if let Some(pos) = open.iter().position(|a| act_matches(a, query)) {
             let act = &open[pos];
             let act_id = act.id;
@@ -424,8 +424,8 @@ pub fn delete_action(
         }
 
         // Check completed file too
-        let completed_path = acts::completed_acts_path(actions_path);
-        let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+        let completed_path = acts::completed_actions_path(actions_path);
+        let mut closed = acts::read_actions(&completed_path).map_err(|e| e.to_string())?;
         if let Some(pos) = closed.iter().position(|a| act_matches(a, query)) {
             let act = &closed[pos];
             let act_id = act.id;
@@ -435,7 +435,7 @@ pub fn delete_action(
                 return Ok(());
             }
             closed.remove(pos);
-            acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
+            acts::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
             info!(%act_id, "Action deleted from completed");
             println!("Deleted action {} ({})", &act_id.to_string()[..8], act_name);
             return Ok(());
@@ -473,13 +473,13 @@ pub fn cancel_action(
     open_acts.retain(|a| a.id != act_id);
     super::save_file(&actions_path, &open_acts)?;
 
-    let completed_path = acts::completed_acts_path(&actions_path);
-    let mut closed = acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+    let completed_path = acts::completed_actions_path(&actions_path);
+    let mut closed = acts::read_actions(&completed_path).map_err(|e| e.to_string())?;
     // Clear parent_id — the completed file is a flat list with no parent context.
     let mut archived = cancelled_act;
     archived.parent_id = None;
     closed.push(archived);
-    acts::write_acts(&closed, &completed_path).map_err(|e| e.to_string())?;
+    acts::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
 
     info!(%act_id, "Action cancelled");
     println!("Cancelled action {}", act_id);
@@ -623,15 +623,15 @@ fn collect_workspace_actions(
         };
 
         for actions_path in files {
-            let mut open = match acts::read_acts(&actions_path) {
+            let mut open = match acts::read_actions(&actions_path) {
                 Ok(a) => a,
                 Err(e) => { warn!("Skipping {}: {}", actions_path.display(), e); continue; }
             };
             if open_only { open.retain(is_open_act); }
             for act in open { result.push((label.clone(), act)); }
             if !open_only {
-                let completed_path = acts::completed_acts_path(&actions_path);
-                if let Ok(completed) = acts::read_acts(&completed_path) {
+                let completed_path = acts::completed_actions_path(&actions_path);
+                if let Ok(completed) = acts::read_actions(&completed_path) {
                     for act in completed { result.push((label.clone(), act)); }
                 }
             }
@@ -687,7 +687,7 @@ pub fn archive_actions(
     let mut charters_touched = 0usize;
 
     for actions_path in &charter_paths {
-        let open_acts = acts::read_acts(actions_path).map_err(|e| e.to_string())?;
+        let open_acts = acts::read_actions(actions_path).map_err(|e| e.to_string())?;
 
         let (to_close, to_keep): (Vec<Action>, Vec<Action>) = open_acts
             .into_iter()
@@ -706,12 +706,12 @@ pub fn archive_actions(
         } else {
             super::save_file(actions_path, &to_keep)?;
 
-            let completed_path = acts::completed_acts_path(actions_path);
+            let completed_path = acts::completed_actions_path(actions_path);
             let mut existing_closed =
-                acts::read_acts(&completed_path).map_err(|e| e.to_string())?;
+                acts::read_actions(&completed_path).map_err(|e| e.to_string())?;
             // Clear parent_id — the completed file is a flat list with no parent context.
             existing_closed.extend(to_close.iter().cloned().map(|mut a| { a.parent_id = None; a }));
-            acts::write_acts(&existing_closed, &completed_path).map_err(|e| e.to_string())?;
+            acts::write_actions(&existing_closed, &completed_path).map_err(|e| e.to_string())?;
 
             info!(
                 count = to_close.len(),
@@ -774,7 +774,7 @@ fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, Acti
         .map_err(|e| format!("Failed to list workspace: {}", e))?;
 
     for actions_path in action_files {
-        let action_list = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+        let action_list = acts::read_actions(&actions_path).map_err(|e| e.to_string())?;
         if action_list
             .iter()
             .any(|a| is_open_act(a) && act_matches(a, query))
@@ -849,7 +849,7 @@ fn apply_template_in_place(
         }
     };
 
-    let tpl_acts = match read_acts(&tpl_path) {
+    let tpl_acts = match read_actions(&tpl_path) {
         Ok(acts) => acts,
         Err(e) => {
             warn!(template = %tpl_name, path = %tpl_path.display(), error = %e, "Failed to read template");
@@ -970,13 +970,13 @@ fn collect_all_actions(
     open_only: bool,
 ) -> Result<Vec<Action>, String> {
     if let Some(path) = file {
-        let mut result: Vec<Action> = acts::read_acts(path).map_err(|e| e.to_string())?;
+        let mut result: Vec<Action> = acts::read_actions(path).map_err(|e| e.to_string())?;
         if open_only {
             result.retain(is_open_act);
         }
         if !open_only {
-            let completed_path = acts::completed_acts_path(path);
-            result.extend(acts::read_acts(&completed_path).map_err(|e| e.to_string())?);
+            let completed_path = acts::completed_actions_path(path);
+            result.extend(acts::read_actions(&completed_path).map_err(|e| e.to_string())?);
         }
         return Ok(result);
     }
@@ -986,14 +986,14 @@ fn collect_all_actions(
 
     let mut all = Vec::new();
     for actions_path in action_files {
-        let mut open = acts::read_acts(&actions_path).map_err(|e| e.to_string())?;
+        let mut open = acts::read_actions(&actions_path).map_err(|e| e.to_string())?;
         if open_only {
             open.retain(is_open_act);
         }
         all.extend(open);
         if !open_only {
-            let completed_path = acts::completed_acts_path(&actions_path);
-            all.extend(acts::read_acts(&completed_path).map_err(|e| e.to_string())?);
+            let completed_path = acts::completed_actions_path(&actions_path);
+            all.extend(acts::read_actions(&completed_path).map_err(|e| e.to_string())?);
         }
     }
     Ok(all)
