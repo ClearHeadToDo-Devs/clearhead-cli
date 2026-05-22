@@ -947,7 +947,7 @@ fn find_act_mut<'a>(acts: &'a mut ActionList, query: &str) -> Option<&'a mut Act
         .find(|a| is_open_act(a) && act_matches(a, query))
 }
 
-fn resolve_markdown_charter<'a>(
+pub(super) fn resolve_markdown_charter<'a>(
     charters: &'a [clearhead_core::MarkdownCharter],
     query: &str,
 ) -> Option<&'a clearhead_core::MarkdownCharter> {
@@ -981,7 +981,7 @@ fn resolve_markdown_charter<'a>(
 /// Search all configured workspaces (primary + additional) for a charter matching `query`.
 ///
 /// Returns the matched charter (owned) and the workspace root it came from.
-fn resolve_charter_across_workspaces(
+pub(super) fn resolve_charter_across_workspaces(
     ctx: &CommandContext,
     query: &str,
 ) -> Result<(clearhead_core::MarkdownCharter, PathBuf), String> {

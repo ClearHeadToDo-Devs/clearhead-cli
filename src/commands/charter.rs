@@ -1,11 +1,34 @@
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 
 use tracing::info;
 
 use crate::argparser;
 use crate::commands::CommandContext;
 use clearhead_core::{ActionState, Charter};
+
+use super::action::resolve_charter_across_workspaces;
+
+/// Return the directory within `ws_root`'s charter tree where children of `parent` should live.
+///
+/// - Root charter (`next.actions`): children go flat in charter_root
+/// - Named flat charter (`lsp.actions`): children go in `charter_root/lsp/`
+/// - Nested charter (`lsp/diag.actions`): children go in `charter_root/lsp/diag/`
+fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> Result<PathBuf, String> {
+    let charter_root = clearhead_core::charter_root(ws_root);
+    let acts_rel = parent.acts_file.as_ref()
+        .ok_or_else(|| format!("Parent charter '{}' has no associated actions file; cannot determine placement", parent.title))?;
+    let without_ext = acts_rel
+        .to_str()
+        .and_then(|s| s.strip_suffix(".actions"))
+        .unwrap_or("");
+    if without_ext == "next" {
+        Ok(charter_root)
+    } else {
+        Ok(charter_root.join(without_ext))
+    }
+}
 
 pub fn read_charters(
     ctx: &CommandContext,
@@ -272,8 +295,22 @@ pub fn add_charter(
         .to_lowercase()
         .replace(' ', "-")
         .replace('&', "and");
-    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
-    let file_path = charter_root.join(format!("{}.md", filename));
+
+    // If a parent is specified, resolve it to find the correct workspace and target directory.
+    let (target_dir, data_root) = if let Some(parent_query) = parent {
+        let (parent_mc, ws_root) = resolve_charter_across_workspaces(ctx, parent_query)?;
+        let dir = sub_charter_dir(&ws_root, &parent_mc)?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create directory '{}': {}", dir.display(), e))?;
+        (dir, clearhead_core::workspace_data_root(&ws_root))
+    } else {
+        (
+            clearhead_core::charter_root(&ctx.data_dir),
+            clearhead_core::workspace_data_root(&ctx.data_dir),
+        )
+    };
+
+    let file_path = target_dir.join(format!("{}.md", filename));
 
     if file_path.exists() {
         return Err(format!("File already exists: {}", file_path.display()));
@@ -283,7 +320,7 @@ pub fn add_charter(
     std::fs::write(&file_path, content).map_err(|e| format!("Failed to write charter: {}", e))?;
 
     // Always create the companion .actions file so the charter is immediately usable.
-    let actions_path = charter_root.join(format!("{}.actions", filename));
+    let actions_path = target_dir.join(format!("{}.actions", filename));
     if !actions_path.exists() {
         std::fs::write(&actions_path, "").map_err(|e| format!("Failed to create actions file: {}", e))?;
     }
@@ -293,7 +330,6 @@ pub fn add_charter(
 
     if let Some(tpl_name) = template {
         let charter_dir = file_path.parent().unwrap_or(std::path::Path::new(""));
-        let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
 
         let tpl_path = templates::resolve_template(charter_dir, &data_root, tpl_name)
             .map_err(|e| format!("Failed to resolve template: {}", e))?

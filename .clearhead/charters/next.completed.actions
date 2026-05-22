@@ -59,3 +59,7 @@
     >[x] add init command  %2026-05-20T12:19 #1678cdc7-e1c6-4e61-bdd1-3239f0f05598
     >[x] read workspace_id and extra_workspaces from config  $ #019e46d3-8b42-7f40-b6ca-c42c5c5cfc8a $ %2026-05-20T12:19 #019e46d2-93eb-7ab2-ac73-74f9c00fe012
 [x] remove stray charters.completed.actions from cli workspace  $ artifact from pre-fix dogfooding; should be deleted before it confuses workspace discovery $ %2026-05-22T14:01 #019e517e-8663-79a0-b429-8a1da71609f2
+[x] show action should display description field  $ show action currently only outputs id and state; description is now a first-class field and should appear in the detail view $ %2026-05-22T14:29 #019e517e-8654-7580-a920-aeafb04eebc6
+[x] show charter should display alias, parent, and description  $ show charter is similarly sparse; should surface the full frontmatter fields available $ %2026-05-22T14:29 #019e517e-8659-7d71-92ac-ca7122ee2665
+[_] test show action  $ this description should show up in show action $ %2026-05-22T14:29 #019e5197-6aa7-7fe3-a1a7-62ec5fa9b443
+[x] add charter --parent should create sub-charter directory structure  $ verify and fix: --parent flag on add charter should place the new charter inside the parent charter directory rather than flat in charters/ $ %2026-05-22T14:40 #019e517e-865e-77c2-8413-693d90e72f16
