@@ -185,7 +185,7 @@ pub fn expand_actions(
         let mut all_plans = Vec::new();
         for entry in &charter_entries {
             match parse_ics_file(&entry.path) {
-                Ok(plans) => all_plans.extend(plans),
+                Ok(plans) => all_plans.extend(plans.into_iter().map(|ip| ip.plan)),
                 Err(e) => return Err(format!("Failed to parse {}: {}", entry.path.display(), e)),
             }
         }

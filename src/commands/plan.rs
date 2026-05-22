@@ -123,7 +123,7 @@ pub fn read_plans(
         parse_ics_file(path)
             .map_err(|e| e.to_string())?
             .into_iter()
-            .map(|p| (charter_name.clone(), p))
+            .map(|ip| (charter_name.clone(), ip.plan))
             .collect()
     } else {
         let entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
@@ -155,7 +155,7 @@ pub fn read_plans(
                 }
             }
             match parse_ics_file(&entry.path) {
-                Ok(ps) => result.extend(ps.into_iter().map(|p| (entry.charter_name.clone(), p))),
+                Ok(ps) => result.extend(ps.into_iter().map(|ip| (entry.charter_name.clone(), ip.plan))),
                 Err(e) => eprintln!("Warning: skipping {}: {}", entry.path.display(), e),
             }
         }
@@ -217,14 +217,14 @@ pub fn show_plan(
         parse_ics_file(path)
             .map_err(|e| e.to_string())?
             .into_iter()
-            .map(|p| (charter_name.clone(), p))
+            .map(|ip| (charter_name.clone(), ip.plan))
             .collect()
     } else {
         let entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
         let mut result = Vec::new();
         for entry in entries {
             match parse_ics_file(&entry.path) {
-                Ok(ps) => result.extend(ps.into_iter().map(|p| (entry.charter_name.clone(), p))),
+                Ok(ps) => result.extend(ps.into_iter().map(|ip| (entry.charter_name.clone(), ip.plan))),
                 Err(e) => eprintln!("Warning: skipping {}: {}", entry.path.display(), e),
             }
         }
@@ -330,7 +330,9 @@ fn resolve_add_plan_output_path(
 
 fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
     if path.exists() {
-        clearhead_core::workspace::ics::parse_ics_file(path).map_err(|e| e.to_string())
+        clearhead_core::workspace::ics::parse_ics_file(path)
+            .map(|plans| plans.into_iter().map(|ip| ip.plan).collect())
+            .map_err(|e| e.to_string())
     } else {
         Ok(Vec::new())
     }
