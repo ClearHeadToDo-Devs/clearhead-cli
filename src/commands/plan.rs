@@ -243,25 +243,7 @@ pub fn show_plan(
         })
         .ok_or_else(|| format!("No plan found matching '{}'", query))?;
 
-    println!("{}", plan.name);
-    println!("{}", "=".repeat(plan.name.len()));
-    println!("charter:    {}", charter_name);
-    if let Some(dt) = plan.dtstart {
-        println!("dtstart:    {}", dt.format("%Y-%m-%d %H:%M"));
-    }
-    if let Some(r) = &plan.recurrence {
-        println!("recurrence: {}", r.frequency.to_lowercase());
-    }
-    if let Some(tmpl) = &plan.template_name {
-        println!("template:   {}", tmpl);
-    }
-    if let Some(desc) = &plan.description {
-        println!("description:\n  {}", desc.replace('\n', "\n  "));
-    }
-    if let Some(uid) = &plan.external_id {
-        println!("uid:        {}", uid);
-    }
-
+    println!("{}", crate::display::render_plan_detail(&plan, &charter_name));
     Ok(())
 }
 

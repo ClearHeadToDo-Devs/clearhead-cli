@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::io::IsTerminal;
-use std::path::Path;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::argparser;
 use crate::commands::CommandContext;
@@ -13,24 +12,10 @@ pub fn read_charters(
     format: &Option<argparser::Format>,
     explicit_only: bool,
 ) -> Result<(), String> {
-    let primary_name = ctx.config.workspace_name.clone().unwrap_or_else(|| "primary".to_string());
-
-    let wc = ctx.workspace_config();
-    let multi_ws = !wc.additional_workspaces.is_empty();
+    let multi_ws = ctx.workspace_dirs().len() > 1;
 
     // Load full models — tree view needs plans and actions, not just charters.
-    let mut models: Vec<(String, clearhead_core::DomainModel)> = {
-        let m = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
-        vec![(primary_name, m)]
-    };
-    for path_str in &wc.additional_workspaces {
-        let path = Path::new(path_str);
-        let ws_name = super::workspace_name_from_path(path);
-        match clearhead_core::load_domain_model(path) {
-            Ok(m) => models.push((ws_name, m)),
-            Err(e) => warn!("Skipping workspace '{}': {}", path_str, e),
-        }
-    }
+    let models = ctx.all_domain_models()?;
 
     // Apply explicit_only filter.
     let models: Vec<(String, clearhead_core::DomainModel)> = models
@@ -163,74 +148,6 @@ fn flatten_charter_hierarchy<'a>(
     }
 }
 
-fn print_charter_tree(workspaces: &[(String, Vec<Charter>)], multi_ws: bool) {
-    let mut first = true;
-    for (ws_name, charters) in workspaces {
-        if multi_ws {
-            if !first { println!(); }
-            println!("▸ {}", ws_name);
-            first = false;
-        }
-        let refs: Vec<&Charter> = charters.iter().collect();
-        render_charter_tree(&refs, if multi_ws { "  " } else { "" });
-    }
-}
-
-fn render_charter_tree(charters: &[&Charter], indent: &str) {
-    let mut by_parent: HashMap<String, Vec<&Charter>> = HashMap::new();
-    let mut roots: Vec<&Charter> = Vec::new();
-
-    let all_keys: std::collections::HashSet<String> = charters
-        .iter()
-        .flat_map(|c| {
-            let mut v = vec![c.title.to_lowercase()];
-            if let Some(a) = &c.alias {
-                v.push(a.to_lowercase());
-            }
-            v
-        })
-        .collect();
-
-    for &c in charters {
-        match c.parent.as_deref() {
-            Some(p) if all_keys.contains(&p.to_lowercase()) => {
-                by_parent.entry(p.to_lowercase()).or_default().push(c);
-            }
-            _ => roots.push(c),
-        }
-    }
-
-    roots.sort_by(|a, b| a.title.cmp(&b.title));
-
-    for root in &roots {
-        let open = open_act_count(root);
-        let open_str = if open > 0 { format!("  ({open} open)") } else { String::new() };
-        println!("{}{}{}", indent, root.title, open_str);
-        let kids = charter_children(root, &by_parent);
-        for (i, kid) in kids.iter().enumerate() {
-            print_charter_node(kid, &by_parent, indent, i == kids.len() - 1);
-        }
-    }
-}
-
-fn print_charter_node(
-    charter: &Charter,
-    by_parent: &HashMap<String, Vec<&Charter>>,
-    prefix: &str,
-    is_last: bool,
-) {
-    let connector = if is_last { "└── " } else { "├── " };
-    let open = open_act_count(charter);
-    let open_str = if open > 0 { format!("  ({open} open)") } else { String::new() };
-    println!("{}{}{}{}", prefix, connector, charter.title, open_str);
-
-    let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
-    let mut kids = charter_children(charter, by_parent);
-    kids.sort_by(|a, b| a.title.cmp(&b.title));
-    for (i, kid) in kids.iter().enumerate() {
-        print_charter_node(kid, by_parent, &child_prefix, i == kids.len() - 1);
-    }
-}
 
 fn charter_children<'a>(
     charter: &Charter,
@@ -267,24 +184,21 @@ fn open_act_count(charter: &Charter) -> usize {
 }
 
 pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
-    let model = clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let models = ctx.all_domain_models()?;
 
-    let found = resolve_charter(&model.charters, query)
+    let found = models
+        .iter()
+        .flat_map(|(_, m)| m.charters.iter())
+        .find(|c| resolve_charter(std::slice::from_ref(c), query).is_some())
         .ok_or_else(|| format!("No charter found matching '{}'", query))?;
 
-    let formatted = clearhead_core::format_charter(found);
-    println!("{}", formatted);
-
-    let plan_count = found.plans.len();
-    if plan_count > 0 {
-        println!("Plans: {}", plan_count);
-    }
-
+    println!("{}", crate::display::render_charter_detail(found));
     Ok(())
 }
 
 /// Resolve a charter by UUID prefix, alias, or name from a slice of charters.
 pub fn resolve_charter<'a>(charters: &'a [Charter], query: &str) -> Option<&'a Charter> {
+    let query = query.trim_start_matches('/');
     let query_lower = query.to_lowercase();
 
     // 1. Full UUID match

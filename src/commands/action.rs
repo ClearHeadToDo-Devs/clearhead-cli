@@ -614,35 +614,30 @@ fn collect_workspace_actions(
     ctx: &CommandContext,
     open_only: bool,
 ) -> Result<Vec<(Option<String>, Action)>, String> {
-    let primary_name = ctx.config.workspace_name.clone();
-    let mut result: Vec<(Option<String>, Action)> = collect_all_actions(ctx, &None, open_only)?
-        .into_iter()
-        .map(|a| (primary_name.clone(), a))
-        .collect();
+    let multi_ws = ctx.workspace_dirs().len() > 1;
+    let mut result = Vec::new();
 
-    let wc = ctx.workspace_config();
-    for path_str in &wc.additional_workspaces {
-        let path = Path::new(path_str);
-        let ws_name = Some(super::workspace_name_from_path(path));
+    for (ws_name, ws_path) in ctx.workspace_dirs() {
+        let is_primary = ws_path == ctx.data_dir;
+        let label = if multi_ws { Some(ws_name) } else { None };
 
-        let files = match clearhead_core::list_action_files(path) {
+        let files = match clearhead_core::list_action_files(&ws_path) {
             Ok(f) => f,
-            Err(e) => {
-                warn!("Skipping workspace '{}': {}", path_str, e);
-                continue;
-            }
+            Err(e) if is_primary => return Err(e.to_string()),
+            Err(e) => { warn!("Skipping workspace '{}': {}", ws_path.display(), e); continue; }
         };
+
         for actions_path in files {
             let mut open = match acts::read_acts(&actions_path) {
                 Ok(a) => a,
                 Err(e) => { warn!("Skipping {}: {}", actions_path.display(), e); continue; }
             };
             if open_only { open.retain(is_open_act); }
-            for act in open { result.push((ws_name.clone(), act)); }
+            for act in open { result.push((label.clone(), act)); }
             if !open_only {
                 let completed_path = acts::completed_acts_path(&actions_path);
                 if let Ok(completed) = acts::read_acts(&completed_path) {
-                    for act in completed { result.push((ws_name.clone(), act)); }
+                    for act in completed { result.push((label.clone(), act)); }
                 }
             }
         }
@@ -653,44 +648,18 @@ fn collect_workspace_actions(
 
 /// Show details for one action from open and completed action stores.
 pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Result<(), String> {
-    let acts = collect_all_actions(ctx, file, false)?;
+    let acts: Vec<Action> = if file.is_none() && !ctx.workspace_config().additional_workspaces.is_empty() {
+        collect_workspace_actions(ctx, false)?.into_iter().map(|(_, a)| a).collect()
+    } else {
+        collect_all_actions(ctx, file, false)?
+    };
+
     let act = acts
         .iter()
         .find(|act| act_matches(act, query))
         .ok_or_else(|| format!("No action found matching '{}'", query))?;
 
-    println!("{}", act.name);
-    println!("{}", "=".repeat(act.name.len()));
-    println!("id:          {}", act.id);
-    println!("state:       {:?}", act.state);
-    if let Some(alias) = &act.alias {
-        println!("alias:       {}", alias);
-    }
-    if let Some(parent_id) = act.parent_id {
-        println!("parent:      {}", parent_id);
-    }
-    if let Some(dt) = act.scheduled_at {
-        println!("scheduled:   {}", dt.format("%Y-%m-%d %H:%M"));
-    }
-    if let Some(duration) = act.duration {
-        println!("duration:    {}m", duration);
-    }
-    if let Some(priority) = act.priority {
-        println!("priority:    {}", priority);
-    }
-    if let Some(contexts) = &act.contexts {
-        println!("contexts:    {}", contexts.join(", "));
-    }
-    if let Some(created) = act.created_at {
-        println!("created:     {}", created.format("%Y-%m-%d %H:%M"));
-    }
-    if let Some(completed) = act.completed_at {
-        println!("completed:   {}", completed.format("%Y-%m-%d %H:%M"));
-    }
-    if let Some(description) = &act.description {
-        println!("description:\n  {}", description.replace('\n', "\n  "));
-    }
-
+    println!("{}", crate::display::render_action_detail(act));
     Ok(())
 }
 
@@ -921,15 +890,16 @@ fn apply_template_in_place(
 }
 
 fn act_matches(act: &Action, query: &str) -> bool {
-    let query_lower = query.to_lowercase();
+    let q = query.trim_start_matches('/');
+    let query_lower = q.to_lowercase();
     let id_str = act.id.to_string();
     let short = &id_str[..8.min(id_str.len())];
-    id_str == query
-        || short == query
+    id_str == q
+        || short == q
         || act
             .alias
             .as_deref()
-            .map(|alias| alias.eq_ignore_ascii_case(query))
+            .map(|alias| alias.eq_ignore_ascii_case(q))
             .unwrap_or(false)
         || act.name.to_lowercase().contains(&query_lower)
 }

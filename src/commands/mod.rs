@@ -86,6 +86,42 @@ impl CommandContext {
     /// and `additional_workspaces` (resolved to absolute paths so core never
     /// has to reason about the config-file directory).  Expansion config is
     /// also forwarded but only affects file expansion, not graph queries.
+    /// All workspace (name, data-dir) pairs: primary first, then additional.
+    ///
+    /// This is the single place that knows about multi-workspace layout.
+    /// Commands that need to fan out across workspaces should use this instead
+    /// of re-reading `workspace_config().additional_workspaces` themselves.
+    pub fn workspace_dirs(&self) -> Vec<(String, PathBuf)> {
+        let primary_name = self.config.workspace_name.clone()
+            .unwrap_or_else(|| "primary".to_string());
+        let mut dirs = vec![(primary_name, self.data_dir.clone())];
+
+        let wc = self.workspace_config();
+        for path_str in &wc.additional_workspaces {
+            let path = PathBuf::from(path_str);
+            let name = workspace_name_from_path(&path);
+            dirs.push((name, path));
+        }
+        dirs
+    }
+
+    /// Load a `DomainModel` for every workspace.
+    ///
+    /// The primary workspace is a hard failure; additional workspaces warn and
+    /// are skipped on error so a single bad workspace never blocks the others.
+    pub fn all_domain_models(&self) -> Result<Vec<(String, clearhead_core::DomainModel)>, String> {
+        let mut models = Vec::new();
+        for (name, path) in self.workspace_dirs() {
+            let is_primary = path == self.data_dir;
+            match clearhead_core::load_domain_model(&path) {
+                Ok(m) => models.push((name, m)),
+                Err(e) if is_primary => return Err(e.to_string()),
+                Err(e) => warn!("Skipping workspace '{}': {}", path.display(), e),
+            }
+        }
+        Ok(models)
+    }
+
     pub fn workspace_config(&self) -> clearhead_core::WorkspaceConfig {
         // Resolve relative additional_workspaces paths against the project
         // config location (<root>/.clearhead/).  config_path always holds the

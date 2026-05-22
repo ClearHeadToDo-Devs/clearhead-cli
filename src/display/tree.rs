@@ -20,8 +20,11 @@
 //!     └── ✓ Ship semantic export
 //! ```
 
+use std::collections::HashMap;
+
 use clearhead_core::domain::{Action, ActionState, Charter, DomainModel, Plan};
 use termtree::Tree;
+use uuid::Uuid;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Charter-only tree  (for `read charters`)
@@ -79,7 +82,13 @@ fn charter_summary_label(charter: &Charter) -> String {
         .map(|s| format!("  [{}]", s.to_string().to_lowercase()))
         .unwrap_or_default();
 
-    format!("📁 {}{}{}", charter.title, open_tag, state_tag)
+    let alias_tag = charter
+        .alias
+        .as_deref()
+        .map(|a| format!("  /{}", a))
+        .unwrap_or_default();
+
+    format!("📁 {}{}{}{}", charter.title, alias_tag, open_tag, state_tag)
 }
 
 /// Render a `DomainModel` as a Unicode tree string.
@@ -88,19 +97,55 @@ fn charter_summary_label(charter: &Charter) -> String {
 /// model) appear at the top level. When there is more than one root charter a
 /// `workspace` root node is added; when there is exactly one it is the root.
 pub fn render_domain_tree(model: &DomainModel) -> String {
+    let ids = action_id_map(model);
     let root_charters = find_root_charters(model);
 
     let tree = if root_charters.len() == 1 {
-        build_charter_tree(root_charters[0], model)
+        build_charter_tree(root_charters[0], model, &ids)
     } else {
         let mut root = Tree::new("workspace".to_string());
         for charter in root_charters {
-            root.push(build_charter_tree(charter, model));
+            root.push(build_charter_tree(charter, model, &ids));
         }
         root
     };
 
     tree.to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Unique short-ID computation (git-style: minimum unambiguous hex prefix)
+// ---------------------------------------------------------------------------
+
+/// Build a map from action ID → minimum hex prefix that uniquely identifies
+/// it within this model. Floor is 8 hex chars; extends only on collision.
+fn action_id_map(model: &DomainModel) -> HashMap<Uuid, String> {
+    let all_ids: Vec<Uuid> = model
+        .charters
+        .iter()
+        .flat_map(|c| c.actions.iter().map(|a| a.id))
+        .collect();
+
+    all_ids
+        .iter()
+        .map(|&id| (id, unique_short_id(id, &all_ids)))
+        .collect()
+}
+
+fn unique_short_id(id: Uuid, all_ids: &[Uuid]) -> String {
+    let hex = id.to_string().replace('-', "");
+    for len in 8..=hex.len() {
+        let prefix = &hex[..len];
+        if all_ids
+            .iter()
+            .filter(|other| other.to_string().replace('-', "").starts_with(prefix))
+            .count()
+            == 1
+        {
+            return prefix.to_string();
+        }
+    }
+    hex
 }
 
 // ---------------------------------------------------------------------------
@@ -126,22 +171,19 @@ fn find_root_charters<'a>(model: &'a DomainModel) -> Vec<&'a Charter> {
         .collect()
 }
 
-fn build_charter_tree(charter: &Charter, model: &DomainModel) -> Tree<String> {
+fn build_charter_tree(charter: &Charter, model: &DomainModel, ids: &HashMap<Uuid, String>) -> Tree<String> {
     let mut node = Tree::new(charter_label(charter));
 
-    // Sub-charters before plans and actions
     for sub in find_charter_children(charter, model) {
-        node.push(build_charter_tree(sub, model));
+        node.push(build_charter_tree(sub, model, ids));
     }
 
-    // Plans with their scoped actions
     for plan in &charter.plans {
-        node.push(build_plan_tree(plan, charter));
+        node.push(build_plan_tree(plan, charter, ids));
     }
 
-    // Actions with no plan and no parent — direct charter items
     for action in charter_root_actions(charter) {
-        node.push(build_action_tree(action, &charter.actions));
+        node.push(build_action_tree(action, &charter.actions, ids));
     }
 
     node
@@ -165,11 +207,11 @@ fn find_charter_children<'a>(charter: &Charter, model: &'a DomainModel) -> Vec<&
 // Plan subtree
 // ---------------------------------------------------------------------------
 
-fn build_plan_tree(plan: &Plan, charter: &Charter) -> Tree<String> {
+fn build_plan_tree(plan: &Plan, charter: &Charter, ids: &HashMap<Uuid, String>) -> Tree<String> {
     let mut node = Tree::new(plan_label(plan));
 
     for action in plan_root_actions(plan, charter) {
-        node.push(build_action_tree(action, &charter.actions));
+        node.push(build_action_tree(action, &charter.actions, ids));
     }
 
     node
@@ -188,11 +230,11 @@ fn plan_root_actions<'a>(plan: &Plan, charter: &'a Charter) -> Vec<&'a Action> {
 // Action subtree
 // ---------------------------------------------------------------------------
 
-fn build_action_tree(action: &Action, all_actions: &[Action]) -> Tree<String> {
-    let mut node = Tree::new(action_label(action));
+fn build_action_tree(action: &Action, all_actions: &[Action], ids: &HashMap<Uuid, String>) -> Tree<String> {
+    let mut node = Tree::new(action_label(action, ids));
 
     for child in action_children(action, all_actions) {
-        node.push(build_action_tree(child, all_actions));
+        node.push(build_action_tree(child, all_actions, ids));
     }
 
     node
@@ -220,11 +262,16 @@ fn charter_root_actions(charter: &Charter) -> Vec<&Action> {
 // ---------------------------------------------------------------------------
 
 fn charter_label(charter: &Charter) -> String {
+    let alias_tag = charter
+        .alias
+        .as_deref()
+        .map(|a| format!("  /{}", a))
+        .unwrap_or_default();
     let state_tag = charter
         .state
         .map(|s| format!("  [{}]", s.to_string().to_lowercase()))
         .unwrap_or_default();
-    format!("📁 {}{}", charter.title, state_tag)
+    format!("📁 {}{}{}", charter.title, alias_tag, state_tag)
 }
 
 fn plan_label(plan: &Plan) -> String {
@@ -236,13 +283,22 @@ fn plan_label(plan: &Plan) -> String {
     format!("📋 {}{}", plan.name, recurrence_tag)
 }
 
-fn action_label(action: &Action) -> String {
+fn action_label(action: &Action, ids: &HashMap<Uuid, String>) -> String {
     let icon = action_icon(action.state);
     let state_tag = match action.state {
         ActionState::NotStarted => String::new(),
         other => format!("  {}", state_str(other)),
     };
-    format!("{} {}{}", icon, action.name, state_tag)
+    let ref_tag = action
+        .alias
+        .as_deref()
+        .map(|a| format!("  /{}", a))
+        .unwrap_or_else(|| {
+            let fallback = action.id.to_string();
+            let short = ids.get(&action.id).map(String::as_str).unwrap_or(&fallback[..8]);
+            format!("  /{}", short)
+        });
+    format!("{} {}{}{}", icon, action.name, state_tag, ref_tag)
 }
 
 fn action_icon(state: ActionState) -> &'static str {
@@ -256,13 +312,7 @@ fn action_icon(state: ActionState) -> &'static str {
 }
 
 fn state_str(state: ActionState) -> &'static str {
-    match state {
-        ActionState::NotStarted => "not started",
-        ActionState::InProgress => "in progress",
-        ActionState::Completed => "done",
-        ActionState::BlockedOrAwaiting => "blocked",
-        ActionState::Cancelled => "cancelled",
-    }
+    super::action_state_str(state)
 }
 
 // ---------------------------------------------------------------------------
