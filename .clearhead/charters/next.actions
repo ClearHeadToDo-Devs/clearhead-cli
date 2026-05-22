@@ -4,3 +4,6 @@
     >[x] for subcommands  %2026-04-25T11:20 #019d9f52-6a49-7791-ae4c-9e89058b62b5
     >[ ] for queries available  #019d9f52-d661-7df2-ba0a-434b994e2700
 [ ] support workspace flag  $ for situations like this one where two workspaces might have the same charter otherwise the user should be able to just use the charter flag and have it find the proper one if there is only 1 $ #019e4952-b3fa-7d70-95f2-05764c7817f0
+[ ] show action should display description field  $ show action currently only outputs id and state; description is now a first-class field and should appear in the detail view $ #019e517e-8654-7580-a920-aeafb04eebc6
+[ ] show charter should display alias, parent, and description  $ show charter is similarly sparse; should surface the full frontmatter fields available $ #019e517e-8659-7d71-92ac-ca7122ee2665
+[ ] add charter --parent should create sub-charter directory structure  $ verify and fix: --parent flag on add charter should place the new charter inside the parent charter directory rather than flat in charters/ $ #019e517e-865e-77c2-8413-693d90e72f16
