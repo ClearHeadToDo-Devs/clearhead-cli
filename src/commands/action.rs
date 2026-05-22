@@ -513,9 +513,24 @@ pub fn read_actions_cmd(
     };
     let effective_file = charter_acts_file.as_ref().or(file.as_ref()).cloned();
 
-    // Use workspace-aware collection only when no file/charter scope is pinned.
     let wc = ctx.workspace_config();
     let multi_ws = effective_file.is_none() && !wc.additional_workspaces.is_empty();
+
+    // Pre-expand context filter tags downward (general → specific) so ActionFilter::matches
+    // can do a simple set-membership check. Filtering by "computer" will match actions
+    // tagged "terminal" or "neovim" because those are descendants of "computer".
+    let expanded_context_tags: Vec<String> = context_filter
+        .iter()
+        .flat_map(|t| wc.descendants_and_self(t))
+        .collect();
+    let action_filter = clearhead_core::ActionFilter {
+        open_only,
+        context_tags: expanded_context_tags,
+        plan_ref: plan_filter.map(String::from),
+    };
+
+    // ws_acts drives non-TTY output (DSL, JSON, table). collect open_only early as a
+    // performance hint; action_filter.matches enforces all remaining criteria.
     let ws_acts: Vec<(Option<String>, Action)> = if multi_ws {
         collect_workspace_actions(ctx, open_only)?
     } else {
@@ -525,31 +540,9 @@ pub fn read_actions_cmd(
             .collect()
     };
 
-    // Build the filter set: lowercase raw filter tags. Each action's tags are expanded upward
-    // (tag + all ancestors) and checked for intersection — so filtering by +computer matches
-    // actions tagged +neovim because neovim → terminal → computer.
-    let filter_set: std::collections::HashSet<String> =
-        context_filter.iter().map(|t| t.to_lowercase()).collect();
-
     let filtered: Vec<(Option<&str>, &Action)> = ws_acts
         .iter()
-        .filter(|(_, a)| {
-            if let Some(filter) = plan_filter {
-                let id_str = a.id.to_string();
-                let short = &id_str[..8.min(id_str.len())];
-                if !(id_str == filter || short == filter || a.name.contains(filter)) {
-                    return false;
-                }
-            }
-            if !filter_set.is_empty() {
-                return a.contexts.as_ref().map_or(false, |cs| {
-                    cs.iter().any(|c| {
-                        wc.expand_tag(c).iter().any(|t| filter_set.contains(t))
-                    })
-                });
-            }
-            true
-        })
+        .filter(|(_, a)| action_filter.matches(a))
         .map(|(ws, a)| (ws.as_deref(), a))
         .collect();
 
@@ -562,8 +555,6 @@ pub fn read_actions_cmd(
         }
         Some(crate::argparser::ActFormat::Table) => print_acts_table(&filtered, multi_ws),
         None => {
-            let has_scope_filter = file.is_some() || open_only || !context_filter.is_empty();
-
             if !std::io::stdout().is_terminal() {
                 // Pipe/redirect: emit .actions DSL so output can be saved or piped.
                 let acts: Vec<&Action> = filtered.iter().map(|(_, a)| *a).collect();
@@ -571,16 +562,12 @@ pub fn read_actions_cmd(
                 let text = clearhead_core::format(&list, clearhead_core::OutputFormat::Actions, None, None)
                     .map_err(|e| format!("Failed to format actions: {}", e))?;
                 print!("{}", text);
-            } else if has_scope_filter {
-                // TTY + active filters: flat action tree.
-                print_acts_tree(&filtered, multi_ws);
             } else {
-                // TTY + no filters: full hierarchy tree.
-                let wc = ctx.workspace_config();
+                // TTY: always render the domain hierarchy tree, filtered if needed.
                 let primary = clearhead_core::load_domain_model(&ctx.data_dir)
                     .map_err(|e| e.to_string())?;
 
-                let model = if let Some(query) = charter_filter {
+                let mut model = if let Some(query) = charter_filter {
                     let charter = super::charter::resolve_charter(&primary.charters, query)
                         .ok_or_else(|| format!("No charter found matching '{}'", query))?
                         .clone();
@@ -588,15 +575,18 @@ pub fn read_actions_cmd(
                 } else {
                     primary
                 };
+                clearhead_core::apply_filter(&mut model, &action_filter);
 
                 if multi_ws {
-                    let ws_name = ctx.config.workspace_name.clone().unwrap_or_else(|| "primary".to_string());
+                    let ws_name = ctx.config.workspace_name.clone()
+                        .unwrap_or_else(|| "primary".to_string());
                     println!("▸ {}", ws_name);
                     print!("{}", crate::display::render_domain_tree(&model));
                     for path_str in &wc.additional_workspaces {
                         let path = std::path::Path::new(path_str);
                         match clearhead_core::load_domain_model(path) {
-                            Ok(ws_model) => {
+                            Ok(mut ws_model) => {
+                                clearhead_core::apply_filter(&mut ws_model, &action_filter);
                                 println!("▸ {}", super::workspace_name_from_path(path));
                                 print!("{}", crate::display::render_domain_tree(&ws_model));
                             }
@@ -1013,75 +1003,6 @@ fn is_open_act(act: &Action) -> bool {
     !matches!(act.state, ActionState::Completed | ActionState::Cancelled)
 }
 
-fn print_acts_tree(ws_acts: &[(Option<&str>, &Action)], multi_ws: bool) {
-    if multi_ws {
-        // Group by workspace, preserving first-seen order.
-        let mut seen: Vec<&str> = Vec::new();
-        let mut groups: HashMap<&str, Vec<&Action>> = HashMap::new();
-        for (ws, act) in ws_acts {
-            let key = ws.unwrap_or("unknown");
-            if !groups.contains_key(key) { seen.push(key); }
-            groups.entry(key).or_default().push(act);
-        }
-        for ws_name in seen {
-            println!("▸ {}", ws_name);
-            let group_acts: Vec<&Action> = groups[ws_name].iter().copied().collect();
-            render_acts_tree(&group_acts, "  ");
-        }
-    } else {
-        let acts: Vec<&Action> = ws_acts.iter().map(|(_, a)| *a).collect();
-        render_acts_tree(&acts, "");
-    }
-}
-
-fn render_acts_tree(acts: &[&Action], indent: &str) {
-    let mut by_parent: HashMap<uuid::Uuid, Vec<&Action>> = HashMap::new();
-    let mut roots: Vec<&Action> = Vec::new();
-
-    for &act in acts {
-        match act.parent_id {
-            Some(pid) => by_parent.entry(pid).or_default().push(act),
-            None => roots.push(act),
-        }
-    }
-
-    for (i, root) in roots.iter().enumerate() {
-        print_act_node(root, &by_parent, indent, true, i == roots.len() - 1);
-    }
-}
-
-fn print_act_node(
-    act: &Action,
-    by_parent: &HashMap<uuid::Uuid, Vec<&Action>>,
-    prefix: &str,
-    is_root: bool,
-    is_last: bool,
-) {
-    let connector = if is_root { "" } else if is_last { "└── " } else { "├── " };
-    println!("{}{}{} {}", prefix, connector, state_sigil(&act.state), act.name);
-
-    let child_prefix = if is_root {
-        prefix.to_string()
-    } else {
-        format!("{}{}", prefix, if is_last { "    " } else { "│   " })
-    };
-
-    if let Some(kids) = by_parent.get(&act.id) {
-        for (i, kid) in kids.iter().enumerate() {
-            print_act_node(kid, by_parent, &child_prefix, false, i == kids.len() - 1);
-        }
-    }
-}
-
-fn state_sigil(state: &ActionState) -> &'static str {
-    match state {
-        ActionState::NotStarted => "[ ]",
-        ActionState::Completed => "[x]",
-        ActionState::InProgress => "[-]",
-        ActionState::BlockedOrAwaiting => "[=]",
-        ActionState::Cancelled => "[_]",
-    }
-}
 
 fn print_acts_table(ws_acts: &[(Option<&str>, &Action)], multi_ws: bool) {
     use comfy_table::{Cell, Table};
