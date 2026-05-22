@@ -332,17 +332,17 @@ pub fn archive_charter(
     let opts = ArchiveCharterOptions { force, dry_run };
 
     if closed {
-        // Sweep every charter whose frontmatter carries `state: Closed`.
-        let results = archive_closed_charters(&ctx.data_dir, &opts)
-            .map_err(|e| e.to_string())?;
-
-        if results.is_empty() {
-            println!("No closed charters found to archive.");
-            return Ok(());
+        let mut any = false;
+        for (_, ws_dir) in ctx.workspace_dirs() {
+            let results = archive_closed_charters(&ws_dir, &opts)
+                .map_err(|e| e.to_string())?;
+            for r in &results {
+                print_archive_result(r);
+                any = true;
+            }
         }
-
-        for r in &results {
-            print_archive_result(r);
+        if !any {
+            println!("No closed charters found to archive.");
         }
         return Ok(());
     }
@@ -351,9 +351,14 @@ pub fn archive_charter(
         .as_deref()
         .ok_or_else(|| "Provide a charter name/alias/UUID or pass --closed".to_string())?;
 
-    let result = do_archive(&ctx.data_dir, q, &opts).map_err(|e| e.to_string())?;
-    print_archive_result(&result);
-    Ok(())
+    for (_, ws_dir) in ctx.workspace_dirs() {
+        match do_archive(&ws_dir, q, &opts) {
+            Ok(result) => { print_archive_result(&result); return Ok(()); }
+            Err(clearhead_core::ArchiveCharterError::NotFound(_)) => continue,
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Err(format!("Charter '{}' not found in any workspace", q))
 }
 
 fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {

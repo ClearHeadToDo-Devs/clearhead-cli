@@ -397,8 +397,13 @@ pub fn delete_action(
             .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
         vec![clearhead_core::charter_root(&ws_root).join(rel)]
     } else {
-        clearhead_core::list_action_files(&ctx.data_dir)
-            .map_err(|e| format!("Failed to list workspace: {}", e))?
+        let mut all = Vec::new();
+        for (_, ws_dir) in ctx.workspace_dirs() {
+            let files = clearhead_core::list_action_files(&ws_dir)
+                .map_err(|e| format!("Failed to list workspace '{}': {}", ws_dir.display(), e))?;
+            all.extend(files);
+        }
+        all
     };
 
     for actions_path in &action_files {
