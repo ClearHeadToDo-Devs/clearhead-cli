@@ -1,0 +1,1 @@
+[x] add LSP handler for charter archive  $ clearhead/archiveCharter workspace/executeCommand so the nvim plugin can archive via LSP rather than the CLI fallback path $ %2026-05-22T15:24 #29679f3e-9261-4e33-9ff2-3d29e108fe8d

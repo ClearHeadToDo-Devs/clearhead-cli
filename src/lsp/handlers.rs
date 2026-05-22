@@ -7,6 +7,7 @@ use clearhead_cli::telemetry::{
 };
 use clearhead_cli::{FormatConfig, OutputFormat, ParsedDocument, format};
 use clearhead_core::workspace::actions::{Diff, FieldChange, diff_actions, get_node_text};
+use clearhead_core::{ArchiveCharterOptions, archive_charter, workspace::check_for_workspace};
 use serde_json::Value;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::jsonrpc::{Error, Result};
@@ -70,7 +71,10 @@ impl LanguageServer for Backend {
                 references_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 execute_command_provider: Some(ExecuteCommandOptions {
-                    commands: vec!["clearhead/archive".to_string()],
+                    commands: vec![
+                        "clearhead/archive".to_string(),
+                        "clearhead/archiveCharter".to_string(),
+                    ],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -99,16 +103,73 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         debug!(uri = ?uri, "Processing didSave notification");
 
-        if let Some(mut doc) = self.documents.get_mut(&uri) {
-            if let (Some(current), Some(last)) = (&doc.parsed, &doc.last_saved_parsed) {
+        // Snapshot diff for telemetry and check whether any actions completed
+        let any_completed = if let Some(mut doc) = self.documents.get_mut(&uri) {
+            let any = if let (Some(current), Some(last)) = (&doc.parsed, &doc.last_saved_parsed) {
                 let diff = diff_actions(&last.actions, &current.actions);
                 let file_path = uri
                     .to_file_path()
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 emit_diff_telemetry(&diff, current, &file_path);
-            }
+                // Check if any state transition to Completed occurred
+                diff.modified.iter().any(|m| {
+                    m.changes.iter().any(|c| matches!(
+                        c,
+                        clearhead_core::workspace::actions::FieldChange::State {
+                            new: clearhead_core::workspace::actions::ActionState::Completed,
+                            ..
+                        }
+                    ))
+                })
+            } else {
+                false
+            };
             doc.last_saved_parsed = doc.parsed.clone();
+            any
+        } else {
+            false
+        };
+
+        // Auto-archive: if any actions just completed, sweep finished trees out of the buffer
+        if any_completed {
+            if let Some(doc) = self.documents.get(&uri) {
+                let content = doc.text.clone();
+                drop(doc); // release lock before spawn_blocking
+                let source_path = uri
+                    .to_file_path()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_default();
+                let result =
+                    tokio::task::spawn_blocking(move || archive_actions(&content, &source_path))
+                        .await;
+                match result {
+                    Ok(Ok((new_content, res))) if res.archived_count > 0 => {
+                        if let Err(e) = self
+                            .client
+                            .apply_edit(full_replace_workspace_edit(uri.clone(), new_content))
+                            .await
+                        {
+                            warn!(error = %e, "Auto-archive: failed to apply workspace edit");
+                        } else {
+                            info!(count = res.archived_count, "Auto-archived completed actions on save");
+                            self.client
+                                .show_message(
+                                    MessageType::INFO,
+                                    format!(
+                                        "Auto-archived {} completed action(s) to {}",
+                                        res.archived_count,
+                                        res.completed_path.display()
+                                    ),
+                                )
+                                .await;
+                        }
+                    }
+                    Ok(Ok(_)) => {} // nothing to archive
+                    Ok(Err(e)) => debug!("Auto-archive skipped: {}", e),
+                    Err(e) => warn!("Auto-archive task panicked: {}", e),
+                }
+            }
         }
     }
 
@@ -277,6 +338,7 @@ impl LanguageServer for Backend {
     async fn execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         match params.command.as_str() {
             "clearhead/archive" => self.cmd_archive(params.arguments).await,
+            "clearhead/archiveCharter" => self.cmd_archive_charter(params.arguments).await,
             _ => Ok(None),
         }
     }
@@ -340,11 +402,75 @@ impl Backend {
 
         Ok(None)
     }
-}
 
-// =============================================================================
-// Helpers — small, stateless utilities used above
-// =============================================================================
+    /// `clearhead/archiveCharter` — sweep a closed charter's artifacts into `archive.ttl`.
+    ///
+    /// Arguments: `[uri, charter_name, force?, dry_run?]`
+    /// - `uri`          — any file URI inside the workspace (used to locate `.clearhead/`)
+    /// - `charter_name` — alias, title fragment, or UUID prefix of the charter to archive
+    /// - `force`        — (optional bool) archive even if open actions remain
+    /// - `dry_run`      — (optional bool) report counts without writing
+    async fn cmd_archive_charter(&self, args: Vec<Value>) -> Result<Option<Value>> {
+        let uri_val = args
+            .first()
+            .ok_or_else(|| Error::invalid_params("Missing URI argument"))?;
+        let uri = serde_json::from_value::<Uri>(uri_val.clone())
+            .map_err(|e| Error::invalid_params(format!("Invalid URI: {e}")))?;
+
+        let charter_name = args
+            .get(1)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::invalid_params("Missing charter_name argument"))?
+            .to_string();
+
+        let force = args.get(2).and_then(|v| v.as_bool()).unwrap_or(false);
+        let dry_run = args.get(3).and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let source_path = uri
+            .to_file_path()
+            .ok_or_else(|| Error::invalid_params("URI is not a file path"))?
+            .to_path_buf();
+
+        let result = tokio::task::spawn_blocking(move || {
+            // Walk up from the file to find the workspace .clearhead/ root
+            let workspace_root = check_for_workspace(&source_path)
+                .ok_or_else(|| "No .clearhead workspace found for this file".to_string())?;
+
+            let opts = ArchiveCharterOptions { force, dry_run };
+            archive_charter(&workspace_root, &charter_name, &opts).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| internal_error(format!("Archive charter task panicked: {e}")))?;
+
+        match result {
+            Ok(res) => {
+                let msg = if res.was_dry_run {
+                    format!(
+                        "Dry run: would archive '{}' ({} primary + {} completed actions, {} plans)",
+                        res.charter_name,
+                        res.primary_actions_swept,
+                        res.completed_actions_swept,
+                        res.plans_swept,
+                    )
+                } else {
+                    format!(
+                        "Archived charter '{}' → {}",
+                        res.charter_name,
+                        res.archive_ttl_path.display()
+                    )
+                };
+                self.client.show_message(MessageType::INFO, msg).await;
+            }
+            Err(e) => {
+                self.client
+                    .show_message(MessageType::WARNING, format!("Archive charter failed: {e}"))
+                    .await;
+            }
+        }
+
+        Ok(None)
+    }
+}
 
 /// A WorkspaceEdit that replaces the entire content of a document.
 fn full_replace_workspace_edit(uri: Uri, text: String) -> WorkspaceEdit {

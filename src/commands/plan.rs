@@ -641,13 +641,141 @@ pub fn delete_plan(
 pub fn archive_plans(
     ctx: &CommandContext,
     scope: &Option<String>,
-    file: &Option<PathBuf>,
+    _file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let _ = (ctx, scope, file, dry_run);
-    Err(
-        "Plan archival is not implemented yet: plans are schedules in .ics files, and recurring schedule completion needs separate lifecycle semantics. Use `archive actions` to move completed/cancelled actions.".to_string(),
-    )
+    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::plans::collect_plan_files;
+    use clearhead_core::{ActionState, charter_root, read_actions};
+    use chrono::Local;
+    use std::collections::HashSet;
+
+    let plan_entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
+
+    // Filter by scope (charter name) if provided
+    let filtered_entries: Vec<_> = if let Some(scope_str) = scope {
+        plan_entries
+            .into_iter()
+            .filter(|e| e.charter_name.eq_ignore_ascii_case(scope_str))
+            .collect()
+    } else {
+        plan_entries
+    };
+
+    if filtered_entries.is_empty() {
+        let msg = scope
+            .as_deref()
+            .map(|s| format!("No plan files found for charter '{}'.", s))
+            .unwrap_or_else(|| "No plan files found in workspace.".to_string());
+        println!("{}", msg);
+        return Ok(());
+    }
+
+    // Load workspace to find charter → acts_file mapping
+    let charters = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let ch_root = charter_root(&ctx.data_dir);
+    let now = Local::now();
+
+    let mut total_plans = 0usize;
+    let mut total_completed = 0usize;
+    let mut total_dropped = 0usize;
+
+    for entry in &filtered_entries {
+        // vdir: one VEVENT per .ics file
+        let ics_plans = parse_ics_file(&entry.path).map_err(|e| e.to_string())?;
+
+        for ics_plan in &ics_plans {
+            let vevent_uid = match &ics_plan.plan.external_id {
+                Some(uid) => uid.clone(),
+                None => continue,
+            };
+
+            // Locate this charter's .actions file
+            let acts_path = charters
+                .iter()
+                .find(|c| {
+                    c.alias
+                        .as_deref()
+                        .unwrap_or(&c.title)
+                        .eq_ignore_ascii_case(&entry.charter_name)
+                })
+                .and_then(|c| c.acts_file.as_ref())
+                .map(|rel| ch_root.join(rel));
+
+            // Classify actions linked to this plan
+            let mut to_complete_ids = Vec::new();
+            let mut to_drop_ids = HashSet::new();
+
+            if let Some(ref p) = acts_path {
+                if p.exists() {
+                    let actions = read_actions(p).map_err(|e| e.to_string())?;
+                    for action in &actions {
+                        if action.external_schedule_id.as_deref() != Some(&vevent_uid) {
+                            continue;
+                        }
+                        if !matches!(action.state, ActionState::NotStarted) {
+                            continue; // leave in-progress / completed / cancelled alone
+                        }
+                        let is_overdue = action.scheduled_at.map(|s| s <= now).unwrap_or(false);
+                        if is_overdue {
+                            to_complete_ids.push(action.id);
+                        } else {
+                            to_drop_ids.insert(action.id);
+                        }
+                    }
+                }
+            }
+
+            total_plans += 1;
+            total_completed += to_complete_ids.len();
+            total_dropped += to_drop_ids.len();
+
+            if dry_run {
+                println!(
+                    "Would retire plan '{}' ({}): {} overdue → completed, {} projected → dropped",
+                    ics_plan.plan.name,
+                    vevent_uid,
+                    to_complete_ids.len(),
+                    to_drop_ids.len()
+                );
+                continue;
+            }
+
+            // Apply state changes to the actions file
+            if let Some(ref p) = acts_path {
+                if p.exists() {
+                    let mut actions = read_actions(p).map_err(|e| e.to_string())?;
+                    for action in actions.iter_mut() {
+                        if to_complete_ids.contains(&action.id) {
+                            action.state = ActionState::Completed;
+                            action.completed_at = Some(now);
+                        }
+                    }
+                    actions.retain(|a| !to_drop_ids.contains(&a.id));
+                    super::save_file(p, &actions)?;
+                }
+            }
+
+            // Retire the VEVENT file
+            if ics_plan.path.exists() {
+                std::fs::remove_file(&ics_plan.path)
+                    .map_err(|e| format!("Failed to delete '{}': {}", ics_plan.path.display(), e))?;
+            }
+        }
+    }
+
+    if dry_run {
+        if total_plans == 0 {
+            println!("No plans to archive.");
+        }
+    } else {
+        println!(
+            "Retired {} plan(s): {} overdue act(s) completed, {} projected act(s) dropped.",
+            total_plans, total_completed, total_dropped
+        );
+    }
+
+    Ok(())
 }
 
 pub fn import_plans(

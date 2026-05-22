@@ -97,12 +97,8 @@ pub fn archive_actions(
         return Err("No completed action trees to archive.".to_string());
     }
 
-    // Derive sibling .completed.actions path
-    let stem = source_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .ok_or_else(|| "Could not determine file stem from source path".to_string())?;
-    let completed_path = source_path.with_file_name(format!("{}.completed.actions", stem));
+    // Derive sibling .completed.actions path using canonical stem logic
+    let completed_path = clearhead_core::completed_actions_path(source_path);
 
     // Append to existing .completed.actions (or create it)
     let mut completed_content = if completed_path.exists() {

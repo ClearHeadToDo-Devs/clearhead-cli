@@ -1,2 +1,1 @@
 [x] annotate read charters / read actions output with workspace name in multi-workspace context  $ when additional_workspaces is non-empty, load each workspace, wrap charters/actions in WorkspaceCharter, and show workspace column in table output; elide when single workspace; depends on WorkspaceCharter type in core $ %2026-05-20T17:33 #0e8dda27-8a83-4257-9e98-fd5ef8fabac0
-[ ] add LSP handler for charter archive  $ clearhead/archiveCharter workspace/executeCommand so the nvim plugin can archive via LSP rather than the CLI fallback path $ #29679f3e-9261-4e33-9ff2-3d29e108fe8d
