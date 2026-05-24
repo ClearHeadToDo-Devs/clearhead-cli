@@ -338,9 +338,10 @@ pub enum QueryTarget {
 pub enum ReadTarget {
     /// Read and display plans (workspace-wide by default)
     Plans {
-        /// Output format
+        /// Output mode: table forces table, jsonld emits JSON-LD, ids prints one UUID per line.
+        /// Default: table in a terminal, native .ics format when piped.
         #[arg(short, long, value_enum)]
-        format: Option<Format>,
+        format: Option<OutputMode>,
 
         /// Filter plans by charter name, alias, or UUID
         #[arg(long, conflicts_with_all = ["file", "stdio"])]
@@ -365,9 +366,10 @@ pub enum ReadTarget {
 
     /// List all discovered charters
     Charters {
-        /// Output format
+        /// Output mode: table forces table, jsonld emits JSON-LD, ids prints one UUID per line.
+        /// Default: tree in a terminal, markdown when piped.
         #[arg(short, long, value_enum)]
-        format: Option<Format>,
+        format: Option<OutputMode>,
 
         /// Show only explicit (file-backed) charters
         #[arg(long)]
@@ -380,9 +382,10 @@ pub enum ReadTarget {
     /// Read and display actions
     #[command(alias = "acts")]
     Actions {
-        /// Output format (table or json)
+        /// Output mode: table forces table, jsonld emits JSON-LD, ids prints one UUID per line.
+        /// Default: table in a terminal, .actions DSL when piped.
         #[arg(short, long, value_enum)]
-        format: Option<ActFormat>,
+        format: Option<OutputMode>,
 
         /// Filter actions by plan UUID, short UUID, alias, or name
         #[arg(long)]
@@ -425,9 +428,9 @@ pub enum ShowTarget {
         #[arg(short, long)]
         file: Option<PathBuf>,
 
-        /// Output format
+        /// Output mode: table forces table, jsonld emits JSON-LD, ids prints one UUID per line.
         #[arg(short = 'F', long, value_enum)]
-        format: Option<Format>,
+        format: Option<OutputMode>,
 
         /// Table column filtering options
         #[command(flatten)]
@@ -997,13 +1000,17 @@ pub enum SyncTarget {
 // Shared value enums
 // =============================================================================
 
-/// Output format for action listing
-#[derive(Clone, Copy, ValueEnum, Debug)]
-pub enum ActFormat {
-    /// Pretty-printed table (default)
+/// Output mode for read commands — overrides TTY-aware default.
+///
+/// Default (no flag): table in a terminal, native file format when piped.
+#[derive(Clone, Copy, ValueEnum, Debug, PartialEq)]
+pub enum OutputMode {
+    /// Force human table output (even when piped)
     Table,
-    /// JSON array
-    Json,
+    /// JSON-LD output for external tools — valid JSON, works with jq
+    JsonLd,
+    /// One UUID per line — for xargs and reference piping
+    Ids,
 }
 
 /// Output format for raw SPARQL query results
@@ -1013,19 +1020,6 @@ pub enum QueryFormat {
     Table,
     /// JSON array of objects
     Json,
-}
-
-/// CLI-specific format enum that maps to library's OutputFormat
-#[derive(Clone, Copy, ValueEnum)]
-pub enum Format {
-    /// .actions file format
-    Actions,
-    /// JSON format
-    Json,
-    /// XML format
-    Xml,
-    /// Table format
-    Table,
 }
 
 /// CLI-specific style enum that maps to library's FormatStyle

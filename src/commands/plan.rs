@@ -103,7 +103,7 @@ fn collect_charter_tree(
 
 pub fn read_plans(
     ctx: &CommandContext,
-    _format: &Option<argparser::Format>,
+    _format: &Option<argparser::OutputMode>,
     charter: &Option<String>,
     recursive: bool,
     file: &Option<std::path::PathBuf>,
@@ -198,7 +198,7 @@ pub fn show_plan(
     ctx: &CommandContext,
     query: &str,
     file: &Option<std::path::PathBuf>,
-    _format: &Option<argparser::Format>,
+    _format: &Option<argparser::OutputMode>,
     _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
     use clearhead_core::workspace::ics::parse_ics_file;

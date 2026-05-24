@@ -33,19 +33,40 @@ We use the above file formats as our primary nouns so that each verb can operate
 - LSP
 - Config
 
+## Output
+
+The CLI is TTY-aware. The same command behaves differently depending on context — no flag needed for the common cases.
+
+| Context | Output |
+|---------|--------|
+| Terminal (TTY) | Human-readable table/tree |
+| Pipe or redirect | Native file format |
+| `--jsonld` | JSON-LD (always) |
+| `--ids` | One UUID per line (always) |
+
+**Native format** is the format the entity lives in on disk: `.actions` DSL for actions, Markdown for charters, vdir/iCal for plans. Redirecting to a file (`> inbox.actions`) produces a valid workspace file — no conversion needed.
+
+**`--jsonld`** is the structured escape hatch for external tools. JSON-LD is valid JSON, so `jq` works against it directly. There is no separate `--json` flag.
+
+**`--ids`** outputs one UUID per line for xargs-style batch operations:
+```
+clearhead read actions --charter lsp --ids | xargs -I{} clearhead update action {} --state in-progress
+```
+
+Mutations accept their entity's native format on stdin, enabling clearhead-to-clearhead pipelines:
+```
+clearhead read actions --charter inbox | clearhead update action --state in-progress
+```
+
 ## Flags
 
-The final piece of compisition is the flags which are chared between many of these files although their purpose often changes and certain subcommands have their own specific flags. For example, the `--format` flag is used across many different subcommands to specify the output format, while the `--file` flag is specific to commands that operate on files.
+Common flags shared across subcommands:
 
-so the common set of flags includes:
-
-- `--format`: Specifies the output format (e.g., JSON, XML, Table)
-- `--file`: Specifies the file to operate on (e.g., for create, update
-- `--id`: Specifies the ID of the resource to operate on (e.g., for read, update, delete)
-- `--help`: Displays help information for the command
-- `--verbose`: Enables verbose output for debugging purposes
-- `--dry-run`: Simulates the command without making any changes (useful for testing and validation)
-- `--where`: Specifies a SPARQL query to filter results (useful for read commands and update/delete commands that operate on multiple resources)
+- `--charter`: Scope to a specific charter (name, alias, or UUID)
+- `--workspace`: Restrict to a named workspace (for multi-workspace setups)
+- `--file`: Target a specific `.actions` file directly
+- `--dry-run`: Preview what would change without writing
+- `--help`: Display help for the command
 
 by composing these various verbs, nouns, and flags together we can create a powerful and flexible command-line interface that allows users to easily manage their objectives, charters, plans, and acts while also providing the necessary tools for querying and manipulating the underlying data.
 

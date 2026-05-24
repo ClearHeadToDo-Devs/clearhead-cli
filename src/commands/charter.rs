@@ -32,7 +32,7 @@ fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> 
 
 pub fn read_charters(
     ctx: &CommandContext,
-    format: &Option<argparser::Format>,
+    format: &Option<argparser::OutputMode>,
     explicit_only: bool,
 ) -> Result<(), String> {
     let multi_ws = ctx.workspace_dirs().len() > 1;
@@ -58,23 +58,30 @@ pub fn read_charters(
     }
 
     match format {
-        Some(argparser::Format::Json) => {
-            let all: Vec<&Charter> = models.iter().flat_map(|(_, m)| m.charters.iter()).collect();
-            let json = serde_json::to_string_pretty(&all)
-                .map_err(|e| format!("Failed to serialize charters: {}", e))?;
-            println!("{}", json);
+        Some(argparser::OutputMode::JsonLd) => {
+            for (_, model) in &models {
+                let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(model)
+                    .map_err(|e| format!("Failed to serialize JSON-LD: {}", e))?;
+                println!("{}", jsonld);
+            }
         }
-        Some(argparser::Format::Table) => {
+        Some(argparser::OutputMode::Ids) => {
+            for (_, model) in &models {
+                for charter in &model.charters {
+                    println!("{}", charter.id);
+                }
+            }
+        }
+        Some(argparser::OutputMode::Table) => {
             let workspaces: Vec<(String, Vec<Charter>)> = models
                 .into_iter()
                 .map(|(n, m)| (n, m.charters))
                 .collect();
             print_charter_table(&workspaces, multi_ws);
         }
-        _ => {
-            // TTY: disciplined charter hierarchy with open counts.
-            // Pipe/redirect: JSON for downstream consumers.
+        None => {
             if std::io::stdout().is_terminal() {
+                // TTY: charter hierarchy tree with open action counts.
                 for (ws_name, model) in &models {
                     if multi_ws {
                         println!("▸ {}", ws_name);
@@ -82,10 +89,12 @@ pub fn read_charters(
                     print!("{}", crate::display::render_charter_tree(model));
                 }
             } else {
-                let all: Vec<&Charter> = models.iter().flat_map(|(_, m)| m.charters.iter()).collect();
-                let json = serde_json::to_string_pretty(&all)
-                    .map_err(|e| format!("Failed to serialize charters: {}", e))?;
-                println!("{}", json);
+                // Pipe/redirect: markdown — native file format for charters.
+                for (_, model) in &models {
+                    for charter in &model.charters {
+                        println!("{}", clearhead_core::format_charter(charter));
+                    }
+                }
             }
         }
     }

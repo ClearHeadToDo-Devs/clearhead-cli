@@ -518,7 +518,7 @@ pub fn cancel_action(
 /// List actions, optionally filtered by charter, plan name, and/or context tags.
 pub fn read_actions_cmd(
     ctx: &CommandContext,
-    format: Option<crate::argparser::ActFormat>,
+    format: Option<crate::argparser::OutputMode>,
     plan_filter: Option<&str>,
     charter_filter: Option<&str>,
     context_filter: &[String],
@@ -574,13 +574,19 @@ pub fn read_actions_cmd(
         .collect();
 
     match format {
-        Some(crate::argparser::ActFormat::Json) => {
-            let acts: Vec<&Action> = filtered.iter().map(|(_, a)| *a).collect();
-            let json = serde_json::to_string_pretty(&acts)
-                .map_err(|e| format!("JSON serialization failed: {}", e))?;
-            println!("{}", json);
+        Some(crate::argparser::OutputMode::JsonLd) => {
+            let model = clearhead_core::load_domain_model(&ctx.data_dir)
+                .map_err(|e| e.to_string())?;
+            let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(&model)
+                .map_err(|e| format!("Failed to serialize JSON-LD: {}", e))?;
+            println!("{}", jsonld);
         }
-        Some(crate::argparser::ActFormat::Table) => print_acts_table(&filtered, multi_ws),
+        Some(crate::argparser::OutputMode::Ids) => {
+            for (_, action) in &filtered {
+                println!("{}", action.id);
+            }
+        }
+        Some(crate::argparser::OutputMode::Table) => print_acts_table(&filtered, multi_ws),
         None => {
             if !std::io::stdout().is_terminal() {
                 // Pipe/redirect: emit .actions DSL so output can be saved or piped.
