@@ -243,6 +243,12 @@ pub enum Verb {
         target: ApplyTarget,
     },
 
+    /// Close a charter (sets state to Closed, creates .md if missing)
+    Close {
+        #[command(subcommand)]
+        target: CloseTarget,
+    },
+
     /// Start a service
     Start {
         #[command(subcommand)]
@@ -844,11 +850,15 @@ pub enum ArchiveTarget {
     /// file still contains open actions the command refuses unless --force is given.
     Charter {
         /// Charter to archive (name, alias, or UUID prefix). Omit with --closed to sweep all closed charters.
-        #[arg(conflicts_with = "closed")]
+        #[arg(conflicts_with_all = ["closed", "file"])]
         query: Option<String>,
 
+        /// Infer charter from this file path (e.g. the current editor buffer)
+        #[arg(short, long, conflicts_with_all = ["query", "closed"])]
+        file: Option<std::path::PathBuf>,
+
         /// Archive all charters whose frontmatter carries `state: Closed`.
-        #[arg(long, conflicts_with = "query")]
+        #[arg(long, conflicts_with_all = ["query", "file"])]
         closed: bool,
 
         /// Archive even if open actions remain in the primary `.actions` file.
@@ -899,6 +909,28 @@ pub enum ApplyTarget {
         file: Option<PathBuf>,
 
         /// Preview what would be applied without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+// =============================================================================
+// Close targets
+// =============================================================================
+
+#[derive(Subcommand)]
+pub enum CloseTarget {
+    /// Close a charter (sets state to Closed, creates .md if missing)
+    Charter {
+        /// UUID, alias, or name of the charter
+        #[arg(conflicts_with = "file")]
+        query: Option<String>,
+
+        /// Infer charter from this file path (e.g. the current editor buffer)
+        #[arg(short, long, conflicts_with = "query")]
+        file: Option<std::path::PathBuf>,
+
+        /// Preview what would be changed without writing
         #[arg(long)]
         dry_run: bool,
     },

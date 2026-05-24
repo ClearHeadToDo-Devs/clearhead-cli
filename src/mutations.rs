@@ -1,15 +1,30 @@
-//! Action mutation utilities
-//!
-//! Provides reference resolution and update operations for actions.
-//! Used by CLI commands (add, update, complete, delete) and can be
-//! used programmatically by other consumers of the library.
+use clearhead_core::{Action, ActionList, ActionState, Charter, CharterState};
 
-use clearhead_core::{Action, ActionList, ActionState};
-
-/// Updates to apply to an action
+/// Updates to apply to a charter's metadata fields.
 ///
-/// All fields are optional - only `Some` values are applied.
-/// This allows partial updates without needing to specify unchanged fields.
+/// All fields are optional — only `Some` values are applied.
+#[derive(Debug, Clone, Default)]
+pub struct CharterUpdate {
+    pub state: Option<CharterState>,
+    pub title: Option<String>,
+    pub alias: Option<String>,
+}
+
+pub fn apply_charter_update(charter: &mut Charter, update: CharterUpdate) {
+    if let Some(state) = update.state {
+        charter.state = Some(state);
+    }
+    if let Some(title) = update.title {
+        charter.title = title;
+    }
+    if let Some(alias) = update.alias {
+        charter.alias = Some(alias);
+    }
+}
+
+/// Updates to apply to an action.
+///
+/// All fields are optional — only `Some` values are applied.
 #[derive(Debug, Clone, Default)]
 pub struct ActionUpdate {
     pub name: Option<String>,

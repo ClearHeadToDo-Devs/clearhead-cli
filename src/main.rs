@@ -248,10 +248,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::action::archive_actions(&ctx, scope, file, *dry_run),
             argparser::ArchiveTarget::Charter {
                 query,
+                file,
                 closed,
                 force,
                 dry_run,
-            } => commands::charter::archive_charter(&ctx, query, *closed, *force, *dry_run),
+            } => commands::charter::archive_charter(&ctx, query, file, *closed, *force, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {
@@ -333,6 +334,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::template::apply_template(&ctx, name, charter, file, *dry_run),
+        },
+        Verb::Close { target } => match target {
+            argparser::CloseTarget::Charter { query, file, dry_run } => {
+                commands::charter::close_charter(&ctx, query.as_deref(), file.as_deref(), *dry_run)
+            }
         },
         Verb::CompleteValues { kind } => commands::complete_values(&ctx, *kind),
         Verb::Init => unreachable!("handled before CommandContext construction"),

@@ -512,11 +512,11 @@ impl Backend {
         let uri = serde_json::from_value::<Uri>(uri_val.clone())
             .map_err(|e| Error::invalid_params(format!("Invalid URI: {e}")))?;
 
-        let charter_name = args
+        let charter_name_arg = args
             .get(1)
             .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::invalid_params("Missing charter_name argument"))?
-            .to_string();
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
 
         let force = args.get(2).and_then(|v| v.as_bool()).unwrap_or(false);
         let dry_run = args.get(3).and_then(|v| v.as_bool()).unwrap_or(false);
@@ -527,9 +527,23 @@ impl Backend {
             .to_path_buf();
 
         let result = tokio::task::spawn_blocking(move || {
-            // Walk up from the file to find the workspace .clearhead/ root
             let workspace_root = check_for_workspace(&source_path)
                 .ok_or_else(|| "No .clearhead workspace found for this file".to_string())?;
+
+            // Derive charter name from the file path when not supplied by the caller.
+            let charter_name = match charter_name_arg {
+                Some(name) => name,
+                None => {
+                    let mcs = clearhead_core::load_workspace(&workspace_root)
+                        .map_err(|e| e.to_string())?;
+                    let charter_root = clearhead_core::charter_root(&workspace_root);
+                    let rel = source_path.strip_prefix(&charter_root).unwrap_or(&source_path);
+                    mcs.iter()
+                        .find(|mc| mc.acts_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel))
+                        .map(|mc| mc.alias.clone().unwrap_or_else(|| mc.title.clone()))
+                        .ok_or_else(|| format!("No charter found for file: {}", source_path.display()))?
+                }
+            };
 
             let opts = ArchiveCharterOptions { force, dry_run };
             archive_charter(&workspace_root, &charter_name, &opts).map_err(|e| e.to_string())

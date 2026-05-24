@@ -30,6 +30,44 @@ fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> 
     }
 }
 
+/// Find a MarkdownCharter by matching a file path against known charter files.
+/// `file` may be absolute; it is made relative to `charter_root` before comparison.
+fn resolve_charter_by_file<'a>(
+    mcs: &'a [clearhead_core::MarkdownCharter],
+    file: &std::path::Path,
+    charter_root: &std::path::Path,
+) -> Option<&'a clearhead_core::MarkdownCharter> {
+    let abs_file = std::fs::canonicalize(file)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(file));
+    let abs_root = std::fs::canonicalize(charter_root).unwrap_or_else(|_| charter_root.to_path_buf());
+    let rel = abs_file.strip_prefix(&abs_root).unwrap_or(&abs_file);
+    mcs.iter().find(|mc| {
+        mc.acts_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel)
+    })
+}
+
+/// Resolve a MarkdownCharter from either a query string or a file path.
+fn find_target_charter<'a>(
+    mcs: &'a [clearhead_core::MarkdownCharter],
+    query: Option<&str>,
+    file: Option<&std::path::Path>,
+    charter_root: &std::path::Path,
+) -> Result<&'a clearhead_core::MarkdownCharter, String> {
+    if let Some(file_path) = file {
+        return resolve_charter_by_file(mcs, file_path, charter_root)
+            .ok_or_else(|| format!("No charter found for file: {}", file_path.display()));
+    }
+    if let Some(q) = query {
+        let charters: Vec<Charter> = mcs.iter().cloned().map(Charter::from).collect();
+        let mc = resolve_charter(&charters, q)
+            .ok_or_else(|| format!("No charter found matching '{}'", q))?;
+        return mcs.iter()
+            .find(|c| c.id == mc.id)
+            .ok_or_else(|| format!("Internal: MarkdownCharter for '{}' missing", q));
+    }
+    Err("Provide a charter name/alias/UUID or --file <path>".to_string())
+}
+
 pub fn read_charters(
     ctx: &CommandContext,
     format: &Option<argparser::OutputMode>,
@@ -374,6 +412,7 @@ pub fn add_charter(
 pub fn archive_charter(
     ctx: &CommandContext,
     query: &Option<String>,
+    file: &Option<std::path::PathBuf>,
     closed: bool,
     force: bool,
     dry_run: bool,
@@ -398,12 +437,21 @@ pub fn archive_charter(
         return Ok(());
     }
 
-    let q = query
-        .as_deref()
-        .ok_or_else(|| "Provide a charter name/alias/UUID or pass --closed".to_string())?;
+    // Resolve query: from --file, explicit query, or error
+    let q: String = if let Some(file_path) = file {
+        let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+        let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+        let mc_full = resolve_charter_by_file(&mcs, file_path, &charter_root)
+            .ok_or_else(|| format!("No charter found for file: {}", file_path.display()))?;
+        mc_full.alias.clone().unwrap_or_else(|| mc_full.title.clone())
+    } else {
+        query.as_deref()
+            .ok_or_else(|| "Provide a charter name/alias/UUID, --file <path>, or --closed".to_string())?
+            .to_string()
+    };
 
     for (_, ws_dir) in ctx.workspace_dirs() {
-        match do_archive(&ws_dir, q, &opts) {
+        match do_archive(&ws_dir, &q, &opts) {
             Ok(result) => { print_archive_result(&result); return Ok(()); }
             Err(clearhead_core::ArchiveCharterError::NotFound(_)) => continue,
             Err(e) => return Err(e.to_string()),
@@ -429,10 +477,10 @@ fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {
 // update charter
 // ============================================================================
 
-/// Update a charter's metadata fields (currently: state, title, alias).
+/// Update a charter's metadata fields (state, title, alias).
 ///
-/// Writes the changes back to the charter's `.md` file. Errors if the charter
-/// has no `.md` file (implicit charters have no writable file).
+/// Errors if the charter has no `.md` file — use `close charter` to set state
+/// on an implicit charter (it will create the file).
 pub fn update_charter(
     ctx: &CommandContext,
     query: &str,
@@ -441,37 +489,24 @@ pub fn update_charter(
     alias: &Option<String>,
     dry_run: bool,
 ) -> Result<(), String> {
+    use clearhead_cli::mutations::{CharterUpdate, apply_charter_update};
+
     let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
-    let charters: Vec<Charter> = mcs.iter().cloned().map(Charter::from).collect();
-
-    let mc = resolve_charter(&charters, query)
-        .ok_or_else(|| format!("No charter found matching '{}'", query))?;
-
-    // Find the MarkdownCharter so we have the file path
-    let mc_full = mcs
-        .iter()
-        .find(|c| c.id == mc.id)
-        .ok_or_else(|| format!("Internal: MarkdownCharter for '{}' missing", query))?;
+    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+    let mc_full = find_target_charter(&mcs, Some(query), None, &charter_root)?;
+    let mut updated = Charter::from(mc_full.clone());
 
     let md_path_rel = mc_full
         .md_file
         .as_ref()
-        .ok_or_else(|| format!("Charter '{}' has no .md file; add one to make it writable", mc.title))?;
-
-    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+        .ok_or_else(|| format!("Charter '{}' has no .md file; use 'close charter' to create one", updated.title))?;
     let md_path = charter_root.join(md_path_rel);
 
-    // Build updated charter
-    let mut updated = mc.clone();
-    if let Some(s) = state {
-        updated.state = Some((*s).into());
-    }
-    if let Some(t) = title {
-        updated.title = t.clone();
-    }
-    if let Some(a) = alias {
-        updated.alias = Some(a.clone());
-    }
+    apply_charter_update(&mut updated, CharterUpdate {
+        state: state.map(|s| s.into()),
+        title: title.clone(),
+        alias: alias.clone(),
+    });
 
     let formatted = clearhead_core::format_charter(&updated);
 
@@ -483,21 +518,78 @@ pub fn update_charter(
     std::fs::write(&md_path, &formatted)
         .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
 
-    info!(
-        charter = %mc.title,
-        path = %md_path.display(),
-        state = ?updated.state,
-        "Charter updated"
-    );
+    info!(charter = %updated.title, path = %md_path.display(), state = ?updated.state, "Charter updated");
 
     if let Some(new_state) = &updated.state {
-        println!(
-            "Charter '{}' updated: state → {}",
-            updated.title, new_state
-        );
+        println!("Charter '{}' updated: state → {}", updated.title, new_state);
     } else {
         println!("Charter '{}' updated.", updated.title);
     }
+
+    Ok(())
+}
+
+// ============================================================================
+// close charter
+// ============================================================================
+
+/// Close a charter by setting its state to Closed.
+///
+/// If the charter already has a `.md` file, updates it in place.
+/// If not (implicit charter), creates a minimal `.md` file alongside the
+/// existing `.actions` file.
+pub fn close_charter(
+    ctx: &CommandContext,
+    query: Option<&str>,
+    file: Option<&std::path::Path>,
+    dry_run: bool,
+) -> Result<(), String> {
+    use clearhead_cli::mutations::{CharterUpdate, apply_charter_update};
+    use clearhead_core::CharterState;
+
+    let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+    let mc_full = find_target_charter(&mcs, query, file, &charter_root)?;
+    let mut updated = Charter::from(mc_full.clone());
+
+    let (md_path, is_new) = if let Some(md_rel) = &mc_full.md_file {
+        (charter_root.join(md_rel), false)
+    } else {
+        let path = mc_full
+            .acts_file
+            .as_ref()
+            .and_then(|p| {
+                let stem = p.file_stem()?.to_str()?;
+                let dir = p.parent().unwrap_or(std::path::Path::new(""));
+                Some(charter_root.join(dir).join(format!("{}.md", stem)))
+            })
+            .unwrap_or_else(|| {
+                let slug = updated.title.to_lowercase().replace(' ', "-").replace('&', "and");
+                charter_root.join(format!("{}.md", slug))
+            });
+        (path, true)
+    };
+
+    apply_charter_update(&mut updated, CharterUpdate {
+        state: Some(CharterState::Closed),
+        ..Default::default()
+    });
+
+    let formatted = clearhead_core::format_charter(&updated);
+
+    if dry_run {
+        let verb = if is_new { "Would create" } else { "Would update" };
+        println!("{} {}:\n{}", verb, md_path.display(), formatted);
+        return Ok(());
+    }
+
+    std::fs::write(&md_path, &formatted)
+        .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
+
+    info!(charter = %updated.title, path = %md_path.display(), created = is_new, "Charter closed");
+
+    let verb = if is_new { "created" } else { "updated" };
+    println!("Charter '{}' closed: {} {}", updated.title, verb, md_path.display());
 
     Ok(())
 }
