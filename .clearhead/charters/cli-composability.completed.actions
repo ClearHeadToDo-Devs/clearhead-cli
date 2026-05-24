@@ -3,3 +3,4 @@
 [x] Implement TTY detection in read commands — table in terminal, native format when piped %2026-05-23T18:45#019e579b-d5d9-75e3-aadc-5e25831c8ff5
 [x] Add --ids flag to all read commands %2026-05-23T18:45#019e579b-d5de-7342-8e5b-fa12f2a9e03b
 [x] Add --jsonld flag to all read commands %2026-05-23T18:45#019e579b-d5e5-7053-a574-ff658facfedb
+[_] Make mutations accept native format on stdin for clearhead-to-clearhead pipes %2026-05-23T19:24#019e579b-d5f0-79f2-8c2b-053eb3a5569c
