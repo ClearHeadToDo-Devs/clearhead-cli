@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use clearhead_cli::{ParsedDocument, get_parsed_document};
 use dashmap::DashMap;
+use tokio::sync::OnceCell;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LspService, Server};
 use tracing::{debug, error, warn};
@@ -22,6 +26,7 @@ struct DocumentState {
 struct Backend {
     client: Client,
     documents: DashMap<Uri, DocumentState>,
+    workspace_roots: OnceCell<HashMap<Uri, PathBuf>>,
 }
 
 impl Backend {
@@ -31,6 +36,31 @@ impl Backend {
             .set_language(&tree_sitter_actions::LANGUAGE.into())
             .expect("Error loading actions grammar");
         parser
+    }
+
+    /// Route a document URI to its workspace root.
+    ///
+    /// Matches against the charter subtree of each known root (via prefix).
+    /// Falls back to filesystem walk when workspace_roots is empty or unset —
+    /// covers generic LSP clients that don't send workspaceFolders.
+    fn workspace_for_uri(&self, uri: &Uri) -> Option<PathBuf> {
+        let file_path = uri.to_file_path()?.to_path_buf();
+
+        if let Some(roots) = self.workspace_roots.get() {
+            if !roots.is_empty() {
+                let abs = std::fs::canonicalize(&file_path).unwrap_or_else(|_| file_path.clone());
+                for root_path in roots.values() {
+                    let charter_root = clearhead_core::charter_root(root_path);
+                        let abs_root = std::fs::canonicalize(&charter_root).unwrap_or(charter_root);
+                    if abs.starts_with(&abs_root) {
+                        return Some(root_path.clone());
+                    }
+                }
+                return roots.values().next().cloned();
+            }
+        }
+
+        clearhead_core::workspace::check_for_workspace(&file_path)
     }
 
     async fn update_document(&self, uri: Uri, text: String, is_fresh_load: bool) {
@@ -86,6 +116,7 @@ pub async fn start_lsp() {
     let (service, socket) = LspService::new(|client| Backend {
         client,
         documents: DashMap::new(),
+        workspace_roots: OnceCell::new(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
@@ -116,6 +147,7 @@ mod tests {
         let (service, _) = LspService::new(|client| Backend {
             client,
             documents: DashMap::new(),
+            workspace_roots: OnceCell::new(),
         });
         let backend = service.inner();
         let uri = Uri::from_file_path("/test.actions").unwrap();
@@ -149,6 +181,7 @@ mod tests {
         let (service, _) = LspService::new(|client| Backend {
             client,
             documents: DashMap::new(),
+            workspace_roots: OnceCell::new(),
         });
         let backend = service.inner();
         let uri = Uri::from_file_path("/test.actions").unwrap();

@@ -7,7 +7,7 @@ use clearhead_cli::telemetry::{
 };
 use clearhead_cli::{FormatConfig, OutputFormat, ParsedDocument, format};
 use clearhead_core::workspace::actions::{Diff, FieldChange, diff_actions, get_node_text};
-use clearhead_core::{ArchiveCharterOptions, archive_charter, workspace::check_for_workspace};
+use clearhead_core::{ArchiveCharterOptions, archive_charter};
 use serde_json::Value;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::jsonrpc::{Error, Result};
@@ -22,7 +22,18 @@ use super::providers::*;
 // =============================================================================
 
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let roots: HashMap<Uri, std::path::PathBuf> = params
+            .workspace_folders
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|wf| {
+                let path = wf.uri.to_file_path()?.to_path_buf();
+                Some((wf.uri, path))
+            })
+            .collect();
+        let _ = self.workspace_roots.set(roots);
+
         Ok(InitializeResult {
             server_info: Some(ServerInfo {
                 name: "clearhead-lsp".to_string(),
@@ -288,13 +299,12 @@ impl LanguageServer for Backend {
         );
 
         if needs_workspace_lookup {
-            let source_path = uri
-                .to_file_path()
-                .ok_or_else(|| internal_error("URI is not a file path"))?
-                .to_path_buf();
+            let workspace_root = self
+                .workspace_for_uri(&uri)
+                .ok_or_else(|| internal_error("No workspace for URI"))?;
 
             let result = tokio::task::spawn_blocking(move || {
-                find_definition_in_workspace(&source_path, &ref_text)
+                find_definition_in_workspace(&workspace_root, &ref_text)
             })
             .await
             .map_err(|e| internal_error(format!("Definition lookup panicked: {e}")))?
@@ -357,13 +367,12 @@ impl LanguageServer for Backend {
             matches!(node_kind.as_str(), "uuid_value" | "short_uuid_value");
 
         if needs_workspace_lookup {
-            let source_path = uri
-                .to_file_path()
-                .ok_or_else(|| internal_error("URI is not a file path"))?
-                .to_path_buf();
+            let workspace_root = self
+                .workspace_for_uri(&uri)
+                .ok_or_else(|| internal_error("No workspace for URI"))?;
 
             let result = tokio::task::spawn_blocking(move || {
-                find_references_in_workspace(&source_path, &ref_text)
+                find_references_in_workspace(&workspace_root, &ref_text)
             })
             .await
             .map_err(|e| internal_error(format!("References lookup panicked: {e}")))?
@@ -526,10 +535,11 @@ impl Backend {
             .ok_or_else(|| Error::invalid_params("URI is not a file path"))?
             .to_path_buf();
 
-        let result = tokio::task::spawn_blocking(move || {
-            let workspace_root = check_for_workspace(&source_path)
-                .ok_or_else(|| "No .clearhead workspace found for this file".to_string())?;
+        let workspace_root = self
+            .workspace_for_uri(&uri)
+            .ok_or_else(|| Error::invalid_params("No workspace for URI"))?;
 
+        let result = tokio::task::spawn_blocking(move || {
             // Derive charter name from the file path when not supplied by the caller.
             let charter_name = match charter_name_arg {
                 Some(name) => name,
@@ -698,7 +708,7 @@ fn emit_diff_telemetry(diff: &Diff, current: &ParsedDocument, file_path: &str) {
 /// Handles full UUIDs, short UUID prefixes, alias names, and path notation.
 /// Returns `None` when the reference cannot be resolved or the workspace is unavailable.
 fn find_definition_in_workspace(
-    source_path: &std::path::Path,
+    workspace_root: &std::path::Path,
     ref_text: &str,
 ) -> Option<(std::path::PathBuf, tower_lsp_server::ls_types::Range)> {
     use clearhead_core::{
@@ -706,8 +716,7 @@ fn find_definition_in_workspace(
         parse_document, resolve_reference,
     };
 
-    let workspace_root = check_for_workspace(source_path)?;
-    let model = load_domain_model(&workspace_root).ok()?;
+    let model = load_domain_model(workspace_root).ok()?;
     let opts = ReferenceOptions::default();
     let target = resolve_reference(&model, ref_text, &opts).ok()?;
 
@@ -732,15 +741,14 @@ fn find_definition_in_workspace(
 ///
 /// Returns `None` when the workspace is unavailable or no references exist.
 fn find_references_in_workspace(
-    source_path: &std::path::Path,
+    workspace_root: &std::path::Path,
     ref_text: &str,
 ) -> Option<Vec<tower_lsp_server::ls_types::Location>> {
     use clearhead_core::{list_action_files, parse_document};
 
     let target_uuid = uuid::Uuid::parse_str(ref_text).ok();
 
-    let workspace_root = check_for_workspace(source_path)?;
-    let action_files = list_action_files(&workspace_root).ok()?;
+    let action_files = list_action_files(workspace_root).ok()?;
     let mut locations = Vec::new();
 
     for file_path in &action_files {
