@@ -95,6 +95,23 @@ impl CommandContext {
     /// This is the single place that knows about multi-workspace layout.
     /// Commands that need to fan out across workspaces should use this instead
     /// of re-reading `workspace_config().additional_workspaces` themselves.
+    /// Return the workspace root from the configured list that owns `file`.
+    ///
+    /// Checks each workspace's charter tree (`<root>/.clearhead/charters/`).
+    /// Falls back to `data_dir` when no configured workspace matches, so callers
+    /// never have to handle a missing case.
+    pub fn workspace_for_file(&self, file: &Path) -> PathBuf {
+        let abs = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+        for (_, dir) in self.workspace_dirs() {
+            let charter_root = clearhead_core::charter_root(&dir);
+            let abs_root = std::fs::canonicalize(&charter_root).unwrap_or(charter_root);
+            if abs.starts_with(&abs_root) {
+                return dir;
+            }
+        }
+        self.data_dir.clone()
+    }
+
     pub fn workspace_dirs(&self) -> Vec<(String, PathBuf)> {
         let primary_name = self.config.workspace_name.clone()
             .unwrap_or_else(|| "primary".to_string());
