@@ -30,6 +30,21 @@ fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> 
     }
 }
 
+/// Walk up from `file`'s parent directory until we find a directory containing
+/// `.clearhead/`, returning that directory as the workspace root.
+fn workspace_root_for_file(file: &Path) -> Option<PathBuf> {
+    let mut dir = file.parent()?;
+    loop {
+        if dir.join(".clearhead").is_dir() {
+            return Some(dir.to_path_buf());
+        }
+        match dir.parent() {
+            Some(p) => dir = p,
+            None => return None,
+        }
+    }
+}
+
 /// Find a MarkdownCharter by matching a file path against known charter files.
 /// `file` may be absolute; it is made relative to `charter_root` before comparison.
 fn resolve_charter_by_file<'a>(
@@ -547,8 +562,14 @@ pub fn close_charter(
     use clearhead_cli::mutations::{CharterUpdate, apply_charter_update};
     use clearhead_core::CharterState;
 
-    let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
-    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+    // When resolving by file, prefer the workspace that actually owns the file
+    // (walk up from the file's parent to find the nearest .clearhead root).
+    // This handles sub-repo charters that live outside ctx.data_dir.
+    let ws_root = file
+        .and_then(|f| workspace_root_for_file(f))
+        .unwrap_or_else(|| ctx.data_dir.clone());
+    let mcs = clearhead_core::load_workspace(&ws_root).map_err(|e| e.to_string())?;
+    let charter_root = clearhead_core::charter_root(&ws_root);
     let mc_full = find_target_charter(&mcs, query, file, &charter_root)?;
     let mut updated = Charter::from(mc_full.clone());
 
