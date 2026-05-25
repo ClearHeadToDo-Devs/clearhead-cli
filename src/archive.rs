@@ -11,11 +11,9 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
 
     for action in all_actions {
         if action.parent_id.is_none() {
-            // Check if entire tree is completed
-            let mut tree_completed = action.state == ActionState::Completed;
+            let mut tree_done = matches!(action.state, ActionState::Completed | ActionState::Cancelled);
 
-            if tree_completed {
-                // Check descendants
+            if tree_done {
                 let mut stack = vec![action.id];
                 while let Some(current_id) = stack.pop() {
                     let children: Vec<_> = all_actions
@@ -23,19 +21,19 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
                         .filter(|a| a.parent_id == Some(current_id))
                         .collect();
                     for child in children {
-                        if child.state != ActionState::Completed {
-                            tree_completed = false;
+                        if !matches!(child.state, ActionState::Completed | ActionState::Cancelled) {
+                            tree_done = false;
                             break;
                         }
                         stack.push(child.id);
                     }
-                    if !tree_completed {
+                    if !tree_done {
                         break;
                     }
                 }
             }
 
-            if tree_completed {
+            if tree_done {
                 archive_root_ids.insert(action.id);
             }
         }
@@ -175,7 +173,60 @@ mod tests {
 
         let (active, archived) = partition_actions_for_archive(&actions);
 
-        // Even though parent is completed, child is not, so nothing is archived
+        assert_eq!(archived.len(), 0);
+        assert_eq!(active.len(), 2);
+    }
+
+    #[test]
+    fn test_partition_archives_cancelled_root_tree() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let id3 = Uuid::new_v4();
+
+        let actions = vec![
+            mock_action(id1, None, ActionState::Cancelled),
+            mock_action(id2, Some(id1), ActionState::Cancelled),
+            mock_action(id3, None, ActionState::NotStarted),
+        ];
+
+        let (active, archived) = partition_actions_for_archive(&actions);
+
+        assert_eq!(archived.len(), 2);
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, id3);
+    }
+
+    #[test]
+    fn test_partition_archives_mixed_terminal_tree() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let id3 = Uuid::new_v4();
+
+        // Root completed, one child completed, one child cancelled — all terminal
+        let actions = vec![
+            mock_action(id1, None, ActionState::Completed),
+            mock_action(id2, Some(id1), ActionState::Completed),
+            mock_action(id3, Some(id1), ActionState::Cancelled),
+        ];
+
+        let (active, archived) = partition_actions_for_archive(&actions);
+
+        assert_eq!(archived.len(), 3);
+        assert_eq!(active.len(), 0);
+    }
+
+    #[test]
+    fn test_partition_does_not_archive_cancelled_root_with_open_children() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        let actions = vec![
+            mock_action(id1, None, ActionState::Cancelled),
+            mock_action(id2, Some(id1), ActionState::NotStarted),
+        ];
+
+        let (active, archived) = partition_actions_for_archive(&actions);
+
         assert_eq!(archived.len(), 0);
         assert_eq!(active.len(), 2);
     }
