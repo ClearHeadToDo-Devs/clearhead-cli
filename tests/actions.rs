@@ -145,6 +145,53 @@ fn test_complete_command_by_name() {
 }
 
 #[test]
+fn test_complete_command_project_root_next_actions_uses_project_name() {
+    let env = TestEnv::new();
+    let project_root = env.work_dir.join("sample-project");
+    let charters_dir = project_root.join(".clearhead").join("charters");
+    fs::create_dir_all(&charters_dir).unwrap();
+
+    let next_path = charters_dir.join("next.actions");
+    let uuid = "019baaec-00b6-7991-be34-94b68212619b";
+    fs::write(&next_path, format!("[ ] Project root task #{}", uuid)).unwrap();
+
+    let mut cmd = env.command();
+    cmd.current_dir(&project_root)
+        .arg("complete").arg("action").arg(uuid)
+        .arg("--file").arg(&next_path)
+        .assert().success();
+
+    let completed_path = charters_dir.join("sample-project.completed.actions");
+    assert!(completed_path.exists(), "expected {} to exist", completed_path.display());
+    let content = fs::read_to_string(&completed_path).unwrap();
+    assert!(content.contains("[x] Project root task"));
+    assert!(!charters_dir.join("charters.completed.actions").exists());
+}
+
+#[test]
+fn test_archive_actions_project_root_next_actions_uses_project_name() {
+    let env = TestEnv::new();
+    let project_root = env.work_dir.join("sample-project");
+    let charters_dir = project_root.join(".clearhead").join("charters");
+    fs::create_dir_all(&charters_dir).unwrap();
+
+    let next_path = charters_dir.join("next.actions");
+    fs::write(&next_path, "[x] Already done").unwrap();
+
+    let mut cmd = env.command();
+    cmd.current_dir(&project_root)
+        .arg("archive").arg("actions")
+        .arg("--file").arg(&next_path)
+        .assert().success();
+
+    let completed_path = charters_dir.join("sample-project.completed.actions");
+    assert!(completed_path.exists(), "expected {} to exist", completed_path.display());
+    let content = fs::read_to_string(&completed_path).unwrap();
+    assert!(content.contains("[x] Already done"));
+    assert!(!charters_dir.join("charters.completed.actions").exists());
+}
+
+#[test]
 fn test_complete_command_idempotent_fail() {
     let env = TestEnv::new();
     env.write_actions("inbox.actions", "[x] Already Done");
