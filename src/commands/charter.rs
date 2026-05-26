@@ -439,8 +439,9 @@ pub fn archive_charter(
 
     // Resolve query: from --file, explicit query, or error
     let q: String = if let Some(file_path) = file {
-        let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
-        let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+        let ws_dir = ctx.workspace_for_file(file_path);
+        let mcs = clearhead_core::load_workspace(&ws_dir).map_err(|e| e.to_string())?;
+        let charter_root = clearhead_core::charter_root(&ws_dir);
         let mc_full = resolve_charter_by_file(&mcs, file_path, &charter_root)
             .ok_or_else(|| format!("No charter found for file: {}", file_path.display()))?;
         mc_full.alias.clone().unwrap_or_else(|| mc_full.title.clone())
