@@ -47,7 +47,6 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec![
                         "@".to_string(),
                         "%".to_string(),
-                        "^".to_string(),
                     ]),
                     ..Default::default()
                 }),
@@ -416,7 +415,7 @@ impl LanguageServer for Backend {
                 if char_idx > 0 {
                     if let Some(c) = line.chars().nth(char_idx - 1) {
                         match c {
-                            '@' | '%' | '^' => {
+                            '@' | '%' => {
                                 return Ok(Some(CompletionResponse::Array(date_completion_items(
                                     Local::now(),
                                 ))));
