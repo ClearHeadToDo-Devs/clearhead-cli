@@ -56,7 +56,7 @@ impl Backend {
                         return Some(root_path.clone());
                     }
                 }
-                return roots.values().next().cloned();
+                // File isn't under any registered workspace — fall through to project detection
             }
         }
 

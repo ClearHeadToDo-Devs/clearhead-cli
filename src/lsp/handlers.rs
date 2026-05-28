@@ -377,8 +377,10 @@ impl LanguageServer for Backend {
         }
 
         // Cross-file: find all predecessor references to this UUID across the workspace
-        let needs_workspace_lookup =
-            matches!(node_kind.as_str(), "uuid_value" | "short_uuid_value");
+        let needs_workspace_lookup = matches!(
+            node_kind.as_str(),
+            "uuid_value" | "short_uuid_value" | "predecessor_name" | "predecessor_reference"
+        );
 
         if needs_workspace_lookup {
             let workspace_root = self
