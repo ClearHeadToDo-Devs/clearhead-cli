@@ -142,6 +142,21 @@ impl LanguageServer for Backend {
             false
         };
 
+        // Stamp created timestamps in sidecar for any new actions (best-effort).
+        if let Some(path) = uri.to_file_path() {
+            if let Some(doc) = self.documents.get(&uri) {
+                if let Some(ref parsed) = doc.parsed {
+                    let actions = parsed.actions.clone();
+                    drop(doc);
+                    if let Err(e) =
+                        clearhead_core::workspace::sidecar::stamp_sidecar_entries(&path, &actions)
+                    {
+                        warn!(error = %e, "Failed to update sidecar on save");
+                    }
+                }
+            }
+        }
+
         // Auto-archive: if any actions just completed, sweep finished trees out of the buffer
         if any_completed {
             if let Some(doc) = self.documents.get(&uri) {

@@ -104,33 +104,6 @@ pub fn compute_code_actions(
                     ));
                 }
 
-                // 3. Add Creation Date
-                if action.created_at.is_none() {
-                    let now = Local::now();
-                    actions.push(create_quick_fix(
-                        uri.clone(),
-                        insert_pos,
-                        format!(" ^{}", now.format("%Y-%m-%dT%H:%M")),
-                        "Set Creation Date (Today)".to_string(),
-                    ));
-
-                    // Derive from UUID (if not generated)
-                    if !metadata.is_id_generated {
-                        let timestamp_ms = (action.id.as_u128() >> 80) as i64;
-                        if let Some(dt) = DateTime::from_timestamp(
-                            timestamp_ms / 1000,
-                            ((timestamp_ms % 1000) * 1_000_000) as u32,
-                        ) {
-                            let local_dt: DateTime<Local> = dt.into();
-                            actions.push(create_quick_fix(
-                                uri.clone(),
-                                insert_pos,
-                                format!(" ^{}", local_dt.format("%Y-%m-%dT%H:%M")),
-                                "Derive Creation Date from UUID".to_string(),
-                            ));
-                        }
-                    }
-                }
             }
         }
     }
@@ -309,35 +282,6 @@ mod tests {
         assert!(
             titles.contains(&"Set Completion Date (Today)"),
             "Expected completion date action, got: {:?}",
-            titles
-        );
-    }
-
-    #[test]
-    fn test_code_actions_creation_date() {
-        let text = "[ ] Task with ID #019baaec-00b6-7991-be34-94b68212619a";
-        let parsed = get_parsed_document(text).unwrap();
-        let uri = Uri::from_file_path("/test.actions").unwrap();
-        let range = Range::new(Position::new(0, 0), Position::new(0, 0));
-
-        let actions = compute_code_actions(&parsed, &uri, range);
-
-        let titles: Vec<_> = actions
-            .iter()
-            .filter_map(|a| match a {
-                CodeActionOrCommand::CodeAction(ca) => Some(ca.title.as_str()),
-                _ => None,
-            })
-            .collect();
-
-        assert!(
-            titles.contains(&"Set Creation Date (Today)"),
-            "Expected creation date action, got: {:?}",
-            titles
-        );
-        assert!(
-            titles.contains(&"Derive Creation Date from UUID"),
-            "Expected derive from UUID action, got: {:?}",
             titles
         );
     }
