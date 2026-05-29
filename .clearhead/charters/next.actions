@@ -1,1 +1,1 @@
-
+[ ] formatter serialization bug emits adjacent fields without whitespace separating them +bug #019e6da7-9c35-7852-9b87-6e69af96be65
