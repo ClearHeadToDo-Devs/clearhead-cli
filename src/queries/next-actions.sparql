@@ -11,8 +11,9 @@
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 
-SELECT DISTINCT ?name ?context ?priority ?scheduled_at ?due_date WHERE {
+SELECT DISTINCT ?name ?context ?priority ?scheduled_at ?due_date ?source_file ?source_line WHERE {
     ?act a actions:Action ;
          rdfs:label ?name ;
          cco:ont00001868 actions:NotStarted .
@@ -30,5 +31,7 @@ SELECT DISTINCT ?name ?context ?priority ?scheduled_at ?due_date WHERE {
     OPTIONAL { ?act actions:hasPriority ?priority }
     OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
     OPTIONAL { ?act actions:hasDueDateTime ?due_date }
+    OPTIONAL { ?act ws:hasSourceFile ?source_file }
+    OPTIONAL { ?act ws:hasSourceLine ?source_line }
 }
 ORDER BY ?priority ?scheduled_at ?due_date ?name

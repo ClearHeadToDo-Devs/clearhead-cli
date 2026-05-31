@@ -14,8 +14,9 @@ PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX bfo: <http://purl.obolibrary.org/obo/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 
-SELECT ?name ?state WHERE {
+SELECT ?name ?state ?source_file ?source_line WHERE {
     ?act a actions:Action ;
          rdfs:label ?name ;
          cco:ont00001868 ?raw_state .
@@ -24,5 +25,7 @@ SELECT ?name ?state WHERE {
 
     FILTER NOT EXISTS { ?charter a actions:Charter ; bfo:BFO_0000051 ?act . }
     FILTER NOT EXISTS { ?act bfo:BFO_0000050 ?parent . }
+    OPTIONAL { ?act ws:hasSourceFile ?source_file }
+    OPTIONAL { ?act ws:hasSourceLine ?source_line }
 }
 ORDER BY ?name

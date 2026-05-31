@@ -10,9 +10,10 @@
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?name ?due_date ?scheduled_at ?state ?priority WHERE {
+SELECT ?name ?due_date ?scheduled_at ?state ?priority ?source_file ?source_line WHERE {
     VALUES ?cutoff { ?CUTOFF_DATE }
 
     ?act a actions:Action ;
@@ -26,5 +27,7 @@ SELECT ?name ?due_date ?scheduled_at ?state ?priority WHERE {
 
     OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
     OPTIONAL { ?act actions:hasPriority ?priority }
+    OPTIONAL { ?act ws:hasSourceFile ?source_file }
+    OPTIONAL { ?act ws:hasSourceLine ?source_line }
 }
 ORDER BY ?priority ?due_date

@@ -10,9 +10,10 @@
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT DISTINCT ?name ?scheduled_at ?due_date ?state WHERE {
+SELECT DISTINCT ?name ?scheduled_at ?due_date ?state ?source_file ?source_line WHERE {
     VALUES ?now { ?NOW }
 
     ?act a actions:Action ;
@@ -24,6 +25,8 @@ SELECT DISTINCT ?name ?scheduled_at ?due_date ?state WHERE {
 
     OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
     OPTIONAL { ?act actions:hasDueDateTime ?due_date }
+    OPTIONAL { ?act ws:hasSourceFile ?source_file }
+    OPTIONAL { ?act ws:hasSourceLine ?source_line }
 
     FILTER(
         (BOUND(?scheduled_at) && ?scheduled_at <= ?now) ||
