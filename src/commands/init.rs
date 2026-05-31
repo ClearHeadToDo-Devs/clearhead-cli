@@ -35,9 +35,12 @@ pub fn run() -> Result<(), String> {
 
     let workspace_id = uuid::Uuid::now_v7().to_string();
 
+    let created_at = chrono::Local::now().format("%Y-%m-%d").to_string();
+
     let config = json!({
         "workspace_id": workspace_id,
         "workspace_name": workspace_name,
+        "created_at": created_at,
     });
 
     let json_str = serde_json::to_string_pretty(&config)
