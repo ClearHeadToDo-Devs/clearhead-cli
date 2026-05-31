@@ -143,6 +143,7 @@ const BUILT_IN_QUERIES: &[(&str, &str)] = &[
         "next-actions",
         include_str!("../queries/next-actions.sparql"),
     ),
+    ("qflist", include_str!("../queries/qflist.sparql")),
     (
         "orphaned-acts",
         include_str!("../queries/orphaned-acts.sparql"),

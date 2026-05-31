@@ -146,33 +146,34 @@ fn load_workspace_at_path_into_store(
         ));
     }
 
-    // Read workspace config to obtain the durable workspace_id.
     let config_path = workspace_path.join(".clearhead").join("config.json");
-    let workspace_id: Option<String> = if config_path.exists() {
+    let (workspace_id, workspace_name): (Option<String>, Option<String>) = if config_path.exists() {
         let json = std::fs::read_to_string(&config_path)
             .map_err(|e| format!("Failed to read workspace config at {}: {}", config_path.display(), e))?;
         let v: serde_json::Value = serde_json::from_str(&json)
             .map_err(|e| format!("Failed to parse workspace config at {}: {}", config_path.display(), e))?;
-        v.get("workspace_id")
-            .and_then(|id| id.as_str())
-            .map(|s| s.to_string())
+        (
+            v.get("workspace_id").and_then(|id| id.as_str()).map(String::from),
+            v.get("workspace_name").and_then(|n| n.as_str()).map(String::from),
+        )
     } else {
-        None
+        (None, None)
     };
 
-    // Derive a workspace config for graph loading (tag hierarchies come from the
-    // loaded workspace's own config if present, but for cross-workspace queries we
-    // keep it simple and pass None; the caller's primary workspace config is used
-    // for its own graph; hierarchy injection per additional workspace is a future concern).
     let graph_name = workspace_id
         .as_deref()
         .map(clearhead_core::graph::workspace_graph_uri)
         .map(clearhead_core::graph::GraphName::NamedNode)
         .unwrap_or_else(transient_graph);
 
-    let model = clearhead_core::load_domain_model(workspace_path)
+    let mut workspace = clearhead_core::workspace::store::load::Workspace::load(workspace_path)
         .map_err(|e| format!("Failed to load workspace at {}: {}", workspace_path.display(), e))?;
+    workspace.id = workspace_id;
+    workspace.name = workspace_name;
 
+    clearhead_core::graph::insert_workspace_metadata(store, &workspace, graph_name.clone())
+        .map_err(|e| format!("Failed to insert workspace metadata for {}: {}", workspace_path.display(), e))?;
+    let model = clearhead_core::DomainModel::from(workspace);
     clearhead_core::graph::load_domain_model(store, &model, None, graph_name)
         .map_err(|e| format!("Failed to insert workspace {} into store: {}", workspace_path.display(), e))?;
 
@@ -225,10 +226,20 @@ pub fn run_workspace_raw_query(
     sparql: &str,
     config: Option<&WorkspaceConfig>,
 ) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
-    let model = load_workspace_domain_model(data_dir)?;
     let store = clearhead_core::graph::create_store()
         .map_err(|e| format!("Failed to create store: {}", e))?;
     let gn = workspace_graph_name_from_config(config);
+
+    let mut primary = clearhead_core::workspace::store::load::Workspace::load(data_dir)
+        .map_err(|e| format!("Failed to load workspace: {}", e))?;
+    if let Some(cfg) = config {
+        primary.id = cfg.workspace_id.clone();
+        primary.name = cfg.workspace_name.clone();
+    }
+    // Insert workspace metadata first (borrows primary), then convert to model (consumes primary).
+    clearhead_core::graph::insert_workspace_metadata(&store, &primary, gn.clone())
+        .map_err(|e| format!("Failed to insert workspace metadata: {}", e))?;
+    let model = clearhead_core::DomainModel::from(primary);
     clearhead_core::graph::load_domain_model(&store, &model, config, gn)
         .map_err(|e| format!("Failed to load domain model: {}", e))?;
 
