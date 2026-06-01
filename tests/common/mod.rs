@@ -35,6 +35,13 @@ impl TestEnv {
         fs::write(config_path, content).expect("Failed to write config");
     }
 
+    /// Write workspace identity config so qflist queries can emit ws:charterRoot triples.
+    /// Required for any test that uses `query qflist` or other location-bearing queries.
+    pub fn with_workspace_identity(&self) -> &Self {
+        self.write_config(r#"{"workspace_id":"test-workspace","workspace_name":"test"}"#);
+        self
+    }
+
     pub fn write_actions(&self, filename: &str, content: &str) {
         let path = self.data_dir.join("charters").join(filename);
         if let Some(parent) = path.parent() {

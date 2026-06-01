@@ -396,6 +396,51 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn end_of_today_injects_todays_date_at_end_of_day() {
+        let query = "FILTER(?x <= ?END_OF_TODAY)";
+        let result = inject_params(query, None);
+        let today = Utc::now().format("%Y-%m-%d").to_string();
+        assert!(
+            result.contains(&format!("\"{}T23:59:59Z\"^^xsd:dateTime", today)),
+            "unexpected output: {result}"
+        );
+    }
+
+    #[test]
+    fn end_of_today_does_not_contain_current_time() {
+        // END_OF_TODAY must always be 23:59:59, never the actual clock time.
+        let result = inject_params("?END_OF_TODAY", None);
+        assert!(result.contains("T23:59:59Z"), "unexpected output: {result}");
+    }
+
+    #[test]
+    fn now_injection_still_works() {
+        let before = Utc::now().format("%Y-%m-%d").to_string();
+        let result = inject_params("?NOW", None);
+        let after = Utc::now().format("%Y-%m-%d").to_string();
+        // Either today's date is present (common case) or it crossed midnight
+        // during the test — accept either adjacent date.
+        assert!(
+            result.contains(&before) || result.contains(&after),
+            "unexpected output: {result}"
+        );
+        assert!(result.contains("^^xsd:dateTime"), "unexpected output: {result}");
+    }
+
+    #[test]
+    fn status_filter_replaced_when_provided() {
+        let result = inject_params("FILTER(?state = ?STATUS_FILTER)", Some("<actions:InProgress>"));
+        assert!(result.contains("<actions:InProgress>"), "unexpected output: {result}");
+        assert!(!result.contains("?STATUS_FILTER"), "placeholder not replaced: {result}");
+    }
+}
+
 fn format_as_json(rows: &[HashMap<String, String>]) -> Result<(), String> {
     let json =
         serde_json::to_string_pretty(rows).map_err(|e| format!("Failed to serialize: {}", e))?;
