@@ -35,11 +35,14 @@ fn inject_prefixes(sparql: &str) -> String {
 /// Status: ?STATUS_FILTER → full v4 IRI (e.g. <actions:InProgress>)
 fn inject_params(sparql: &str, status: Option<&str>) -> String {
     let sparql = inject_prefixes(sparql);
-    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now_dt = Utc::now();
+    let now = now_dt.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let datetime = format!("\"{}\"^^xsd:dateTime", now);
+    let end_of_today = format!("\"{}T23:59:59Z\"^^xsd:dateTime", now_dt.format("%Y-%m-%d"));
     let mut out = sparql
         .replace("?NOW", &datetime)
-        .replace("?CUTOFF_DATE", &datetime);
+        .replace("?CUTOFF_DATE", &datetime)
+        .replace("?END_OF_TODAY", &end_of_today);
     if let Some(iri) = status {
         out = out.replace("?STATUS_FILTER", iri);
     }
@@ -117,6 +120,11 @@ struct NamedQuery {
 
 // Required output columns for each response type.
 const QFLIST_REQUIRED: &[&str] = &["name", "status", "source_file", "source_line", "charter_root"];
+
+// Built-in named qflist variants (checked before user/project dirs).
+const BUILT_IN_QFLIST_QUERIES: &[(&str, &str)] = &[
+    ("agenda", include_str!("../queries/qflist/agenda.sparql")),
+];
 
 fn validate_columns(rows: &[HashMap<String, String>], required: &[&str]) -> Result<(), String> {
     let Some(first) = rows.first() else { return Ok(()) };
@@ -309,16 +317,22 @@ pub fn run_qflist_query(
             .find(|(n, _)| *n == "qflist")
             .map(|(_, s)| s.to_string())
             .ok_or("Built-in qflist query not found")?,
-        Some(n) => resolve_typed_queries(ctx, "qflist")
-            .remove(n)
-            .map(|q| q.sparql)
-            .ok_or_else(|| {
-                format!(
-                    "No qflist query named '{}'. Save a .sparql file to \
-                     ~/.clearhead/queries/qflist/ or <workspace>/.clearhead/queries/qflist/",
-                    n
-                )
-            })?,
+        Some(n) => {
+            if let Some((_, sparql)) = BUILT_IN_QFLIST_QUERIES.iter().find(|(name, _)| *name == n) {
+                sparql.to_string()
+            } else {
+                resolve_typed_queries(ctx, "qflist")
+                    .remove(n)
+                    .map(|q| q.sparql)
+                    .ok_or_else(|| {
+                        format!(
+                            "No qflist query named '{}'. Save a .sparql file to \
+                             ~/.clearhead/queries/qflist/ or <workspace>/.clearhead/queries/qflist/",
+                            n
+                        )
+                    })?
+            }
+        }
     };
 
     let wc = ctx.workspace_config();
@@ -362,7 +376,12 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
         table.add_row(vec![Cell::new(name), Cell::new("—"), Cell::new(q.source.to_string())]);
     }
 
-    // Typed queries from subdirectories
+    // Built-in qflist variants
+    for (name, _) in BUILT_IN_QFLIST_QUERIES {
+        table.add_row(vec![Cell::new(name), Cell::new("qflist"), Cell::new("built-in")]);
+    }
+
+    // Typed queries from subdirectories (user/project)
     let mut typed = scan_all_typed_queries(ctx);
     typed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
     for (type_name, name, q) in &typed {
