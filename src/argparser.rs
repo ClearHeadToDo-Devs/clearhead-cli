@@ -332,6 +332,16 @@ pub enum QueryTarget {
         format: Option<QueryFormat>,
     },
 
+    /// Run a qflist query (validates name/status/source_file/source_line/charter_root columns)
+    Qflist {
+        /// Named query from queries/qflist/; omit to run the built-in default
+        name: Option<String>,
+
+        /// Output format (default: json)
+        #[arg(short, long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+
     /// List available named queries
     List,
 }

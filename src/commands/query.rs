@@ -115,6 +115,19 @@ struct NamedQuery {
     source: QuerySource,
 }
 
+// Required output columns for each response type.
+const QFLIST_REQUIRED: &[&str] = &["name", "status", "source_file", "source_line", "charter_root"];
+
+fn validate_columns(rows: &[HashMap<String, String>], required: &[&str]) -> Result<(), String> {
+    let Some(first) = rows.first() else { return Ok(()) };
+    let missing: Vec<&str> = required.iter().filter(|c| !first.contains_key(**c)).copied().collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("Query is missing required columns: {}", missing.join(", ")))
+    }
+}
+
 // Vendored v4 queries embedded at compile time.
 const BUILT_IN_QUERIES: &[(&str, &str)] = &[
     (
@@ -245,10 +258,91 @@ pub fn run_named_query(
     }
 }
 
+/// Resolve user/project queries saved under queries/<type_name>/.
+fn resolve_typed_queries(ctx: &CommandContext, type_name: &str) -> HashMap<String, NamedQuery> {
+    let mut queries = HashMap::new();
+    if let Some(home) = dirs::home_dir() {
+        let dir = home.join(".clearhead").join("queries").join(type_name);
+        scan_query_dir(&dir, QuerySource::User, &mut queries);
+    }
+    let dir = ctx.data_dir.join(".clearhead").join("queries").join(type_name);
+    scan_query_dir(&dir, QuerySource::Project, &mut queries);
+    queries
+}
+
+/// Collect all typed queries (subdirectory-scoped) for display in `query list`.
+fn scan_all_typed_queries(ctx: &CommandContext) -> Vec<(String, String, NamedQuery)> {
+    let dirs: Vec<(std::path::PathBuf, QuerySource)> = [
+        dirs::home_dir().map(|h| (h.join(".clearhead").join("queries"), QuerySource::User)),
+        Some((ctx.data_dir.join(".clearhead").join("queries"), QuerySource::Project)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let mut result = Vec::new();
+    for (base, source) in dirs {
+        let Ok(entries) = std::fs::read_dir(&base) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let Some(type_name) = path.file_name().and_then(|n| n.to_str()).map(String::from) else { continue };
+                let mut typed = HashMap::new();
+                scan_query_dir(&path, source, &mut typed);
+                for (name, query) in typed {
+                    result.push((type_name.clone(), name, query));
+                }
+            }
+        }
+    }
+    result
+}
+
+pub fn run_qflist_query(
+    ctx: &CommandContext,
+    name: Option<&str>,
+    format: Option<QueryFormat>,
+) -> Result<(), String> {
+    let sparql = match name {
+        None => BUILT_IN_QUERIES
+            .iter()
+            .find(|(n, _)| *n == "qflist")
+            .map(|(_, s)| s.to_string())
+            .ok_or("Built-in qflist query not found")?,
+        Some(n) => resolve_typed_queries(ctx, "qflist")
+            .remove(n)
+            .map(|q| q.sparql)
+            .ok_or_else(|| {
+                format!(
+                    "No qflist query named '{}'. Save a .sparql file to \
+                     ~/.clearhead/queries/qflist/ or <workspace>/.clearhead/queries/qflist/",
+                    n
+                )
+            })?,
+    };
+
+    let wc = ctx.workspace_config();
+    let rows = clearhead_cli::run_workspace_raw_query(
+        &ctx.data_dir,
+        &inject_params(&sparql, None),
+        Some(&wc),
+    )?;
+
+    if rows.is_empty() {
+        println!("[]");
+        return Ok(());
+    }
+
+    validate_columns(&rows, QFLIST_REQUIRED)?;
+
+    match format.unwrap_or(QueryFormat::Json) {
+        QueryFormat::Json => format_as_json(&rows),
+        QueryFormat::Table => format_as_table(&rows),
+    }
+}
+
 pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
     use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
-
-    let queries = resolve_named_queries(ctx);
 
     let mut table = Table::new();
     table
@@ -256,19 +350,29 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
         .set_content_arrangement(ContentArrangement::Dynamic);
     table.set_header(vec![
         Cell::new("NAME").fg(Color::Cyan),
+        Cell::new("TYPE").fg(Color::Cyan),
         Cell::new("SOURCE").fg(Color::Cyan),
     ]);
 
-    let mut names: Vec<&String> = queries.keys().collect();
-    names.sort();
-    for name in names {
+    let queries = resolve_named_queries(ctx);
+    let mut root_names: Vec<&String> = queries.keys().collect();
+    root_names.sort();
+    for name in root_names {
         let q = &queries[name];
-        table.add_row(vec![Cell::new(name), Cell::new(q.source.to_string())]);
+        table.add_row(vec![Cell::new(name), Cell::new("—"), Cell::new(q.source.to_string())]);
+    }
+
+    // Typed queries from subdirectories
+    let mut typed = scan_all_typed_queries(ctx);
+    typed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    for (type_name, name, q) in &typed {
+        table.add_row(vec![Cell::new(name), Cell::new(type_name), Cell::new(q.source.to_string())]);
     }
 
     println!("{}", table);
     println!(
-        "Custom queries: add .sparql files to ~/.clearhead/queries/ or <workspace>/.clearhead/queries/"
+        "Freeform: ~/.clearhead/queries/*.sparql or <workspace>/.clearhead/queries/*.sparql\n\
+         Typed:    ~/.clearhead/queries/<type>/*.sparql"
     );
     Ok(())
 }

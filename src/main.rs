@@ -304,6 +304,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 status.map(|s| s.to_sparql_iri()),
                 *format,
             ),
+            argparser::QueryTarget::Qflist { name, format } => {
+                commands::query::run_qflist_query(&ctx, name.as_deref(), *format)
+            }
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },
         Verb::Debug => commands::debug::run(&ctx),
