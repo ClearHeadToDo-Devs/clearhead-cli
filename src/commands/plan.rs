@@ -110,7 +110,7 @@ pub fn read_plans(
     _stdio: bool,
     _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
-    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::calendar::ics::parse_ics_file;
     use comfy_table::{Cell, Table};
 
     let plans: Vec<(String, clearhead_core::Plan)> = if let Some(path) = file {
@@ -199,7 +199,7 @@ pub fn show_plan(
     _format: &Option<argparser::OutputMode>,
     _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
-    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::calendar::ics::parse_ics_file;
 
     debug!(query = %query, "Executing Show Plan");
 
@@ -326,7 +326,7 @@ fn resolve_add_plan_output_path(
 
 fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
     if path.exists() {
-        clearhead_core::workspace::ics::parse_ics_file(path)
+        clearhead_core::workspace::calendar::ics::parse_ics_file(path)
             .map(|plans| plans.into_iter().map(|ip| ip.plan).collect())
             .map_err(|e| e.to_string())
     } else {
@@ -517,7 +517,7 @@ pub fn add_plan(
     }
 
     let uid = uuid::Uuid::now_v7().to_string();
-    let new_id = clearhead_core::workspace::ics::plan_id_from_ics_uid(&uid);
+    let new_id = clearhead_core::workspace::calendar::ics::plan_id_from_ics_uid(&uid);
     let new_plan = clearhead_core::Plan {
         id: new_id,
         name: name.to_string(),
@@ -639,7 +639,7 @@ pub fn archive_plans(
     _file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::calendar::ics::parse_ics_file;
     use clearhead_core::{ActionState, charter_root, read_actions};
     use chrono::Local;
     use std::collections::HashSet;

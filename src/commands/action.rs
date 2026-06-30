@@ -107,7 +107,7 @@ pub fn expand_actions(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_core::workspace::ics::parse_ics_file;
+    use clearhead_core::workspace::calendar::ics::parse_ics_file;
     use clearhead_core::{ExpansionConfig, upcoming_actions_path};
 
     let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
@@ -863,7 +863,7 @@ fn apply_template_in_place(
     charter_dir: &Path,
     data_root: &Path,
 ) -> Option<Vec<Action>> {
-    use clearhead_core::workspace::ics::occurrence_act_id;
+    use clearhead_core::workspace::calendar::ics::occurrence_act_id;
 
     let tpl_name = plan.template_name.as_deref()?;
 
