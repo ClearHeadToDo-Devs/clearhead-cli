@@ -581,11 +581,10 @@ impl Backend {
             Ok(res) => {
                 let msg = if res.was_dry_run {
                     format!(
-                        "Dry run: would archive '{}' ({} primary + {} completed actions, {} plans)",
+                        "Dry run: would archive '{}' ({} primary + {} completed actions)",
                         res.charter_name,
                         res.primary_actions_swept,
                         res.completed_actions_swept,
-                        res.plans_swept,
                     )
                 } else {
                     format!(

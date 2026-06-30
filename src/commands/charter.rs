@@ -464,12 +464,11 @@ pub fn archive_charter(
 fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {
     let prefix = if r.was_dry_run { "[dry-run] Would archive" } else { "Archived" };
     println!(
-        "{} charter '{}': {} primary action(s), {} completed action(s), {} plan(s) → {}",
+        "{} charter '{}': {} primary action(s), {} completed action(s) → {}",
         prefix,
         r.charter_name,
         r.primary_actions_swept,
         r.completed_actions_swept,
-        r.plans_swept,
         r.archive_ttl_path.display(),
     );
 }
