@@ -16,14 +16,22 @@ fn print_config_section(ctx: &CommandContext) {
         if ctx.config_path.exists() { "" } else { " (not found)" },
     );
 
-    // Project-local config — written by `clearhead init`, layered on top of the
-    // global config and overrides workspace-specific settings (workspace_id, etc.).
+    // Project config — written by `clearhead init`, layered on top of the global
+    // config and overrides workspace-specific settings (workspace_id, etc.).
+    // config.local.json sits beside it as a git-ignored personal override that
+    // wins over the committed project config.
     if let Some(ref root) = ctx.project_root {
-        let local_cfg = root.join(".clearhead").join("config.json");
+        let project_cfg = root.join(".clearhead").join("config.json");
         println!(
             "  project_config_file: {}{}",
+            project_cfg.display(),
+            if project_cfg.exists() { " (active)" } else { " (not found — run `clearhead init`)" },
+        );
+        let local_cfg = root.join(".clearhead").join("config.local.json");
+        println!(
+            "  project_local_config_file: {}{}",
             local_cfg.display(),
-            if local_cfg.exists() { " (active)" } else { " (not found — run `clearhead init`)" },
+            if local_cfg.exists() { " (active)" } else { " (not present — optional personal override)" },
         );
     } else {
         println!("  project_config_file: none (not inside a clearhead workspace)");
@@ -63,6 +71,15 @@ fn print_config_section(ctx: &CommandContext) {
             println!("    - {}", path);
         }
     }
+
+    println!(
+        "  plan_path: {}",
+        ctx.config
+            .plan_path
+            .as_deref()
+            .map(|p| format!("{}  [override: CLEARHEAD_PLAN_PATH | project config.local.json]", p))
+            .unwrap_or_else(|| "<unset> — plans live under the workspace's own plans/".to_string()),
+    );
 }
 
 fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {

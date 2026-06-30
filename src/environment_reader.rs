@@ -50,6 +50,12 @@ pub struct Config {
     #[serde(default = "default_expansion_primary_instances")]
     pub expansion_primary_instances: u32,
 
+    // Directory where plan .ics files are written, flat as
+    // <plan_path>/<charter>/<uid>.ics. A CalDAV server can point at the same
+    // directory to share plans. When None, plans live under <data_root>/plans.
+    #[serde(default)]
+    pub plan_path: Option<String>,
+
     // CLI-specific settings (cli_ prefix)
     #[serde(default = "default_format")]
     pub cli_format: String,
@@ -185,17 +191,27 @@ fn expand_path(path: &str) -> PathBuf {
     PathBuf::from(expanded.as_ref())
 }
 
-/// Load configuration with proper precedence:
-/// defaults → global config → env vars
+/// Load configuration with proper precedence (lowest to highest):
+/// defaults → global config → project config → project.local config → env vars
 pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, ConfigError> {
     let global_config_path =
         custom_config_path.unwrap_or_else(|| get_config_dir().join("config.json"));
 
-    // Project-local config lives at <project-root>/.clearhead/config.json and is
+    // Project config lives at <project-root>/.clearhead/config.json and is
     // written by `clearhead init`.  It overrides the global config for workspace-
-    // specific settings (workspace_id, workspace_name, additional_workspaces, …).
-    let project_config_path = find_project_data_dir()
+    // specific settings (workspace_id, workspace_name, additional_workspaces, …)
+    // and is committed so the whole team shares it.
+    //
+    // Project-local config sits beside it at config.local.json: a git-ignored
+    // personal override (e.g. one developer's own plan_path) that wins over the
+    // committed project config. Both resolve from the same project root.
+    let project_root = find_project_data_dir();
+    let project_config_path = project_root
+        .as_ref()
         .map(|root| root.join(".clearhead").join("config.json"));
+    let project_local_config_path = project_root
+        .as_ref()
+        .map(|root| root.join(".clearhead").join("config.local.json"));
 
     let mut builder = ConfigBuilder::builder()
         // 1. Set defaults
@@ -214,7 +230,7 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
                 .required(false),
         );
 
-    // 3. Layer in project-local config (higher priority than global)
+    // 3. Layer in project config (higher priority than global)
     if let Some(project_cfg) = project_config_path {
         builder = builder.add_source(
             File::from(project_cfg)
@@ -223,8 +239,18 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
         );
     }
 
+    // 4. Layer in project-local config (git-ignored personal override; wins
+    //    over the committed project config)
+    if let Some(project_local_cfg) = project_local_config_path {
+        builder = builder.add_source(
+            File::from(project_local_cfg)
+                .format(FileFormat::Json)
+                .required(false),
+        );
+    }
+
     builder
-        // 4. Load environment variables with CLEARHEAD_ prefix (highest priority)
+        // 5. Load environment variables with CLEARHEAD_ prefix (highest priority)
         .add_source(
             Environment::with_prefix("CLEARHEAD")
                 .prefix_separator("_")
@@ -325,6 +351,7 @@ mod tests {
             cli_indent_width: 4,
             expansion_total_instances: 2,
             expansion_primary_instances: 1,
+            plan_path: None,
         }
     }
 

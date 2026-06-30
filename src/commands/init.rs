@@ -19,6 +19,16 @@ pub fn run() -> Result<(), String> {
     fs::create_dir_all(&charters_dir)
         .map_err(|e| format!("Failed to create .clearhead/charters/: {}", e))?;
 
+    // Keep config.local.json — the git-ignored personal override — out of version
+    // control. A scoped .clearhead/.gitignore owns this rule so we don't touch the
+    // project root's ignore conventions. Written unconditionally (independent of
+    // the config.json guard below) so existing workspaces pick it up on a rerun.
+    let gitignore_path = clearhead_dir.join(".gitignore");
+    if !gitignore_path.exists() {
+        fs::write(&gitignore_path, "config.local.json\n")
+            .map_err(|e| format!("Failed to write .clearhead/.gitignore: {}", e))?;
+    }
+
     if config_path.exists() {
         println!(
             "Already initialized — {} exists.",

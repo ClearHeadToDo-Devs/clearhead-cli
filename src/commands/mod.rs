@@ -173,6 +173,7 @@ impl CommandContext {
             workspace_name: self.config.workspace_name.clone(),
             expansion_total_instances: self.config.expansion_total_instances,
             expansion_primary_instances: self.config.expansion_primary_instances,
+            plan_path: self.config.plan_path.clone(),
             additional_workspaces: resolved_additional
                 .into_iter()
                 .map(|p| p.to_string_lossy().into_owned())
