@@ -95,7 +95,7 @@ fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
 
     let manifest = clearhead_core::collect_workspace_manifest(&ctx.data_dir)
         .map_err(|e| format!("Failed to collect workspace manifest: {}", e))?;
-    let model = clearhead_core::load_domain_model(&ctx.data_dir)
+    let model = ctx.load_model()
         .map_err(|e| format!("Failed to load workspace: {}", e))?;
 
     let root_alias = find_root_charter_alias(&model.charters).unwrap_or("-".to_string());

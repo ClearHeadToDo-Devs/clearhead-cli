@@ -492,7 +492,7 @@ pub fn update_charter(
 ) -> Result<(), String> {
     use clearhead_cli::mutations::{CharterUpdate, apply_charter_update};
 
-    let mcs = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let mcs = ctx.load_charters()?;
     let charter_root = clearhead_core::charter_root(&ctx.data_dir);
     let mc_full = find_target_charter(&mcs, Some(query), None, &charter_root)?;
     let mut updated = Charter::from(mc_full.clone());

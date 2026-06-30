@@ -111,7 +111,6 @@ pub fn read_plans(
     _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
     use clearhead_core::workspace::ics::parse_ics_file;
-    use clearhead_core::workspace::plans::collect_plan_files;
     use comfy_table::{Cell, Table};
 
     let plans: Vec<(String, clearhead_core::Plan)> = if let Some(path) = file {
@@ -126,11 +125,10 @@ pub fn read_plans(
             .map(|ip| (charter_name.clone(), ip.plan))
             .collect()
     } else {
-        let entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
+        let entries = ctx.collect_plan_files()?;
 
         let allowed: Option<std::collections::HashSet<String>> = if let Some(query) = charter {
-            let model =
-                clearhead_core::load_domain_model(&ctx.data_dir).map_err(|e| e.to_string())?;
+            let model = ctx.load_model()?;
             let found = crate::commands::charter::resolve_charter(&model.charters, query)
                 .ok_or_else(|| format!("No charter found matching '{}'", query))?;
             let key = charter_graph_name(found);
@@ -202,7 +200,6 @@ pub fn show_plan(
     _table_options: &argparser::CliTableOptions,
 ) -> Result<(), String> {
     use clearhead_core::workspace::ics::parse_ics_file;
-    use clearhead_core::workspace::plans::collect_plan_files;
 
     debug!(query = %query, "Executing Show Plan");
 
@@ -220,7 +217,7 @@ pub fn show_plan(
             .map(|ip| (charter_name.clone(), ip.plan))
             .collect()
     } else {
-        let entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
+        let entries = ctx.collect_plan_files()?;
         let mut result = Vec::new();
         for entry in entries {
             match parse_ics_file(&entry.path) {
@@ -280,12 +277,11 @@ fn resolve_plans_dir(
         return Ok(path.clone());
     }
 
-    let plans_root = clearhead_core::plans_root(&ctx.data_dir);
+    let plans_root = ctx.plans_root();
     let charter_root = clearhead_core::charter_root(&ctx.data_dir);
 
     if let Some(query) = charter {
-        let charters =
-            clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+        let charters = ctx.load_charters()?;
         if let Some(charter) = resolve_markdown_charter(&charters, query) {
             if let Some(path) = &charter.plans_dir {
                 return Ok(plans_root.join(path));
@@ -436,8 +432,7 @@ fn find_plan_for_mutation(
     let files = if let Some(path) = file {
         vec![path.clone()]
     } else {
-        clearhead_core::workspace::plans::collect_plan_files(&ctx.data_dir)
-            .map_err(|e| e.to_string())?
+        ctx.collect_plan_files()?
             .into_iter()
             .map(|entry| entry.path)
             .collect()
@@ -645,12 +640,11 @@ pub fn archive_plans(
     dry_run: bool,
 ) -> Result<(), String> {
     use clearhead_core::workspace::ics::parse_ics_file;
-    use clearhead_core::workspace::plans::collect_plan_files;
     use clearhead_core::{ActionState, charter_root, read_actions};
     use chrono::Local;
     use std::collections::HashSet;
 
-    let plan_entries = collect_plan_files(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let plan_entries = ctx.collect_plan_files()?;
 
     // Filter by scope (charter name) if provided
     let filtered_entries: Vec<_> = if let Some(scope_str) = scope {
@@ -672,7 +666,7 @@ pub fn archive_plans(
     }
 
     // Load workspace to find charter → acts_file mapping
-    let charters = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let charters = ctx.load_charters()?;
     let ch_root = charter_root(&ctx.data_dir);
     let now = Local::now();
 
@@ -881,7 +875,7 @@ pub fn export_plans(
 
             model
         } else {
-            let model = clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?;
+            let model = ctx.load_model()?;
             let target = resolve_reference(&model, reference, &ReferenceOptions::default())
                 .map_err(|e| e.to_string())?;
             match target {
@@ -891,7 +885,7 @@ pub fn export_plans(
             }
         }
     } else {
-        clearhead_cli::load_workspace_domain_model(&ctx.data_dir)?
+        ctx.load_model()?
     };
 
     let icalendar = clearhead_cli::format_as_icalendar(&model, open_only)?;

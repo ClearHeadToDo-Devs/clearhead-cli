@@ -108,7 +108,6 @@ pub fn expand_actions(
     dry_run: bool,
 ) -> Result<(), String> {
     use clearhead_core::workspace::ics::parse_ics_file;
-    use clearhead_core::workspace::plans::collect_plan_files;
     use clearhead_core::{ExpansionConfig, upcoming_actions_path};
 
     let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
@@ -119,7 +118,7 @@ pub fn expand_actions(
         primary_instances: ctx.config.expansion_primary_instances,
     };
 
-    let all_entries = collect_plan_files(&ctx.data_dir)
+    let all_entries = ctx.collect_plan_files()
         .map_err(|e| format!("Failed to discover ICS files: {}", e))?;
 
     let entries: Vec<_> = if let Some(actions_path) = file {
@@ -575,8 +574,7 @@ pub fn read_actions_cmd(
 
     match format {
         Some(crate::argparser::OutputMode::JsonLd) => {
-            let model = clearhead_core::load_domain_model(&ctx.data_dir)
-                .map_err(|e| e.to_string())?;
+            let model = ctx.load_model()?;
             let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(&model)
                 .map_err(|e| format!("Failed to serialize JSON-LD: {}", e))?;
             println!("{}", jsonld);
@@ -597,8 +595,7 @@ pub fn read_actions_cmd(
                 print!("{}", text);
             } else {
                 // TTY: always render the domain hierarchy tree, filtered if needed.
-                let primary = clearhead_core::load_domain_model(&ctx.data_dir)
-                    .map_err(|e| e.to_string())?;
+                let primary = ctx.load_model()?;
 
                 let mut model = if let Some(query) = charter_filter {
                     let charter = super::charter::resolve_charter(&primary.charters, query)

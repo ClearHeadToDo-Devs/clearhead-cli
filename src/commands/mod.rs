@@ -140,7 +140,13 @@ impl CommandContext {
         let mut models = Vec::new();
         for (name, path) in self.workspace_dirs() {
             let is_primary = path == self.data_dir;
-            match clearhead_core::load_domain_model(&path) {
+            // The primary honors plan_path; additional workspaces use their own default.
+            let loaded = if is_primary {
+                clearhead_core::load_domain_model_with_plans(&path, self.plan_override().as_deref())
+            } else {
+                clearhead_core::load_domain_model(&path)
+            };
+            match loaded {
                 Ok(m) => models.push((name, m)),
                 Err(e) if is_primary => return Err(e.to_string()),
                 Err(e) => warn!("Skipping workspace '{}': {}", path.display(), e),
@@ -167,19 +173,65 @@ impl CommandContext {
                 &config_base,
             );
 
+        // Resolve plan_path the same way (~, $VAR, relative-to-.clearhead) so core
+        // receives a ready-to-use absolute path, never a raw config string.
+        let resolved_plan_path = self.config.plan_path.as_ref().and_then(|p| {
+            clearhead_cli::environment_reader::resolve_workspace_paths(
+                std::slice::from_ref(p),
+                &config_base,
+            )
+            .into_iter()
+            .next()
+            .map(|pb| pb.to_string_lossy().into_owned())
+        });
+
         clearhead_core::WorkspaceConfig {
             tag_hierarchies: self.config.tag_hierarchies.clone(),
             workspace_id: self.config.workspace_id.clone(),
             workspace_name: self.config.workspace_name.clone(),
             expansion_total_instances: self.config.expansion_total_instances,
             expansion_primary_instances: self.config.expansion_primary_instances,
-            plan_path: self.config.plan_path.clone(),
+            plan_path: resolved_plan_path,
             additional_workspaces: resolved_additional
                 .into_iter()
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect(),
             ..clearhead_core::WorkspaceConfig::default()
         }
+    }
+
+    /// The resolved `plan_path` override (absolute, shell-expanded) for the
+    /// primary workspace, or `None` when plans live under its default `plans/`.
+    ///
+    /// This is the single place a command needs to think about `plan_path`; the
+    /// `load_*` / `plans_root` / `collect_plan_files` helpers below all route
+    /// through it, so commands stay oblivious to where plans physically live.
+    pub fn plan_override(&self) -> Option<PathBuf> {
+        self.workspace_config().plan_path.map(PathBuf::from)
+    }
+
+    /// Load the primary workspace's domain model, honoring `plan_path`.
+    pub fn load_model(&self) -> Result<clearhead_core::DomainModel, String> {
+        clearhead_core::load_domain_model_with_plans(&self.data_dir, self.plan_override().as_deref())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Load the primary workspace's charters, honoring `plan_path`.
+    pub fn load_charters(&self) -> Result<Vec<clearhead_core::MarkdownCharter>, String> {
+        clearhead_core::load_workspace_with_plans(&self.data_dir, self.plan_override().as_deref())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Discover the primary workspace's plan `.ics` entries, honoring `plan_path`.
+    pub fn collect_plan_files(&self) -> Result<Vec<clearhead_core::workspace::PlanFileEntry>, String> {
+        clearhead_core::collect_plan_files_with_plans(&self.data_dir, self.plan_override().as_deref())
+            .map_err(|e| e.to_string())
+    }
+
+    /// The primary workspace's `plans_root`, honoring `plan_path`.
+    pub fn plans_root(&self) -> PathBuf {
+        self.plan_override()
+            .unwrap_or_else(|| clearhead_core::plans_root(&self.data_dir))
     }
 }
 
