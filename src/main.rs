@@ -141,8 +141,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 duration,
                 dry_run,
             } => commands::action::add_action(
-                &ctx, name, charter, file, parent, *priority, *state, alias,
-                description, scheduled_at, *duration, *dry_run,
+                &ctx,
+                name,
+                charter,
+                file,
+                parent,
+                *priority,
+                *state,
+                alias,
+                description,
+                scheduled_at,
+                *duration,
+                *dry_run,
             ),
             argparser::AddTarget::Charter {
                 title,
@@ -173,7 +183,17 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 file,
                 dry_run,
             } => commands::action::update_action(
-                &ctx, query, name, *priority, *state, scheduled_at, duration, description, charter, file, *dry_run,
+                &ctx,
+                query,
+                name,
+                *priority,
+                *state,
+                scheduled_at,
+                duration,
+                description,
+                charter,
+                file,
+                *dry_run,
             ),
             argparser::UpdateTarget::Charter {
                 query,
@@ -282,8 +302,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::SyncTarget::Events { file, dry_run } => {
                 commands::service::sync_events(&ctx, file, *dry_run)
             }
-            argparser::SyncTarget::Calendar { dry_run } => {
-                commands::service::sync_calendar(&ctx, *dry_run)
+            argparser::SyncTarget::Calendar { dry_run, conflict } => {
+                commands::service::sync_calendar(&ctx, *dry_run, *conflict)
             }
         },
         Verb::Query { target } => match target {
@@ -316,14 +336,18 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
         Verb::Completion { shell } => {
             use clap::CommandFactory;
             use clap_complete::generate;
-            generate(*shell, &mut argparser::Cli::command(), "clearhead", &mut io::stdout());
+            generate(
+                *shell,
+                &mut argparser::Cli::command(),
+                "clearhead",
+                &mut io::stdout(),
+            );
             Ok(())
         }
         Verb::Expand { target } => match target {
-            argparser::ExpandTarget::Actions {
-                file,
-                dry_run,
-            } => commands::action::expand_actions(&ctx, file, *dry_run),
+            argparser::ExpandTarget::Actions { file, dry_run } => {
+                commands::action::expand_actions(&ctx, file, *dry_run)
+            }
         },
         Verb::Cancel { target } => match target {
             argparser::CancelTarget::Action {
@@ -342,7 +366,11 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             } => commands::template::apply_template(&ctx, name, charter, file, *dry_run),
         },
         Verb::Close { target } => match target {
-            argparser::CloseTarget::Charter { query, file, dry_run } => {
+            argparser::CloseTarget::Charter {
+                query,
+                file,
+                dry_run,
+            } => {
                 commands::charter::close_charter(&ctx, query.as_deref(), file.as_deref(), *dry_run)
             }
         },

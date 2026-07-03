@@ -74,15 +74,24 @@ pub fn sync_events(
     Ok(())
 }
 
-pub fn sync_calendar(ctx: &CommandContext, dry_run: bool) -> Result<(), String> {
+pub fn sync_calendar(
+    ctx: &CommandContext,
+    dry_run: bool,
+    conflict: Option<crate::argparser::ConflictResolutionArg>,
+) -> Result<(), String> {
     let plans_root = ctx.plans_root();
     let model = ctx.load_model()?;
     let ics_dates = clearhead_core::read_ics_dates(&plans_root).map_err(|e| e.to_string())?;
     let report = clearhead_core::plan_sync(&model, &ics_dates);
+    let report = resolve_conflicts(report, conflict);
 
     if report.is_empty() {
         println!("Already in sync.");
         return Ok(());
+    }
+
+    for warning in &report.warnings {
+        eprintln!("{}", warning);
     }
 
     for entry in &report.entries {
@@ -99,14 +108,37 @@ pub fn sync_calendar(ctx: &CommandContext, dry_run: bool) -> Result<(), String> 
         return Ok(());
     }
 
-    let applied = clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)
-        .map_err(|e| e.to_string())?;
+    let applied =
+        clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)
+            .map_err(|e| e.to_string())?;
     info!(?applied, "Calendar sync complete");
     println!(
         "Sync complete. {} push, {} pull, {} converged, {} conflict.",
         applied.take_action, applied.take_calendar, applied.converged, applied.conflict
     );
     Ok(())
+}
+
+fn resolve_conflicts(
+    mut report: clearhead_core::SyncReport,
+    choice: Option<crate::argparser::ConflictResolutionArg>,
+) -> clearhead_core::SyncReport {
+    let Some(choice) = choice else {
+        return report;
+    };
+
+    for entry in &mut report.entries {
+        if let Reconcile::Conflict { action, calendar } = entry.outcome {
+            entry.outcome = match choice {
+                crate::argparser::ConflictResolutionArg::Action => Reconcile::TakeAction(action),
+                crate::argparser::ConflictResolutionArg::Calendar => {
+                    Reconcile::TakeCalendar(calendar)
+                }
+            };
+        }
+    }
+
+    report
 }
 
 fn render_sync_entry(entry: &SyncEntry) -> String {
@@ -118,7 +150,10 @@ fn render_sync_entry(entry: &SyncEntry) -> String {
             dt.format("%Y-%m-%dT%H:%M")
         ),
         Reconcile::TakeAction(None) => {
-            format!("push action removal → calendar: {} #{}", entry.name, entry.action_id)
+            format!(
+                "push action removal → calendar: {} #{}",
+                entry.name, entry.action_id
+            )
         }
         Reconcile::TakeCalendar(Some(dt)) => format!(
             "pull calendar → action: {} #{} @{}",
@@ -127,7 +162,10 @@ fn render_sync_entry(entry: &SyncEntry) -> String {
             dt.format("%Y-%m-%dT%H:%M")
         ),
         Reconcile::TakeCalendar(None) => {
-            format!("pull calendar removal → action: {} #{}", entry.name, entry.action_id)
+            format!(
+                "pull calendar removal → action: {} #{}",
+                entry.name, entry.action_id
+            )
         }
         Reconcile::Converged(Some(dt)) => format!(
             "converged: {} #{} @{}",
@@ -135,7 +173,9 @@ fn render_sync_entry(entry: &SyncEntry) -> String {
             entry.action_id,
             dt.format("%Y-%m-%dT%H:%M")
         ),
-        Reconcile::Converged(None) => format!("converged removal: {} #{}", entry.name, entry.action_id),
+        Reconcile::Converged(None) => {
+            format!("converged removal: {} #{}", entry.name, entry.action_id)
+        }
         Reconcile::Conflict { action, calendar } => format!(
             "conflict: {} #{} action={:?} calendar={:?}",
             entry.name, entry.action_id, action, calendar

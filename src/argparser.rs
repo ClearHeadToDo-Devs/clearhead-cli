@@ -282,9 +282,7 @@ pub enum Verb {
 
     /// Internal: list completable values (one per line) for shell integration
     #[command(name = "_complete", hide = true)]
-    CompleteValues {
-        kind: CompleteKind,
-    },
+    CompleteValues { kind: CompleteKind },
 }
 
 /// Types of values that can be completed
@@ -1025,6 +1023,14 @@ pub enum StartTarget {
     Lsp,
 }
 
+#[derive(Clone, Copy, ValueEnum, Debug)]
+pub enum ConflictResolutionArg {
+    /// Prefer the action file's value
+    Action,
+    /// Prefer the calendar `.ics` value
+    Calendar,
+}
+
 #[derive(Subcommand)]
 pub enum SyncTarget {
     /// Synchronize existing actions with the events database
@@ -1041,6 +1047,10 @@ pub enum SyncTarget {
         /// Dry run: show what would be changed without writing
         #[arg(long)]
         dry_run: bool,
+
+        /// Resolve all calendar conflicts by explicitly choosing one side
+        #[arg(long, value_enum)]
+        conflict: Option<ConflictResolutionArg>,
     },
 }
 
