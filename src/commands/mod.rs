@@ -326,9 +326,8 @@ pub fn load_file_for_mutation(path: &Path, command: &str) -> Result<ActionList, 
 /// Also updates the charter sidecar (best-effort — sidecar failures
 /// are logged but do not prevent the actions file from being saved).
 pub fn save_file(path: &Path, actions: &ActionList) -> Result<(), String> {
-    let content = clearhead_cli::format(actions, clearhead_cli::OutputFormat::Actions, None, None)?;
-    fs::write(path, &content)
-        .map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
+    clearhead_core::workspace::action_files::write_actions(actions, path)
+        .map_err(|e| e.to_string())?;
     if let Err(e) = update_sidecar(path, actions) {
         warn!(path = %path.display(), error = %e, "Failed to update sidecar");
     }
