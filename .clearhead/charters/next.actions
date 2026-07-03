@@ -1,1 +1,2 @@
-[ ] formatter serialization bug emits adjacent fields without whitespace separating them +bug #019e6da7-9c35-7852-9b87-6e69af96be65
+[ ] formatter serialization bug emits adjacent fields without whitespace separating them !1 +bug #019e6da7-9c35-7852-9b87-6e69af96be65
+[ ] fix formatter dropping all but the last space-separated context tag $ spec action_file_format.md documents multiple tags as plus-work plus-meeting plus-client space-separated, but a format round-trip keeps only the final tag — silent data loss on a source-of-truth file. either the grammar/parser must collect repeated tag nodes or the spec must mandate the comma form the repo already uses in practice; decide which and align parser, formatter, and spec $ !1 +bug #019f268f-eb4e-747a-82e3-cb53615d965e
