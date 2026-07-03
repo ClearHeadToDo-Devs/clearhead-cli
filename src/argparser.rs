@@ -1065,7 +1065,9 @@ pub enum SyncTarget {
 pub enum OutputMode {
     /// Force human table output (even when piped)
     Table,
-    /// JSON-LD output for external tools — valid JSON, works with jq
+    /// JSON-LD output for external tools — valid JSON, works with jq.
+    /// `json` is accepted as an alias for ergonomics.
+    #[value(alias = "json")]
     JsonLd,
     /// One UUID per line — for xargs and reference piping
     Ids,

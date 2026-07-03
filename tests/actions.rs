@@ -59,6 +59,7 @@ fn test_read_acts_json_format() {
         .arg("--format").arg("json")
         .arg("--file").arg(&test_path)
         .assert().success()
+        // `json` is an alias for the json-ld output mode.
         .stdout(predicate::str::contains("\"name\""))
         .stdout(predicate::str::contains("Test"));
 }
@@ -110,13 +111,18 @@ fn test_json_output_validates_against_schema() {
     let test_path = env.data_dir.join("charters").join("test.actions");
     let output = env.command()
         .arg("read").arg("acts")
-        .arg("--format").arg("json")
+        .arg("--format").arg("json-ld")
         .arg("--file").arg(&test_path)
         .assert().success()
         .get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("Invalid UTF-8");
     let json_value: serde_json::Value = serde_json::from_str(&json_str).expect("Invalid JSON");
-    assert!(json_value.is_array(), "Expected JSON array from read acts");
+    // read acts emits a JSON-LD document: an object carrying @context and a @graph array of nodes.
+    assert!(json_value.is_object(), "Expected a JSON-LD document object from read acts");
+    assert!(
+        json_value.get("@graph").and_then(|g| g.as_array()).is_some(),
+        "Expected a @graph array in the JSON-LD document",
+    );
     assert!(json_str.contains("Parent task"));
 }
 
