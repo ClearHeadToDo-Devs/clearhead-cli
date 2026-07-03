@@ -2,6 +2,7 @@ use tracing::{debug, info, warn};
 
 use crate::commands::{CommandContext, load_file_for_read};
 use clearhead_cli::telemetry::{TelemetryEvent, TelemetryRecord, Tool, emit};
+use clearhead_core::{Reconcile, SyncEntry};
 
 #[cfg(feature = "lsp")]
 pub fn start_lsp() -> Result<(), String> {
@@ -71,4 +72,74 @@ pub fn sync_events(
         );
     }
     Ok(())
+}
+
+pub fn sync_calendar(ctx: &CommandContext, dry_run: bool) -> Result<(), String> {
+    let plans_root = ctx.plans_root();
+    let model = ctx.load_model()?;
+    let ics_dates = clearhead_core::read_ics_dates(&plans_root).map_err(|e| e.to_string())?;
+    let report = clearhead_core::plan_sync(&model, &ics_dates);
+
+    if report.is_empty() {
+        println!("Already in sync.");
+        return Ok(());
+    }
+
+    for entry in &report.entries {
+        println!("{}", render_sync_entry(entry));
+    }
+
+    let tally = report.tally();
+    if dry_run {
+        info!(?tally, "Calendar sync dry run complete");
+        println!(
+            "Dry run complete. {} push, {} pull, {} converged, {} conflict.",
+            tally.take_action, tally.take_calendar, tally.converged, tally.conflict
+        );
+        return Ok(());
+    }
+
+    let applied = clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)
+        .map_err(|e| e.to_string())?;
+    info!(?applied, "Calendar sync complete");
+    println!(
+        "Sync complete. {} push, {} pull, {} converged, {} conflict.",
+        applied.take_action, applied.take_calendar, applied.converged, applied.conflict
+    );
+    Ok(())
+}
+
+fn render_sync_entry(entry: &SyncEntry) -> String {
+    match entry.outcome {
+        Reconcile::TakeAction(Some(dt)) => format!(
+            "push action → calendar: {} #{} @{}",
+            entry.name,
+            entry.action_id,
+            dt.format("%Y-%m-%dT%H:%M")
+        ),
+        Reconcile::TakeAction(None) => {
+            format!("push action removal → calendar: {} #{}", entry.name, entry.action_id)
+        }
+        Reconcile::TakeCalendar(Some(dt)) => format!(
+            "pull calendar → action: {} #{} @{}",
+            entry.name,
+            entry.action_id,
+            dt.format("%Y-%m-%dT%H:%M")
+        ),
+        Reconcile::TakeCalendar(None) => {
+            format!("pull calendar removal → action: {} #{}", entry.name, entry.action_id)
+        }
+        Reconcile::Converged(Some(dt)) => format!(
+            "converged: {} #{} @{}",
+            entry.name,
+            entry.action_id,
+            dt.format("%Y-%m-%dT%H:%M")
+        ),
+        Reconcile::Converged(None) => format!("converged removal: {} #{}", entry.name, entry.action_id),
+        Reconcile::Conflict { action, calendar } => format!(
+            "conflict: {} #{} action={:?} calendar={:?}",
+            entry.name, entry.action_id, action, calendar
+        ),
+        Reconcile::NoOp => format!("noop: {} #{}", entry.name, entry.action_id),
+    }
 }

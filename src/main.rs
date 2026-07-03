@@ -282,6 +282,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::SyncTarget::Events { file, dry_run } => {
                 commands::service::sync_events(&ctx, file, *dry_run)
             }
+            argparser::SyncTarget::Calendar { dry_run } => {
+                commands::service::sync_calendar(&ctx, *dry_run)
+            }
         },
         Verb::Query { target } => match target {
             argparser::QueryTarget::Run {

@@ -1036,6 +1036,12 @@ pub enum SyncTarget {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Reconcile standalone scheduled actions with mirrored calendar `.ics` files
+    Calendar {
+        /// Dry run: show what would be changed without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 // =============================================================================

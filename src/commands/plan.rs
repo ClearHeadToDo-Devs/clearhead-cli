@@ -244,27 +244,24 @@ pub fn show_plan(
     Ok(())
 }
 
-fn plan_file_name(plan: &clearhead_core::Plan) -> String {
-    let uid = plan
-        .external_id
-        .clone()
-        .unwrap_or_else(|| plan.id.to_string());
-    format!("{}.ics", slug(&uid))
-}
-
-fn plans_dir_path(plans_root: &Path, key: &str, parent: Option<&str>, acts_file: Option<&Path>) -> PathBuf {
-    let is_root = acts_file
-        .and_then(|p| p.file_name())
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n == "next.actions");
-    if is_root {
-        plans_root.join("next")
-    } else {
-        let dir = match parent {
-            Some(p) => format!("{}-{}", slug(p), slug(key)),
-            None => slug(key),
-        };
-        plans_root.join(dir)
+fn synthetic_charter(
+    title: impl Into<String>,
+    parent: Option<String>,
+    acts_file: Option<PathBuf>,
+) -> clearhead_core::MarkdownCharter {
+    clearhead_core::MarkdownCharter {
+        id: uuid::Uuid::nil(),
+        title: title.into(),
+        description: None,
+        alias: None,
+        parent,
+        objectives: None,
+        state: None,
+        plans: Vec::new(),
+        actions: Vec::new(),
+        md_file: None,
+        acts_file,
+        plans_dir: None,
     }
 }
 
@@ -283,16 +280,12 @@ fn resolve_plans_dir(
     if let Some(query) = charter {
         let charters = ctx.load_charters()?;
         if let Some(charter) = resolve_markdown_charter(&charters, query) {
-            if let Some(path) = &charter.plans_dir {
-                return Ok(plans_root.join(path));
-            }
-
-            let key = charter.alias.as_deref().unwrap_or(&charter.title);
-            let parent = charter.parent.as_deref();
-            return Ok(plans_dir_path(&plans_root, key, parent, charter.acts_file.as_deref()));
+            return Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(charter)));
         }
 
-        return Ok(plans_root.join(slug(query)));
+        return Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(
+            &synthetic_charter(query.clone(), None, None),
+        )));
     }
 
     let default_actions = ctx.resolve_action_file(None);
@@ -301,7 +294,9 @@ fn resolve_plans_dir(
         .unwrap_or(default_actions.as_path());
     let charter_name = clearhead_core::infer_charter_name(relative)
         .ok_or_else(|| format!("Cannot infer charter name from '{}'", default_actions.display()))?;
-    Ok(plans_dir_path(&plans_root, &charter_name, None, Some(relative)))
+    Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(
+        &synthetic_charter(charter_name, None, Some(relative.to_path_buf())),
+    )))
 }
 
 fn resolve_add_plan_output_path(
@@ -320,8 +315,17 @@ fn resolve_add_plan_output_path(
         return Ok(path.clone());
     }
 
+    if let Some(query) = charter {
+        let charters = ctx.load_charters()?;
+        if let Some(charter) = resolve_markdown_charter(&charters, query) {
+            return Ok(clearhead_core::plan_output_path(&ctx.plans_root(), charter, plan));
+        }
+        let synthetic = synthetic_charter(query.clone(), None, None);
+        return Ok(clearhead_core::plan_output_path(&ctx.plans_root(), &synthetic, plan));
+    }
+
     let plans_dir = resolve_plans_dir(ctx, &None, charter)?;
-    Ok(plans_dir.join(plan_file_name(plan)))
+    Ok(plans_dir.join(clearhead_core::plan_file_name(plan)))
 }
 
 fn load_plan_file(path: &Path) -> Result<Vec<clearhead_core::Plan>, String> {
@@ -796,7 +800,7 @@ pub fn import_plans(
     let mut overwritten = 0usize;
 
     for plan in plans {
-        let target_path = plans_dir.join(plan_file_name(&plan));
+        let target_path = plans_dir.join(clearhead_core::plan_file_name(&plan));
         if target_path.exists() && !overwrite {
             return Err(format!(
                 "Import would overwrite existing plan file '{}'; re-run with --overwrite",
