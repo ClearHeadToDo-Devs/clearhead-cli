@@ -1,5 +1,6 @@
 ---
 source: tests/linting_conformance.rs
+assertion_line: 100
 expression: diagnostics
 ---
 [
@@ -30,10 +31,21 @@ expression: diagnostics
         severity: Error,
         message: "Context tags cannot be empty (E003).",
         range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 37,
+        },
+    },
+    LintDiagnostic {
+        code: "E003",
+        severity: Error,
+        message: "Context tags cannot be empty (E003).",
+        range: SourceRange {
             start_row: 3,
             start_col: 0,
             end_row: 3,
-            end_col: 37,
+            end_col: 34,
         },
     },
     LintDiagnostic {
@@ -88,7 +100,7 @@ expression: diagnostics
             start_row: 3,
             start_col: 0,
             end_row: 3,
-            end_col: 37,
+            end_col: 34,
         },
     },
     LintDiagnostic {

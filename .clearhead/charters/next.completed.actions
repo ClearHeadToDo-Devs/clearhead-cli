@@ -22,3 +22,4 @@
 [-] `; fresh UUIDv7s for on-demand use; new Verb $ +templates  %2026-04-21T00:00 #019db000-0003-7000-0000-000000000001
     > $+commands/template.rs #019e6045-cf03-7a00-8843-8973898d1224
 [x] add expand acts with .ics schedule support $ expand_acts rewritten: collect_plan_files + parse_ics_file; occurrences within days-horizon written as $ %2026-05-27T00:33#019e685a-0942-75c0-9bf5-f5ae1aae3649
+[x] fix formatter dropping all but the last space-separated context tag $ decided comma form canonical (formatter + grammar already emit it); parser now collects every context node instead of overwriting, so spec-documented space form `+work +meeting +client` is recovered losslessly rather than silently dropped to the last tag. fixed in clearhead-core parser.rs context arm + regression test; spec aligned; DECISIONS.md 33 $ +bug %2026-07-03T00:00#019f268f-eb4e-747a-82e3-cb53615d965e
