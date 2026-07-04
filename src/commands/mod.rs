@@ -3,6 +3,7 @@ pub mod agenda;
 pub mod charter;
 pub mod complete;
 pub mod debug;
+pub mod doctor;
 pub mod file;
 pub mod init;
 pub mod plan;

@@ -333,6 +333,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },
         Verb::Debug => commands::debug::run(&ctx),
+        Verb::Doctor { json } => commands::doctor::run(&ctx, *json),
         Verb::Completion { shell } => {
             use clap::CommandFactory;
             use clap_complete::generate;

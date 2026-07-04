@@ -270,6 +270,13 @@ pub enum Verb {
     /// Show resolved config and workspace diagnostics
     Debug,
 
+    /// Check workspace coherence (read-only fsck): exits 0 clean, 1 warnings, 2 violations
+    Doctor {
+        /// Emit the diagnosis as JSON for scripting
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Initialize a clearhead workspace in the current directory
     Init,
 

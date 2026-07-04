@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use crate::commands::CommandContext;
+use clearhead_core::workspace::{MarkdownCharter, diagnose_read, read_workspace_with_plans};
 
 pub fn run(ctx: &CommandContext) -> Result<(), String> {
     print_config_section(ctx);
@@ -95,10 +94,12 @@ fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
 
     let manifest = clearhead_core::collect_workspace_manifest(&ctx.data_dir)
         .map_err(|e| format!("Failed to collect workspace manifest: {}", e))?;
-    let model = ctx.load_model()
-        .map_err(|e| format!("Failed to load workspace: {}", e))?;
+    // Diagnostics must observe, not alter: the pure reader (no journal replay,
+    // per-file failures become findings) instead of the healing load path.
+    let read = read_workspace_with_plans(&ctx.data_dir, ctx.plan_override().as_deref())
+        .map_err(|e| format!("Failed to read workspace: {}", e))?;
 
-    let root_alias = find_root_charter_alias(&model.charters).unwrap_or("-".to_string());
+    let root_alias = find_root_charter_alias(&read.charters).unwrap_or("-".to_string());
     println!("  root_charter: {}", root_alias);
 
     if manifest.is_empty() {
@@ -116,15 +117,22 @@ fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
         }
     }
 
-    let charter_count = model.charters.len();
-    let plan_count: usize = model.charters.iter().map(|c| c.plans.len()).sum();
-    let act_count: usize = model.charters.iter().map(|c| c.actions.len()).sum();
-    let warnings = count_workspace_warnings(&model.charters);
+    let charter_count = read.charters.len();
+    let plan_count: usize = read.charters.iter().map(|c| c.plans.len()).sum();
+    let act_count: usize = read.charters.iter().map(|c| c.actions.len()).sum();
 
+    let diagnosis = diagnose_read(&ctx.data_dir, &read);
     println!(
-        "  graph_summary: {} charters | {} plans | {} actions | {} warnings",
-        charter_count, plan_count, act_count, warnings
+        "  graph_summary: {} charters | {} plans | {} actions | {} violations, {} warnings",
+        charter_count,
+        plan_count,
+        act_count,
+        diagnosis.violations(),
+        diagnosis.warnings()
     );
+    if !diagnosis.findings.is_empty() {
+        println!("  findings: run `clearhead doctor` for the full report");
+    }
 
     Ok(())
 }
@@ -149,7 +157,7 @@ fn resolve_workspace_source(ctx: &CommandContext) -> &'static str {
     }
 }
 
-fn find_root_charter_alias(charters: &[clearhead_core::Charter]) -> Option<String> {
+fn find_root_charter_alias(charters: &[MarkdownCharter]) -> Option<String> {
     charters
         .iter()
         .find(|charter| charter.parent.is_none())
@@ -173,26 +181,3 @@ fn format_source_type(source_type: &clearhead_core::ManifestSourceType) -> &'sta
     }
 }
 
-fn count_workspace_warnings(charters: &[clearhead_core::Charter]) -> usize {
-    let known_aliases: std::collections::HashSet<&str> = charters
-        .iter()
-        .filter_map(|charter| charter.alias.as_deref())
-        .collect();
-
-    let mut warnings = 0;
-    let mut alias_counts: HashMap<&str, usize> = HashMap::new();
-
-    for charter in charters {
-        if let Some(alias) = charter.alias.as_deref() {
-            *alias_counts.entry(alias).or_default() += 1;
-        }
-
-        if let Some(parent) = charter.parent.as_deref()
-            && !known_aliases.contains(parent)
-        {
-            warnings += 1;
-        }
-    }
-
-    warnings + alias_counts.values().filter(|count| **count > 1).count()
-}
