@@ -574,7 +574,9 @@ pub fn read_actions_cmd(
 
     match format {
         Some(crate::argparser::OutputMode::JsonLd) => {
-            let model = ctx.load_model()?;
+            // Serialize the *filtered* model — --charter/--context/--open-only/--state
+            // must narrow JSON-LD output just as they narrow the table and tree.
+            let model = filtered_primary_model(ctx, charter_filter, &action_filter)?;
             let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(&model)
                 .map_err(|e| format!("Failed to serialize JSON-LD: {}", e))?;
             println!("{}", jsonld);
@@ -595,17 +597,7 @@ pub fn read_actions_cmd(
                 print!("{}", text);
             } else {
                 // TTY: always render the domain hierarchy tree, filtered if needed.
-                let primary = ctx.load_model()?;
-
-                let mut model = if let Some(query) = charter_filter {
-                    let charter = super::charter::resolve_charter(&primary.charters, query)
-                        .ok_or_else(|| format!("No charter found matching '{}'", query))?
-                        .clone();
-                    clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] }
-                } else {
-                    primary
-                };
-                clearhead_core::apply_filter(&mut model, &action_filter);
+                let model = filtered_primary_model(ctx, charter_filter, &action_filter)?;
 
                 if multi_ws {
                     let ws_name = ctx.config.workspace_name.clone()
@@ -631,6 +623,28 @@ pub fn read_actions_cmd(
     }
 
     Ok(())
+}
+
+/// Load the primary domain model, optionally narrowed to a single charter, with
+/// the action filter applied. Shared by the JSON-LD and TTY branches so both
+/// honor --charter/--context/--open-only/--state identically — the JSON path
+/// used to skip this and serialize the whole workspace unfiltered.
+fn filtered_primary_model(
+    ctx: &CommandContext,
+    charter_filter: Option<&str>,
+    action_filter: &clearhead_core::ActionFilter,
+) -> Result<clearhead_core::DomainModel, String> {
+    let primary = ctx.load_model()?;
+    let mut model = if let Some(query) = charter_filter {
+        let charter = super::charter::resolve_charter(&primary.charters, query)
+            .ok_or_else(|| format!("No charter found matching '{}'", query))?
+            .clone();
+        clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] }
+    } else {
+        primary
+    };
+    clearhead_core::apply_filter(&mut model, action_filter);
+    Ok(model)
 }
 
 /// Collect actions from the primary workspace and all configured additional workspaces.
