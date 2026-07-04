@@ -7,7 +7,7 @@ const IMPLEMENTED_LINT_RULES: &[&str] = &[
     // Errors (E001, E002 are unit-tested directly against constructed actions)
     "E003", "E006", "E010", "E011",
     // Warnings (W004 removed; created_at now lives in sidecar)
-    "W002", "W003", "W005", "W006",
+    "W002", "W003", "W005", "W006", "W013",
     // Info
     "I001", "I002", "I003", "I004", "I008", "I010",
 ];

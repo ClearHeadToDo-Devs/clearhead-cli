@@ -1,0 +1,28 @@
+---
+source: tests/linting_conformance.rs
+expression: diagnostics
+---
+[
+    LintDiagnostic {
+        code: "W013",
+        severity: Warning,
+        message: "Incomplete UUID: '12345678-1234' looks like a uuid still being typed. Finish it — an unfinished id is replaced by a generated one on load (W013).",
+        range: SourceRange {
+            start_row: 1,
+            start_col: 0,
+            end_row: 1,
+            end_col: 53,
+        },
+    },
+    LintDiagnostic {
+        code: "W013",
+        severity: Warning,
+        message: "Incomplete UUID: '01950000-0000-7000-8000' looks like a uuid still being typed. Finish it — an unfinished id is replaced by a generated one on load (W013).",
+        range: SourceRange {
+            start_row: 2,
+            start_col: 0,
+            end_row: 2,
+            end_col: 66,
+        },
+    },
+]

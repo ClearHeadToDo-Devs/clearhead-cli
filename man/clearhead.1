@@ -1011,6 +1011,9 @@ Ambiguous short UUID: more than one action matches the 8-char prefix.
 .TP
 \fBW012\fR
 Sequential marker (\fB~\fR) on an action with no children.
+.TP
+\fBW013\fR
+Incomplete UUID: a \fB#\fR id that is a well-formed prefix of a full UUID but stops short \(em a uuid still being typed. Contrast \fBE006\fR, a genuinely malformed id.
 .RE
 .\" ====================================================================
 .SH CONFIGURATION
