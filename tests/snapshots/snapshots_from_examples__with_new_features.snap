@@ -26,6 +26,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -49,6 +51,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -72,6 +76,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -95,6 +101,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -118,6 +126,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -146,6 +156,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -176,6 +188,8 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
   Action(
     id: "[uuid]",
@@ -204,5 +218,7 @@ expression: actions
     plan_id: None,
     external_schedule_id: None,
     external_occurrence_key: None,
+    scheduled_at_sync: None,
+    due_date_sync: None,
   ),
 ]
