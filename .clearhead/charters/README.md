@@ -5,3 +5,7 @@ This is really where the rubber meets the road, the cli implements all the speci
 this means there is allot going on and we need to make sure that we are discplined about the structure such that we are letting it do what needs to be done while still allowing us 
 
 this means we are going to be the best user for the library and while that is true that also makes sure that we are working through 
+
+
+
+
