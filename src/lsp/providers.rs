@@ -165,47 +165,23 @@ pub fn compute_inlay_hints(
     hints
 }
 
-pub fn compute_semantic_tokens(tree: &Tree) -> Vec<SemanticToken> {
-    let mut tokens = Vec::new();
-    let mut cursor = tree.walk();
-    let mut nodes_to_check = vec![tree.root_node()];
-
-    while let Some(node) = nodes_to_check.pop() {
-        let token_type = match node.kind() {
-            "id" => Some(0),
-            "priority" | "state_value" => Some(1),
-            "name" | "description" => Some(2),
-            "story" => Some(3),
-            "context" => Some(4),
-            "do_date" | "completed_date" => Some(5),
-            _ => None,
-        };
-
-        if let Some(type_idx) = token_type {
-            tokens.push(SemanticToken {
-                delta_line: node.start_position().row as u32,
-                delta_start: node.start_position().column as u32,
-                length: (node.end_byte() - node.start_byte()) as u32,
-                token_type: type_idx,
-                token_modifiers_bitset: 0,
-            });
-        }
-
-        for child in node.children(&mut cursor) {
-            nodes_to_check.push(child);
-        }
-    }
-
-    // Sort tokens by line and then by column
-    tokens.sort_by(|a, b| {
-        if a.delta_line != b.delta_line {
-            a.delta_line.cmp(&b.delta_line)
-        } else {
-            a.delta_start.cmp(&b.delta_start)
-        }
-    });
-
-    tokens
+/// Semantic tokens are intentionally empty for now.
+///
+/// Every token this used to emit (id, priority, name, description, story,
+/// context, dates) merely restated what the tree-sitter grammar already
+/// highlights from syntax. That overlay was net-negative: it sits at the LSP
+/// priority (125), *above* tree-sitter (100), so it clobbered finer grammar
+/// highlights -- most visibly, links nested inside `name`/`description` were
+/// repainted as plain strings.
+///
+/// The right role for semantic tokens is to *augment* the grammar with meaning
+/// it cannot compute from syntax alone (overdue dates, dangling predecessor
+/// references, blocked actions). That work is scoped in the
+/// `semantic-token-augmentation` charter and will need the resolved
+/// `DomainModel`, not just the syntax `Tree`. Until then we emit nothing and
+/// let tree-sitter own highlighting.
+pub fn compute_semantic_tokens(_tree: &Tree) -> Vec<SemanticToken> {
+    Vec::new()
 }
 
 pub fn get_node_at_position(tree: &Tree, position: Position) -> Option<tree_sitter::Node<'_>> {
@@ -423,74 +399,21 @@ mod tests {
         parser.parse(text, None).unwrap()
     }
 
+    // Semantic tokens are intentionally inert until the augmentation charter
+    // lands: they must add meaning tree-sitter can't (overdue/dangling/blocked),
+    // not re-emit syntax tree-sitter already highlights. Guard against a
+    // regression that reintroduces redundant, link-clobbering overlays.
     #[test]
-    fn test_semantic_tokens_id() {
-        let text = "[ ] Task #019baaec-00b6-7991-be34-94b68212619a";
+    fn test_semantic_tokens_are_empty_until_augmentation() {
+        let text = "[ ] Task !2 +home @2026-01-20T10:00 #019baaec-00b6-7991-be34-94b68212619a";
         let tree = get_tree(text);
 
         let tokens = compute_semantic_tokens(&tree);
 
         assert!(
-            tokens.iter().any(|t| t.token_type == 0),
-            "Expected id token (type 0)"
+            tokens.is_empty(),
+            "Expected no semantic tokens (grammar owns highlighting), got {} tokens",
+            tokens.len()
         );
-    }
-
-    #[test]
-    fn test_semantic_tokens_priority() {
-        let text = "[ ] Task !2 #019baaec-00b6-7991-be34-94b68212619a";
-        let tree = get_tree(text);
-
-        let tokens = compute_semantic_tokens(&tree);
-
-        assert!(
-            tokens.iter().any(|t| t.token_type == 1),
-            "Expected priority token (type 1)"
-        );
-    }
-
-    #[test]
-    fn test_semantic_tokens_context() {
-        let text = "[ ] Task +home #019baaec-00b6-7991-be34-94b68212619a";
-        let tree = get_tree(text);
-
-        let tokens = compute_semantic_tokens(&tree);
-
-        assert!(
-            tokens.iter().any(|t| t.token_type == 4),
-            "Expected context token (type 4)"
-        );
-    }
-
-    #[test]
-    fn test_semantic_tokens_dates() {
-        let text = "[ ] Task @2026-01-20T10:00 #019baaec-00b6-7991-be34-94b68212619a";
-        let tree = get_tree(text);
-
-        let tokens = compute_semantic_tokens(&tree);
-
-        assert!(
-            tokens.iter().any(|t| t.token_type == 5),
-            "Expected date token (type 5)"
-        );
-    }
-
-    #[test]
-    fn test_semantic_tokens_sorted_by_position() {
-        let text = "[ ] Task 1 #019baaec-00b6-7991-be34-94b68212619a\n[ ] Task 2 #019baaec-00b6-7991-be34-94b68212619b";
-        let tree = get_tree(text);
-
-        let tokens = compute_semantic_tokens(&tree);
-
-        for window in tokens.windows(2) {
-            let (a, b) = (&window[0], &window[1]);
-            assert!(
-                b.delta_line > a.delta_line
-                    || (b.delta_line == a.delta_line && b.delta_start >= a.delta_start),
-                "Tokens not sorted: {:?} should come before {:?}",
-                a,
-                b
-            );
-        }
     }
 }

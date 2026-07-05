@@ -56,6 +56,10 @@ impl LanguageServer for Backend {
                         SemanticTokensOptions {
                             range: Some(false),
                             full: Some(SemanticTokensFullOptions::Bool(true)),
+                            // This legend is currently inert: `compute_semantic_tokens`
+                            // emits nothing (see its doc comment). The augmentation
+                            // charter will redefine these types + add modifiers so the
+                            // overlay reinforces meaning tree-sitter can't see.
                             legend: SemanticTokensLegend {
                                 token_types: vec![
                                     SemanticTokenType::VARIABLE, // id
