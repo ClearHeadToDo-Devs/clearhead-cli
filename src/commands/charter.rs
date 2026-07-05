@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
@@ -171,78 +170,41 @@ fn print_charter_table(workspaces: &[(String, Vec<Charter>)], multi_ws: bool) {
     println!("{table}");
 }
 
+/// Flatten charters into depth-first hierarchy order for tabular display.
+///
+/// Roots (charters that are not a child of any other in the set) come first,
+/// each followed by its descendants. Parent resolution follows
+/// [`Charter::is_child_of`] — alias or UUID, never title.
 fn sort_charters_hierarchically<'a>(charters: &[&'a Charter]) -> Vec<&'a Charter> {
-    let mut by_parent: HashMap<String, Vec<&Charter>> = HashMap::new();
-    let mut roots: Vec<&Charter> = Vec::new();
-
-    let all_keys: std::collections::HashSet<String> = charters
+    let mut roots: Vec<&Charter> = charters
         .iter()
-        .flat_map(|c| {
-            let mut v = vec![c.title.to_lowercase()];
-            if let Some(a) = &c.alias {
-                v.push(a.to_lowercase());
-            }
-            v
-        })
+        .copied()
+        .filter(|c| !charters.iter().any(|p| c.is_child_of(p)))
         .collect();
-
-    for &c in charters {
-        match c.parent.as_deref() {
-            Some(p) if all_keys.contains(&p.to_lowercase()) => {
-                by_parent.entry(p.to_lowercase()).or_default().push(c);
-            }
-            _ => roots.push(c),
-        }
-    }
-
-    // Sort roots alphabetically
     roots.sort_by(|a, b| a.title.cmp(&b.title));
 
     let mut result = Vec::new();
     for root in roots {
-        flatten_charter_hierarchy(root, &by_parent, &mut result);
+        flatten_charter_hierarchy(root, charters, &mut result);
     }
     result
 }
 
 fn flatten_charter_hierarchy<'a>(
     charter: &'a Charter,
-    by_parent: &HashMap<String, Vec<&'a Charter>>,
+    all: &[&'a Charter],
     result: &mut Vec<&'a Charter>,
 ) {
     result.push(charter);
-    let mut kids = charter_children(charter, by_parent);
+    let mut kids: Vec<&Charter> = all
+        .iter()
+        .copied()
+        .filter(|c| c.is_child_of(charter))
+        .collect();
     kids.sort_by(|a, b| a.title.cmp(&b.title));
     for kid in kids {
-        flatten_charter_hierarchy(kid, by_parent, result);
+        flatten_charter_hierarchy(kid, all, result);
     }
-}
-
-
-fn charter_children<'a>(
-    charter: &Charter,
-    by_parent: &HashMap<String, Vec<&'a Charter>>,
-) -> Vec<&'a Charter> {
-    let mut kids: Vec<&Charter> = Vec::new();
-    if let Some(alias) = charter.alias.as_deref() {
-        kids.extend(
-            by_parent
-                .get(&alias.to_lowercase())
-                .into_iter()
-                .flatten()
-                .copied(),
-        );
-    }
-    for &kid in by_parent
-        .get(&charter.title.to_lowercase())
-        .into_iter()
-        .flatten()
-    {
-        if !kids.iter().any(|k| k.id == kid.id) {
-            kids.push(kid);
-        }
-    }
-    kids
 }
 
 fn open_act_count(charter: &Charter) -> usize {

@@ -152,22 +152,15 @@ fn unique_short_id(id: Uuid, all_ids: &[Uuid]) -> String {
 // Charter hierarchy
 // ---------------------------------------------------------------------------
 
+/// Charters to render at the top of the tree: those that are not a child of
+/// any loaded charter. This surfaces both true roots (no parent) and orphans
+/// (a parent handle that resolves to nothing loaded), so the view never
+/// silently drops a charter. Parent resolution follows [`Charter::is_child_of`].
 fn find_root_charters<'a>(model: &'a DomainModel) -> Vec<&'a Charter> {
-    let known_titles: std::collections::HashSet<String> = model
-        .charters
-        .iter()
-        .map(|c| c.title.to_lowercase())
-        .collect();
-
     model
         .charters
         .iter()
-        .filter(|c| {
-            c.parent
-                .as_ref()
-                .map(|p| !known_titles.contains(&p.to_lowercase()))
-                .unwrap_or(true)
-        })
+        .filter(|c| !model.charters.iter().any(|p| c.is_child_of(p)))
         .collect()
 }
 
@@ -190,16 +183,10 @@ fn build_charter_tree(charter: &Charter, model: &DomainModel, ids: &HashMap<Uuid
 }
 
 fn find_charter_children<'a>(charter: &Charter, model: &'a DomainModel) -> Vec<&'a Charter> {
-    let title_lower = charter.title.to_lowercase();
     model
         .charters
         .iter()
-        .filter(|c| {
-            c.parent
-                .as_deref()
-                .map(|p| p.to_lowercase() == title_lower)
-                .unwrap_or(false)
-        })
+        .filter(|c| c.is_child_of(charter))
         .collect()
 }
 
@@ -392,6 +379,34 @@ mod tests {
         assert!(child_pos > root_pos, "child should appear after root");
         // Child should be indented (has a tree connector before it)
         let child_line = out.lines().find(|l| l.contains("📁 Child")).unwrap();
+        assert!(child_line.contains('└') || child_line.contains('├'));
+    }
+
+    #[test]
+    fn sub_charter_nests_when_parent_is_referenced_by_alias() {
+        // Regression: children reference the root by its alias, not its title.
+        let model = DomainModel {
+            objectives: vec![],
+            charters: vec![
+                Charter {
+                    id: Uuid::now_v7(),
+                    title: "Creating the Clearhead CLI".to_string(),
+                    alias: Some("clearhead-cli".to_string()),
+                    ..Default::default()
+                },
+                Charter {
+                    id: Uuid::now_v7(),
+                    title: "lsp".to_string(),
+                    parent: Some("clearhead-cli".to_string()),
+                    ..Default::default()
+                },
+            ],
+        };
+        let out = render_domain_tree(&model);
+        // Single root → no workspace wrapper, and the child is nested under it.
+        assert!(out.starts_with("📁 Creating the Clearhead CLI"));
+        assert!(!out.contains("workspace"));
+        let child_line = out.lines().find(|l| l.contains("📁 lsp")).unwrap();
         assert!(child_line.contains('└') || child_line.contains('├'));
     }
 
