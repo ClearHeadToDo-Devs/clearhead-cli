@@ -93,7 +93,9 @@ fn test_format_style_flags() {
         .arg("format").arg("file").arg(&list_path)
         .arg("--style").arg("list").arg("--indent-width").arg("4")
         .assert().success()
-        .stdout(predicate::str::contains("$ Desc"));
+        // Description hugs its $ markers (icon->value compact, like !1/#id); the
+        // spaced input `$ Desc $` normalises to `$Desc$`.
+        .stdout(predicate::str::contains("$Desc$"));
     env.command()
         .arg("format").arg("file").arg(&compact_path)
         .arg("--indent-style").arg("tabs").arg("--indent-width").arg("1")
