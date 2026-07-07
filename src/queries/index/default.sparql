@@ -1,10 +1,11 @@
 # =============================================================================
-# Query: Quickfix List
+# Query: Default Index
 # =============================================================================
-# Purpose: Open actions with source locations for editor navigation (qflist).
-#          Each row carries ws_root so the consumer can resolve the relative
-#          source_file to an absolute path without external context.
-# Returns: name, status, source_file, source_line, charter_root
+# Purpose: All open actions with source locations — the default index view.
+#          Each row carries charter_root so the consumer can resolve the
+#          relative source_file to an absolute path without external context.
+# Returns: index contract columns (id, name, status, source_file, source_line,
+#          charter_root)
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
@@ -12,7 +13,7 @@ PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 
-SELECT ?name ?status ?source_file ?source_line ?charter_root WHERE {
+SELECT (?act AS ?id) ?name ?status ?source_file ?source_line ?charter_root WHERE {
     GRAPH ?g {
         ?act a actions:Action ;
              rdfs:label ?name ;

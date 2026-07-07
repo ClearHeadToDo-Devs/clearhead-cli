@@ -118,12 +118,16 @@ struct NamedQuery {
     source: QuerySource,
 }
 
-// Required output columns for each response type.
-const QFLIST_REQUIRED: &[&str] = &["name", "status", "source_file", "source_line", "charter_root"];
+// The index shape: ordered, addressable entries with source locators.
+// `id` is the canonical node IRI (urn:uuid) — the address mutation verbs
+// target, per query_output.md. Sort keys are emitted when bound but not
+// required: an undated node legitimately lacks them.
+const INDEX_REQUIRED: &[&str] = &["id", "name", "status", "source_file", "source_line", "charter_root"];
 
-// Built-in named qflist variants (checked before user/project dirs).
-const BUILT_IN_QFLIST_QUERIES: &[(&str, &str)] = &[
-    ("agenda", include_str!("../queries/qflist/agenda.sparql")),
+// Built-in index queries (checked before user/project dirs).
+const BUILT_IN_INDEX_QUERIES: &[(&str, &str)] = &[
+    ("agenda", include_str!("../queries/index/agenda.sparql")),
+    ("default", include_str!("../queries/index/default.sparql")),
 ];
 
 fn validate_columns(rows: &[HashMap<String, String>], required: &[&str]) -> Result<(), String> {
@@ -142,7 +146,6 @@ const BUILT_IN_QUERIES: &[(&str, &str)] = &[
         "acts-by-phase",
         include_str!("../queries/acts-by-phase.sparql"),
     ),
-    ("agenda", include_str!("../queries/agenda.sparql")),
     ("all-plans", include_str!("../queries/all-plans.sparql")),
     (
         "all-plans-simple",
@@ -164,7 +167,6 @@ const BUILT_IN_QUERIES: &[(&str, &str)] = &[
         "next-actions",
         include_str!("../queries/next-actions.sparql"),
     ),
-    ("qflist", include_str!("../queries/qflist.sparql")),
     (
         "orphaned-acts",
         include_str!("../queries/orphaned-acts.sparql"),
@@ -306,33 +308,25 @@ fn scan_all_typed_queries(ctx: &CommandContext) -> Vec<(String, String, NamedQue
     result
 }
 
-pub fn run_qflist_query(
+pub fn run_index_query(
     ctx: &CommandContext,
     name: Option<&str>,
     format: Option<QueryFormat>,
 ) -> Result<(), String> {
-    let sparql = match name {
-        None => BUILT_IN_QUERIES
-            .iter()
-            .find(|(n, _)| *n == "qflist")
-            .map(|(_, s)| s.to_string())
-            .ok_or("Built-in qflist query not found")?,
-        Some(n) => {
-            if let Some((_, sparql)) = BUILT_IN_QFLIST_QUERIES.iter().find(|(name, _)| *name == n) {
-                sparql.to_string()
-            } else {
-                resolve_typed_queries(ctx, "qflist")
-                    .remove(n)
-                    .map(|q| q.sparql)
-                    .ok_or_else(|| {
-                        format!(
-                            "No qflist query named '{}'. Save a .sparql file to \
-                             ~/.clearhead/queries/qflist/ or <workspace>/.clearhead/queries/qflist/",
-                            n
-                        )
-                    })?
-            }
-        }
+    let name = name.unwrap_or("default");
+    let sparql = if let Some((_, sparql)) = BUILT_IN_INDEX_QUERIES.iter().find(|(n, _)| *n == name) {
+        sparql.to_string()
+    } else {
+        resolve_typed_queries(ctx, "index")
+            .remove(name)
+            .map(|q| q.sparql)
+            .ok_or_else(|| {
+                format!(
+                    "No index query named '{}'. Save a .sparql file to \
+                     ~/.clearhead/queries/index/ or <workspace>/.clearhead/queries/index/",
+                    name
+                )
+            })?
     };
 
     let wc = ctx.workspace_config();
@@ -347,7 +341,7 @@ pub fn run_qflist_query(
         return Ok(());
     }
 
-    validate_columns(&rows, QFLIST_REQUIRED)?;
+    validate_columns(&rows, INDEX_REQUIRED)?;
 
     match format.unwrap_or(QueryFormat::Json) {
         QueryFormat::Json => format_as_json(&rows),
@@ -376,9 +370,9 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
         table.add_row(vec![Cell::new(name), Cell::new("—"), Cell::new(q.source.to_string())]);
     }
 
-    // Built-in qflist variants
-    for (name, _) in BUILT_IN_QFLIST_QUERIES {
-        table.add_row(vec![Cell::new(name), Cell::new("qflist"), Cell::new("built-in")]);
+    // Built-in index queries
+    for (name, _) in BUILT_IN_INDEX_QUERIES {
+        table.add_row(vec![Cell::new(name), Cell::new("index"), Cell::new("built-in")]);
     }
 
     // Typed queries from subdirectories (user/project)

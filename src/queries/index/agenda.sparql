@@ -1,11 +1,13 @@
 # =============================================================================
-# Query: Agenda (qflist)
+# Query: Agenda (index)
 # =============================================================================
 # Purpose: Hard-landscape actions — scheduled or due on or before end of today
 #          (includes overdue). No undated items regardless of priority.
 # Parameters:
 #   ?END_OF_TODAY — injected as today at 23:59:59 UTC
-# Returns: qflist columns + scheduled_at/due_date for sort context
+# Returns: index contract columns (id, name, status, source_file, source_line,
+#          charter_root) + scheduled_at/due_date sort keys per
+#          specifications/query_output.md
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
@@ -14,7 +16,7 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?name ?status ?source_file ?source_line ?charter_root ?scheduled_at ?due_date WHERE {
+SELECT (?act AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?scheduled_at ?due_date WHERE {
     GRAPH ?g {
         ?act a actions:Action ;
              rdfs:label ?name ;

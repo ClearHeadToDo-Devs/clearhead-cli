@@ -82,7 +82,6 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 format,
                 explicit_only,
             } => commands::charter::read_charters(&ctx, format, *explicit_only),
-            argparser::ReadTarget::Agenda => commands::agenda::run_agenda(&ctx),
             argparser::ReadTarget::Actions {
                 format,
                 plan,
@@ -327,8 +326,8 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 status.map(|s| s.to_sparql_iri()),
                 *format,
             ),
-            argparser::QueryTarget::Qflist { name, format } => {
-                commands::query::run_qflist_query(&ctx, name.as_deref(), *format)
+            argparser::QueryTarget::Index { name, format } => {
+                commands::query::run_index_query(&ctx, name.as_deref(), *format)
             }
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },

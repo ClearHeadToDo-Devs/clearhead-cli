@@ -20,7 +20,7 @@ fn agenda_returns_empty_when_no_dated_actions() {
 
     let output = env
         .command()
-        .args(["query", "qflist", "agenda"])
+        .args(["query", "index", "agenda"])
         .output()
         .expect("failed to run");
 
@@ -36,7 +36,7 @@ fn agenda_returns_past_dated_action() {
 
     let output = env
         .command()
-        .args(["query", "qflist", "agenda"])
+        .args(["query", "index", "agenda"])
         .output()
         .expect("failed to run");
 
@@ -56,7 +56,7 @@ fn agenda_excludes_undated_actions() {
 
     let output = env
         .command()
-        .args(["query", "qflist", "agenda"])
+        .args(["query", "index", "agenda"])
         .output()
         .expect("failed to run");
 
@@ -67,13 +67,13 @@ fn agenda_excludes_undated_actions() {
 }
 
 #[test]
-fn agenda_row_has_required_qflist_columns() {
+fn agenda_row_satisfies_index_contract() {
     let env = TestEnv::new();
     env.with_workspace_identity().write_actions("next.actions", DATED_ACTION);
 
     let output = env
         .command()
-        .args(["query", "qflist", "agenda"])
+        .args(["query", "index", "agenda"])
         .output()
         .expect("failed to run");
 
@@ -82,20 +82,24 @@ fn agenda_row_has_required_qflist_columns() {
     assert_eq!(rows.len(), 1);
 
     let row = &rows[0];
+    // id is the canonical node IRI — the address mutation verbs target.
+    assert_eq!(row["id"], "urn:uuid:01900000-0000-7000-8000-000000000001");
     assert!(row.get("name").is_some(), "missing: name");
     assert!(row.get("status").is_some(), "missing: status");
     assert!(row.get("source_file").is_some(), "missing: source_file");
     assert!(row.get("source_line").is_some(), "missing: source_line");
     assert!(row.get("charter_root").is_some(), "missing: charter_root");
+    // Sort keys travel as properties so order survives an RDF round-trip.
+    assert!(row.get("scheduled_at").is_some(), "missing sort key: scheduled_at");
 }
 
 #[test]
-fn agenda_query_listed_under_qflist_type() {
+fn agenda_query_listed_under_index_type() {
     let env = TestEnv::new();
     env.command()
         .args(["query", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("agenda"))
-        .stdout(predicates::str::contains("qflist"));
+        .stdout(predicates::str::contains("index"));
 }
