@@ -20,7 +20,7 @@ clearhead \- plaintext action management: read, write, query, and archive .actio
 [\fIarguments\fR]
 .PP
 .B clearhead
-\fBread\fR \fBactions\fR|\fBplans\fR|\fBcharters\fR|\fBagenda\fR [\fIoptions\fR]
+\fBread\fR \fBactions\fR|\fBplans\fR|\fBcharters\fR [\fIoptions\fR]
 .br
 .B clearhead
 \fBshow\fR \fBaction\fR|\fBplan\fR|\fBcharter\fR \fIquery\fR
@@ -196,9 +196,10 @@ Show only charters backed by a \fB.md\fR or \fBREADME.md\fR file;
 omit charters inferred from \fB.actions\fR file stems alone.
 .RE
 .PP
-.B clearhead read agenda
+.B clearhead query index agenda
 .PP
-Show a chronological agenda of upcoming actions with \fB@\fR do-dates.
+Show the built-in daily agenda as an index query: ordered, addressable entries
+with source locations and canonical ids, emitted as JSON-LD by default.
 .\" --------------------------------------------------------------------
 .SS "show \(em inspect a single item"
 .PP
@@ -651,6 +652,21 @@ Run a named SPARQL query stored as \fI<name>.sparql\fR in
 \fB\-\-status\fR \fIstate\fR
 Substitute \fB?STATUS_FILTER\fR in the query with a state IRI.
 .RE
+.PP
+.B clearhead query index
+[\fIname\fR]
+[\fB\-\-format\fR \fIfmt\fR]
+.PP
+Run a typed index query. Index queries live under
+\fI~/.clearhead/queries/index/\fR or \fI<project>/.clearhead/queries/index/\fR,
+and built-ins include \fBagenda\fR, \fBweekly\fR, and the default open-actions
+view. Output is JSON-LD by default and each row carries a canonical \fBid\fR,
+display fields, and source locators.
+.PP
+.B clearhead query show
+\fIname\fR
+.PP
+Print a query's raw SPARQL to stdout for inspection or copy-and-tweak overrides.
 .PP
 .B clearhead query list
 .PP
