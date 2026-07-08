@@ -9,8 +9,17 @@ const DATED_ACTION: &str =
 const UNDATED_ACTION: &str =
     "[ ] undated action #01900000-0000-7000-8000-000000000002\n";
 
-fn parse_json(output: &[u8]) -> Vec<serde_json::Value> {
-    serde_json::from_slice(output).expect("output is not valid JSON")
+/// Parse the index JSON-LD document and return its @graph nodes.
+/// One payload shape always — even empty results are a document, per
+/// specifications/query_output.md.
+fn parse_graph(output: &[u8]) -> Vec<serde_json::Value> {
+    let doc: serde_json::Value =
+        serde_json::from_slice(output).expect("output is not valid JSON");
+    assert!(doc.get("@context").is_some(), "missing @context: {doc}");
+    doc.get("@graph")
+        .and_then(|g| g.as_array())
+        .unwrap_or_else(|| panic!("@graph is not an array: {doc}"))
+        .clone()
 }
 
 #[test]
@@ -25,7 +34,7 @@ fn agenda_returns_empty_when_no_dated_actions() {
         .expect("failed to run");
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-    let rows = parse_json(&output.stdout);
+    let rows = parse_graph(&output.stdout);
     assert!(rows.is_empty(), "expected no rows, got {rows:?}");
 }
 
@@ -41,7 +50,7 @@ fn agenda_returns_past_dated_action() {
         .expect("failed to run");
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-    let rows = parse_json(&output.stdout);
+    let rows = parse_graph(&output.stdout);
     assert_eq!(rows.len(), 1, "expected 1 row, got {rows:?}");
     assert_eq!(rows[0]["name"], "past scheduled action");
     assert_eq!(rows[0]["status"], "NotStarted");
@@ -61,7 +70,7 @@ fn agenda_excludes_undated_actions() {
         .expect("failed to run");
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-    let rows = parse_json(&output.stdout);
+    let rows = parse_graph(&output.stdout);
     assert_eq!(rows.len(), 1, "expected only dated action, got {rows:?}");
     assert_eq!(rows[0]["name"], "past scheduled action");
 }
@@ -78,7 +87,7 @@ fn agenda_row_satisfies_index_contract() {
         .expect("failed to run");
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-    let rows = parse_json(&output.stdout);
+    let rows = parse_graph(&output.stdout);
     assert_eq!(rows.len(), 1);
 
     let row = &rows[0];
@@ -87,7 +96,8 @@ fn agenda_row_satisfies_index_contract() {
     assert!(row.get("name").is_some(), "missing: name");
     assert!(row.get("status").is_some(), "missing: status");
     assert!(row.get("source_file").is_some(), "missing: source_file");
-    assert!(row.get("source_line").is_some(), "missing: source_line");
+    // Locator line is a number, not a stringified literal — clients jump with it.
+    assert!(row["source_line"].is_u64(), "source_line not numeric: {row:?}");
     assert!(row.get("charter_root").is_some(), "missing: charter_root");
     // Sort keys travel as properties so order survives an RDF round-trip.
     assert!(row.get("scheduled_at").is_some(), "missing sort key: scheduled_at");

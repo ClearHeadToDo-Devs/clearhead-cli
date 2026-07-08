@@ -118,27 +118,13 @@ struct NamedQuery {
     source: QuerySource,
 }
 
-// The index shape: ordered, addressable entries with source locators.
-// `id` is the canonical node IRI (urn:uuid) — the address mutation verbs
-// target, per query_output.md. Sort keys are emitted when bound but not
-// required: an undated node legitimately lacks them.
-const INDEX_REQUIRED: &[&str] = &["id", "name", "status", "source_file", "source_line", "charter_root"];
-
 // Built-in index queries (checked before user/project dirs).
+// The index shape contract (required terms, JSON-LD framing) lives in
+// clearhead_core::graph::shape — the engine validates, the CLI just prints.
 const BUILT_IN_INDEX_QUERIES: &[(&str, &str)] = &[
     ("agenda", include_str!("../queries/index/agenda.sparql")),
     ("default", include_str!("../queries/index/default.sparql")),
 ];
-
-fn validate_columns(rows: &[HashMap<String, String>], required: &[&str]) -> Result<(), String> {
-    let Some(first) = rows.first() else { return Ok(()) };
-    let missing: Vec<&str> = required.iter().filter(|c| !first.contains_key(**c)).copied().collect();
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(format!("Query is missing required columns: {}", missing.join(", ")))
-    }
-}
 
 // Vendored v4 queries embedded at compile time.
 const BUILT_IN_QUERIES: &[(&str, &str)] = &[
@@ -336,16 +322,23 @@ pub fn run_index_query(
         Some(&wc),
     )?;
 
-    if rows.is_empty() {
-        println!("[]");
-        return Ok(());
-    }
-
-    validate_columns(&rows, INDEX_REQUIRED)?;
-
     match format.unwrap_or(QueryFormat::Json) {
-        QueryFormat::Json => format_as_json(&rows),
-        QueryFormat::Table => format_as_table(&rows),
+        QueryFormat::Json => {
+            let doc = clearhead_core::graph::frame_index(&rows).map_err(|e| e.to_string())?;
+            let json = serde_json::to_string_pretty(&doc)
+                .map_err(|e| format!("Failed to serialize: {}", e))?;
+            println!("{}", json);
+            Ok(())
+        }
+        QueryFormat::Table => {
+            // Human view — rendered from raw rows; still contract-checked.
+            clearhead_core::graph::frame_index(&rows).map_err(|e| e.to_string())?;
+            if rows.is_empty() {
+                println!("(no results)");
+                return Ok(());
+            }
+            format_as_table(&rows)
+        }
     }
 }
 
