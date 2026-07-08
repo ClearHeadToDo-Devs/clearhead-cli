@@ -146,12 +146,15 @@ fn display_config_value(value: &str, fallback_label: &str) -> String {
 }
 
 fn resolve_workspace_source(ctx: &CommandContext) -> &'static str {
-    if std::env::var("CLEARHEAD_DATA_DIR").is_ok() {
+    // Mirrors Workspace Resolution (specifications/configuration.md): a
+    // detected project wins unless default_to_user_scope bypasses it; env and
+    // config data_dir only relocate the fallback user workspace.
+    if ctx.project_root.is_some() && !ctx.config.default_to_user_scope {
+        "cwd-walk"
+    } else if std::env::var("CLEARHEAD_DATA_DIR").is_ok() {
         "env"
     } else if !ctx.config.data_dir.is_empty() {
         "config"
-    } else if ctx.project_root.is_some() {
-        "cwd-walk"
     } else {
         "xdg-default"
     }

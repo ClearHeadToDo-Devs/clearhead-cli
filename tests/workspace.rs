@@ -47,6 +47,33 @@ fn project_pwd_overrides_configured_data_dir() {
 }
 
 #[test]
+fn default_to_user_scope_bypasses_project_detection() {
+    let env = TestEnv::new();
+    // The sanctioned opt-out: inside a project, the flag pins the invocation
+    // to the user workspace (specifications/configuration.md).
+    env.write_actions(
+        "inbox.actions",
+        "[ ] personal task #019e0000-0000-7000-0000-000000000001\n",
+    );
+    env.write_config(r#"{"default_to_user_scope": true}"#);
+
+    let project_charters = env.work_dir.join(".clearhead").join("charters");
+    fs::create_dir_all(&project_charters).expect("create project charters");
+    fs::write(
+        project_charters.join("next.actions"),
+        "[ ] project task #019e0000-0000-7000-0000-000000000002\n",
+    )
+    .expect("write project actions");
+
+    env.command()
+        .args(["read", "actions", "--format", "json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("personal task"))
+        .stdout(predicate::str::contains("project task").not());
+}
+
+#[test]
 fn configured_data_dir_used_outside_any_project() {
     let env = TestEnv::new();
     // No .clearhead anywhere up from work_dir — the configured data_dir is the

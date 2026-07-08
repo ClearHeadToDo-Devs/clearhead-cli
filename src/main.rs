@@ -329,6 +329,9 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
             argparser::QueryTarget::Index { name, format } => {
                 commands::query::run_index_query(&ctx, name.as_deref(), *format)
             }
+            argparser::QueryTarget::Show { name } => {
+                commands::query::show_named_query(&ctx, name)
+            }
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },
         Verb::Debug => commands::debug::run(&ctx),

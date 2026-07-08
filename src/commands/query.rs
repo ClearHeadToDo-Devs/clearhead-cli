@@ -39,10 +39,15 @@ fn inject_params(sparql: &str, status: Option<&str>) -> String {
     let now = now_dt.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let datetime = format!("\"{}\"^^xsd:dateTime", now);
     let end_of_today = format!("\"{}T23:59:59Z\"^^xsd:dateTime", now_dt.format("%Y-%m-%d"));
+    let end_of_week = format!(
+        "\"{}T23:59:59Z\"^^xsd:dateTime",
+        (now_dt + chrono::Duration::days(7)).format("%Y-%m-%d")
+    );
     let mut out = sparql
         .replace("?NOW", &datetime)
         .replace("?CUTOFF_DATE", &datetime)
-        .replace("?END_OF_TODAY", &end_of_today);
+        .replace("?END_OF_TODAY", &end_of_today)
+        .replace("?END_OF_WEEK", &end_of_week);
     if let Some(iri) = status {
         out = out.replace("?STATUS_FILTER", iri);
     }
@@ -124,6 +129,7 @@ struct NamedQuery {
 const BUILT_IN_INDEX_QUERIES: &[(&str, &str)] = &[
     ("agenda", include_str!("../queries/index/agenda.sparql")),
     ("default", include_str!("../queries/index/default.sparql")),
+    ("weekly", include_str!("../queries/index/weekly.sparql")),
 ];
 
 // Vendored v4 queries embedded at compile time.
@@ -183,11 +189,8 @@ fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
         );
     }
 
-    // User-global: ~/.clearhead/queries/
-    if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".clearhead").join("queries");
-        scan_query_dir(&user_dir, QuerySource::User, &mut queries);
-    }
+    // User-global: <config_dir>/queries/ (XDG: ~/.config/clearhead/queries/)
+    scan_query_dir(&ctx.config_dir.join("queries"), QuerySource::User, &mut queries);
 
     // Project-local: <data_dir>/.clearhead/queries/ (highest priority)
     let project_dir = ctx.data_dir.join(".clearhead").join("queries");
@@ -257,10 +260,8 @@ pub fn run_named_query(
 /// Resolve user/project queries saved under queries/<type_name>/.
 fn resolve_typed_queries(ctx: &CommandContext, type_name: &str) -> HashMap<String, NamedQuery> {
     let mut queries = HashMap::new();
-    if let Some(home) = dirs::home_dir() {
-        let dir = home.join(".clearhead").join("queries").join(type_name);
-        scan_query_dir(&dir, QuerySource::User, &mut queries);
-    }
+    let user_dir = ctx.config_dir.join("queries").join(type_name);
+    scan_query_dir(&user_dir, QuerySource::User, &mut queries);
     let dir = ctx.data_dir.join(".clearhead").join("queries").join(type_name);
     scan_query_dir(&dir, QuerySource::Project, &mut queries);
     queries
@@ -268,13 +269,10 @@ fn resolve_typed_queries(ctx: &CommandContext, type_name: &str) -> HashMap<Strin
 
 /// Collect all typed queries (subdirectory-scoped) for display in `query list`.
 fn scan_all_typed_queries(ctx: &CommandContext) -> Vec<(String, String, NamedQuery)> {
-    let dirs: Vec<(std::path::PathBuf, QuerySource)> = [
-        dirs::home_dir().map(|h| (h.join(".clearhead").join("queries"), QuerySource::User)),
-        Some((ctx.data_dir.join(".clearhead").join("queries"), QuerySource::Project)),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let dirs: Vec<(std::path::PathBuf, QuerySource)> = vec![
+        (ctx.config_dir.join("queries"), QuerySource::User),
+        (ctx.data_dir.join(".clearhead").join("queries"), QuerySource::Project),
+    ];
 
     let mut result = Vec::new();
     for (base, source) in dirs {
@@ -300,20 +298,25 @@ pub fn run_index_query(
     format: Option<QueryFormat>,
 ) -> Result<(), String> {
     let name = name.unwrap_or("default");
-    let sparql = if let Some((_, sparql)) = BUILT_IN_INDEX_QUERIES.iter().find(|(n, _)| *n == name) {
-        sparql.to_string()
-    } else {
-        resolve_typed_queries(ctx, "index")
-            .remove(name)
-            .map(|q| q.sparql)
-            .ok_or_else(|| {
-                format!(
-                    "No index query named '{}'. Save a .sparql file to \
-                     ~/.clearhead/queries/index/ or <workspace>/.clearhead/queries/index/",
-                    name
-                )
-            })?
-    };
+    // Most-local wins: a project or user file shadows the built-in of the
+    // same name — "the query is the wisdom: transparent, inspectable,
+    // overridable". Start from `query show <name>` to copy-and-tweak.
+    let sparql = resolve_typed_queries(ctx, "index")
+        .remove(name)
+        .map(|q| q.sparql)
+        .or_else(|| {
+            BUILT_IN_INDEX_QUERIES
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, s)| s.to_string())
+        })
+        .ok_or_else(|| {
+            format!(
+                "No index query named '{}'. Save a .sparql file to \
+                 <config>/queries/index/ or <workspace>/.clearhead/queries/index/",
+                name
+            )
+        })?;
 
     let wc = ctx.workspace_config();
     let rows = clearhead_cli::run_workspace_raw_query(
@@ -377,9 +380,33 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
 
     println!("{}", table);
     println!(
-        "Freeform: ~/.clearhead/queries/*.sparql or <workspace>/.clearhead/queries/*.sparql\n\
-         Typed:    ~/.clearhead/queries/<type>/*.sparql"
+        "Freeform: ~/.config/clearhead/queries/*.sparql or <workspace>/.clearhead/queries/*.sparql\n\
+         Typed:    ~/.config/clearhead/queries/<type>/*.sparql\n\
+         Inspect any query with `clearhead query show <name>`"
     );
+    Ok(())
+}
+
+/// Print a query's SPARQL to stdout, raw and pipeable:
+/// `clearhead query show agenda > ~/.config/clearhead/queries/index/agenda.sparql`
+/// is the sanctioned copy-and-tweak override workflow.
+pub fn show_named_query(ctx: &CommandContext, name: &str) -> Result<(), String> {
+    // Same resolution order the runners use: typed (project > user), then
+    // built-in index, then freeform named (project > user > built-in).
+    let sparql = resolve_typed_queries(ctx, "index")
+        .remove(name)
+        .map(|q| q.sparql)
+        .or_else(|| {
+            BUILT_IN_INDEX_QUERIES
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, s)| s.to_string())
+        })
+        .or_else(|| resolve_named_queries(ctx).remove(name).map(|q| q.sparql))
+        .ok_or_else(|| {
+            format!("No query named '{}'. Use `clearhead query list` to see available.", name)
+        })?;
+    print!("{}", sparql);
     Ok(())
 }
 
@@ -404,6 +431,16 @@ mod tests {
         // END_OF_TODAY must always be 23:59:59, never the actual clock time.
         let result = inject_params("?END_OF_TODAY", None);
         assert!(result.contains("T23:59:59Z"), "unexpected output: {result}");
+    }
+
+    #[test]
+    fn end_of_week_is_seven_days_out_at_end_of_day() {
+        let result = inject_params("?END_OF_WEEK", None);
+        let expected = (Utc::now() + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
+        assert!(
+            result.contains(&format!("\"{}T23:59:59Z\"^^xsd:dateTime", expected)),
+            "unexpected output: {result}"
+        );
     }
 
     #[test]

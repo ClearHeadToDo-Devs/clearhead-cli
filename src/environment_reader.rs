@@ -37,6 +37,12 @@ pub struct Config {
     #[serde(default)]
     pub additional_workspaces: Vec<String>,
 
+    // Bypass project detection entirely and operate on the user workspace
+    // only (specifications/configuration.md, Workspace Resolution). The one
+    // sanctioned way to ignore an enclosing project.
+    #[serde(default)]
+    pub default_to_user_scope: bool,
+
     // Tag hierarchies for implicit inheritance
     // Maps parent tag -> list of child tags
     #[serde(default)]
@@ -344,6 +350,7 @@ mod tests {
             default_file: String::new(),
             workspace_id: None,
             workspace_name: None,
+            default_to_user_scope: false,
             additional_workspaces: Vec::new(),
             tag_hierarchies,
             cli_format: String::new(),

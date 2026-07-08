@@ -322,7 +322,7 @@ pub enum QueryTarget {
         format: Option<QueryFormat>,
     },
 
-    /// Run a named query stored in ~/.clearhead/queries/ or <workspace>/.clearhead/queries/
+    /// Run a named query stored in ~/.config/clearhead/queries/ or <workspace>/.clearhead/queries/
     #[command(name = "named")]
     NamedRun {
         /// Name of the query (stem of the .sparql file)
@@ -346,6 +346,13 @@ pub enum QueryTarget {
         /// Output format (default: json)
         #[arg(short, long, value_enum)]
         format: Option<QueryFormat>,
+    },
+
+    /// Print a query's SPARQL to stdout — inspect a built-in, redirect to
+    /// your queries dir, tweak: the override workflow
+    Show {
+        /// Name of the query (index, typed, or freeform)
+        name: String,
     },
 
     /// List available named queries

@@ -28,7 +28,6 @@ use clearhead_cli::telemetry::{TelemetryEvent, Tool, emit_event};
 pub struct CommandContext {
     pub config: Config,
     pub data_dir: PathBuf,
-    #[allow(dead_code)]
     pub config_dir: PathBuf,
     pub config_path: PathBuf,
     pub project_root: Option<PathBuf>,
@@ -54,7 +53,11 @@ impl CommandContext {
         } else {
             resolve_file_path(&config.data_dir, &get_data_dir())
         };
-        let data_dir = project_root.clone().unwrap_or(user_data_dir);
+        let data_dir = if config.default_to_user_scope {
+            user_data_dir
+        } else {
+            project_root.clone().unwrap_or(user_data_dir)
+        };
         let config_dir = resolve_file_path(
             &config.config_dir,
             &crate::environment_reader::get_config_dir(),
