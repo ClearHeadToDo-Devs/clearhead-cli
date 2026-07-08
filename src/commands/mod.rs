@@ -45,11 +45,16 @@ impl CommandContext {
 
         let project_root = find_project_data_dir();
 
-        let data_dir = if config.data_dir.is_empty() {
-            project_root.clone().unwrap_or_else(get_data_dir)
+        // Workspace Resolution (specifications/configuration.md): most-local
+        // context wins — a project detected from the pwd always outranks
+        // config. `config.data_dir` only relocates the fallback user
+        // workspace used outside any project.
+        let user_data_dir = if config.data_dir.is_empty() {
+            get_data_dir()
         } else {
             resolve_file_path(&config.data_dir, &get_data_dir())
         };
+        let data_dir = project_root.clone().unwrap_or(user_data_dir);
         let config_dir = resolve_file_path(
             &config.config_dir,
             &crate::environment_reader::get_config_dir(),
