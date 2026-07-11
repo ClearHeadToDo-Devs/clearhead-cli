@@ -74,6 +74,8 @@ pub enum CharterStateArg {
     Blocked,
     /// All work done; ready to archive
     Closed,
+    /// Abandoned without completion; ready to archive
+    Cancelled,
 }
 
 impl From<CharterStateArg> for clearhead_core::CharterState {
@@ -83,6 +85,7 @@ impl From<CharterStateArg> for clearhead_core::CharterState {
             CharterStateArg::Active => clearhead_core::CharterState::Active,
             CharterStateArg::Blocked => clearhead_core::CharterState::Blocked,
             CharterStateArg::Closed => clearhead_core::CharterState::Closed,
+            CharterStateArg::Cancelled => clearhead_core::CharterState::Cancelled,
         }
     }
 }
@@ -861,12 +864,13 @@ pub enum ArchiveTarget {
         dry_run: bool,
     },
 
-    /// Sweep a closed charter's artifacts into `archive.ttl` and remove its source files.
+    /// Sweep a closed or cancelled charter's artifacts into `archive.ttl` and remove its source files.
     ///
-    /// The charter must have `state: Closed` in its frontmatter. If the primary `.actions`
-    /// file still contains open actions the command refuses unless --force is given.
+    /// The charter must have `state: Closed` or `state: Cancelled` in its frontmatter. If the
+    /// primary `.actions` file still contains open actions the command refuses unless --force
+    /// is given.
     Charter {
-        /// Charter to archive (name, alias, or UUID prefix). Omit with --closed to sweep all closed charters.
+        /// Charter to archive (name, alias, or UUID prefix). Omit with --closed to sweep all closed/cancelled charters.
         #[arg(conflicts_with_all = ["closed", "file"])]
         query: Option<String>,
 
@@ -874,7 +878,7 @@ pub enum ArchiveTarget {
         #[arg(short, long, conflicts_with_all = ["query", "closed"])]
         file: Option<std::path::PathBuf>,
 
-        /// Archive all charters whose frontmatter carries `state: Closed`.
+        /// Archive all charters whose frontmatter carries `state: Closed` or `state: Cancelled`.
         #[arg(long, conflicts_with_all = ["query", "file"])]
         closed: bool,
 

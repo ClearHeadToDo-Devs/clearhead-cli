@@ -374,10 +374,11 @@ pub fn add_charter(
 // archive charter
 // ============================================================================
 
-/// Archive a charter (or all closed charters) into `archive.ttl`.
+/// Archive a charter (or all closed/cancelled charters) into `archive.ttl`.
 ///
-/// Requires `state: Closed` in the charter frontmatter. Open actions in the
-/// primary `.actions` file are a hard stop unless `force` is true.
+/// Requires `state: Closed` or `state: Cancelled` in the charter frontmatter.
+/// Open actions in the primary `.actions` file are a hard stop unless `force`
+/// is true.
 pub fn archive_charter(
     ctx: &CommandContext,
     query: &Option<String>,
@@ -386,14 +387,14 @@ pub fn archive_charter(
     force: bool,
     dry_run: bool,
 ) -> Result<(), String> {
-    use clearhead_core::{ArchiveCharterOptions, archive_charter as do_archive, archive_closed_charters};
+    use clearhead_core::{ArchiveCharterOptions, archive_charter as do_archive, archive_terminal_charters};
 
     let opts = ArchiveCharterOptions { force, dry_run };
 
     if closed {
         let mut any = false;
         for (_, ws_dir) in ctx.workspace_dirs() {
-            let results = archive_closed_charters(&ws_dir, &opts)
+            let results = archive_terminal_charters(&ws_dir, &opts)
                 .map_err(|e| e.to_string())?;
             for r in &results {
                 print_archive_result(r);
@@ -401,7 +402,7 @@ pub fn archive_charter(
             }
         }
         if !any {
-            println!("No closed charters found to archive.");
+            println!("No closed or cancelled charters found to archive.");
         }
         return Ok(());
     }
