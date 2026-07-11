@@ -46,7 +46,7 @@ pub fn apply_template(
 
     if dry_run {
         println!(
-            "Would apply template '{}': {} act(s) to {}",
+            "Would apply template '{}': {} action(s) to {}",
             name,
             instantiated.len(),
             actions_path.display()
@@ -60,7 +60,7 @@ pub fn apply_template(
 
     info!(template = %name, count = instantiated.len(), path = %actions_path.display(), "Template applied");
     println!(
-        "Applied template '{}': added {} act(s) to {}",
+        "Applied template '{}': added {} action(s) to {}",
         name,
         instantiated.len(),
         actions_path.display()

@@ -17,15 +17,15 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 
 SELECT ?name ?state ?source_file ?source_line WHERE {
-    ?act a actions:Action ;
+    ?action a actions:Action ;
          rdfs:label ?name ;
          cco:ont00001868 ?raw_state .
 
     BIND(STRAFTER(STR(?raw_state), "#") AS ?state)
 
-    FILTER NOT EXISTS { ?charter a actions:Charter ; bfo:BFO_0000051 ?act . }
-    FILTER NOT EXISTS { ?act bfo:BFO_0000050 ?parent . }
-    OPTIONAL { ?act ws:hasSourceFile ?source_file }
-    OPTIONAL { ?act ws:hasSourceLine ?source_line }
+    FILTER NOT EXISTS { ?charter a actions:Charter ; bfo:BFO_0000051 ?action . }
+    FILTER NOT EXISTS { ?action bfo:BFO_0000050 ?parent . }
+    OPTIONAL { ?action ws:hasSourceFile ?source_file }
+    OPTIONAL { ?action ws:hasSourceLine ?source_line }
 }
 ORDER BY ?name

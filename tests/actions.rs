@@ -8,7 +8,7 @@ fn test_read_acts_with_default_file() {
     let env = TestEnv::new();
     env.write_actions("inbox.actions", "[ ] Test task");
     env.command()
-        .arg("read").arg("acts")
+        .arg("read").arg("actions")
         .assert().success()
         .stdout(predicate::str::contains("Test task"));
 }
@@ -19,7 +19,7 @@ fn test_read_acts_specific_file() {
     env.write_actions("work.actions", "[-] In progress task");
     let work_path = env.data_dir.join("charters").join("work.actions");
     env.command()
-        .arg("read").arg("acts").arg("--file").arg(work_path)
+        .arg("read").arg("actions").arg("--file").arg(work_path)
         .assert().success()
         .stdout(predicate::str::contains("In progress task"));
 }
@@ -30,7 +30,7 @@ fn test_read_acts_open_only_filters_closed_states_in_open_file() {
     env.write_actions("work.actions", "[ ] Open task\n[x] Done task\n[_] Cancelled task");
     let work_path = env.data_dir.join("charters").join("work.actions");
     env.command()
-        .arg("read").arg("acts").arg("--open-only").arg("--file").arg(work_path)
+        .arg("read").arg("actions").arg("--open-only").arg("--file").arg(work_path)
         .assert().success()
         .stdout(predicate::str::contains("Open task"))
         .stdout(predicate::str::contains("Done task").not())
@@ -43,7 +43,7 @@ fn test_show_act_resolves_by_name() {
     env.write_actions("work.actions", "[ ] Inspect CLI $Useful detail$ +cli");
     let work_path = env.data_dir.join("charters").join("work.actions");
     env.command()
-        .arg("show").arg("act").arg("Inspect").arg("--file").arg(work_path)
+        .arg("show").arg("action").arg("Inspect").arg("--file").arg(work_path)
         .assert().success()
         .stdout(predicate::str::contains("Inspect CLI"))
         .stdout(predicate::str::contains("description:"));
@@ -55,7 +55,7 @@ fn test_read_acts_json_format() {
     env.write_actions("test.actions", "[x] Test $with description$ !1 +context");
     let test_path = env.data_dir.join("charters").join("test.actions");
     env.command()
-        .arg("read").arg("acts")
+        .arg("read").arg("actions")
         .arg("--format").arg("json")
         .arg("--file").arg(&test_path)
         .assert().success()
@@ -70,7 +70,7 @@ fn test_read_acts_with_hierarchy() {
     env.write_actions("test.actions", "[x] Parent\n>[ ] Child\n>>[ ] Grandchild");
     let test_path = env.data_dir.join("charters").join("test.actions");
     env.command()
-        .arg("read").arg("acts").arg("--file").arg(test_path)
+        .arg("read").arg("actions").arg("--file").arg(test_path)
         .assert().success()
         .stdout(predicate::str::contains("Parent"))
         .stdout(predicate::str::contains("Child"))
@@ -112,15 +112,15 @@ fn test_json_output_validates_against_schema() {
     );
     let test_path = env.data_dir.join("charters").join("test.actions");
     let output = env.command()
-        .arg("read").arg("acts")
+        .arg("read").arg("actions")
         .arg("--format").arg("json-ld")
         .arg("--file").arg(&test_path)
         .assert().success()
         .get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("Invalid UTF-8");
     let json_value: serde_json::Value = serde_json::from_str(&json_str).expect("Invalid JSON");
-    // read acts emits a JSON-LD document: an object carrying @context and a @graph array of nodes.
-    assert!(json_value.is_object(), "Expected a JSON-LD document object from read acts");
+    // read actions emits a JSON-LD document: an object carrying @context and a @graph array of nodes.
+    assert!(json_value.is_object(), "Expected a JSON-LD document object from read actions");
     assert!(
         json_value.get("@graph").and_then(|g| g.as_array()).is_some(),
         "Expected a @graph array in the JSON-LD document",
@@ -134,7 +134,7 @@ fn test_complete_command() {
     let uuid = "019baaec-00b6-7991-be34-94b68212619a";
     env.write_actions("inbox.actions", &format!("[ ] Task to complete #{}", uuid));
     env.command()
-        .arg("complete").arg("act").arg(uuid)
+        .arg("complete").arg("action").arg(uuid)
         .assert().success();
     let content = fs::read_to_string(env.data_dir.join("charters").join("inbox.completed.actions")).unwrap();
     assert!(content.contains("[x] Task to complete"));
@@ -146,7 +146,7 @@ fn test_complete_command_by_name() {
     let env = TestEnv::new();
     env.write_actions("inbox.actions", "[ ] Unique Task Name");
     env.command()
-        .arg("complete").arg("act").arg("Unique Task")
+        .arg("complete").arg("action").arg("Unique Task")
         .assert().success();
     let content = fs::read_to_string(env.data_dir.join("charters").join("inbox.completed.actions")).unwrap();
     assert!(content.contains("[x] Unique Task Name"));
@@ -218,7 +218,7 @@ fn test_read_acts_aggregates_all_files() {
     fs::create_dir_all(&project_dir).unwrap();
     fs::write(project_dir.join("next.actions"), "[ ] Project task").unwrap();
     env.command()
-        .arg("read").arg("acts")
+        .arg("read").arg("actions")
         .assert().success()
         .stdout(predicate::str::contains("Inbox task"))
         .stdout(predicate::str::contains("Work task"))
@@ -232,7 +232,7 @@ fn test_read_acts_file_flag() {
     env.write_actions("work.actions", "[ ] Work task");
     let work_path = env.data_dir.join("charters").join("work.actions");
     env.command()
-        .arg("read").arg("acts").arg("--file").arg(&work_path)
+        .arg("read").arg("actions").arg("--file").arg(&work_path)
         .assert().success()
         .stdout(predicate::str::contains("Work task"))
         .stdout(predicate::str::contains("Inbox task").not());
@@ -246,7 +246,7 @@ fn test_read_acts_skips_hidden_directories() {
     fs::create_dir_all(&hidden_dir).unwrap();
     fs::write(hidden_dir.join("state.actions"), "[ ] Hidden task").unwrap();
     env.command()
-        .arg("read").arg("acts")
+        .arg("read").arg("actions")
         .assert().success()
         .stdout(predicate::str::contains("Visible task"))
         .stdout(predicate::str::contains("Hidden task").not());
@@ -258,7 +258,7 @@ fn test_read_acts_file_fails_on_malformed_input() {
     env.write_text("charters/malformed.actions", "not valid actions syntax !!!\n[ ] Keep me\n");
     let path = env.data_dir.join("charters").join("malformed.actions");
     env.command()
-        .arg("read").arg("acts").arg("--file").arg(&path)
+        .arg("read").arg("actions").arg("--file").arg(&path)
         .assert().failure();
 }
 

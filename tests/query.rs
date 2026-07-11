@@ -250,9 +250,9 @@ fn project_index_query_shadows_built_in() {
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
-SELECT (?act AS ?id) ?name ?status ?source_file ?source_line ?charter_root WHERE {
+SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root WHERE {
     GRAPH ?g {
-        ?act a actions:Action ;
+        ?action a actions:Action ;
              rdfs:label ?name ;
              cco:ont00001868 ?raw_state ;
              ws:hasSourceFile ?source_file ;

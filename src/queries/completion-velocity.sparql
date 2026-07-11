@@ -12,13 +12,13 @@ PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
 PREFIX cco: <https://www.commoncoreontologies.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?context (COUNT(?act) AS ?completed_count) WHERE {
-    ?act a actions:Action ;
+SELECT ?context (COUNT(?action) AS ?completed_count) WHERE {
+    ?action a actions:Action ;
          cco:ont00001868 actions:Completed ;
          actions:hasCompletedDateTime ?completion_date .
 
     OPTIONAL {
-        ?act actions:requiresContext ?ctx .
+        ?action actions:requiresContext ?ctx .
         ?ctx actions:hasContextIdentifier ?raw_context .
     }
     BIND(COALESCE(?raw_context, "(none)") AS ?context)

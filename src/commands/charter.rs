@@ -16,7 +16,7 @@ use super::action::resolve_charter_across_workspaces;
 /// - Nested charter (`lsp/diag.actions`): children go in `charter_root/lsp/diag/`
 fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> Result<PathBuf, String> {
     let charter_root = clearhead_core::charter_root(ws_root);
-    let acts_rel = parent.acts_file.as_ref()
+    let acts_rel = parent.actions_file.as_ref()
         .ok_or_else(|| format!("Parent charter '{}' has no associated actions file; cannot determine placement", parent.title))?;
     let without_ext = acts_rel
         .to_str()
@@ -41,7 +41,7 @@ fn resolve_charter_by_file<'a>(
     let abs_root = std::fs::canonicalize(charter_root).unwrap_or_else(|_| charter_root.to_path_buf());
     let rel = abs_file.strip_prefix(&abs_root).unwrap_or(&abs_file);
     mcs.iter().find(|mc| {
-        mc.acts_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel)
+        mc.actions_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel)
     })
 }
 
@@ -360,7 +360,7 @@ pub fn add_charter(
         super::save_file(&actions_path, &instantiated)?;
 
         println!(
-            "Applied template '{}': {} act(s) to {}",
+            "Applied template '{}': {} action(s) to {}",
             tpl_name,
             instantiated.len(),
             actions_path.display()
@@ -528,7 +528,7 @@ pub fn close_charter(
         (charter_root.join(md_rel), false)
     } else {
         let path = mc_full
-            .acts_file
+            .actions_file
             .as_ref()
             .and_then(|p| {
                 let stem = p.file_stem()?.to_str()?;

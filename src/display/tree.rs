@@ -432,8 +432,8 @@ mod tests {
     #[test]
     fn action_icons_reflect_state() {
         let plan_id = Uuid::now_v7();
-        let mut act = make_action("Do work", ActionState::InProgress);
-        act.plan_id = Some(plan_id);
+        let mut action = make_action("Do work", ActionState::InProgress);
+        action.plan_id = Some(plan_id);
 
         let plan = Plan { id: plan_id, name: "Some plan".to_string(), ..Default::default() };
         let model = DomainModel {
@@ -442,7 +442,7 @@ mod tests {
                 id: Uuid::now_v7(),
                 title: "Work".to_string(),
                 plans: vec![plan],
-                actions: vec![act],
+                actions: vec![action],
                 ..Default::default()
             }],
         };

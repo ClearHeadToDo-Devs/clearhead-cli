@@ -406,7 +406,6 @@ pub enum ReadTarget {
     },
 
     /// Read and display actions
-    #[command(alias = "acts")]
     Actions {
         /// Output mode: table forces table, jsonld emits JSON-LD, ids prints one UUID per line.
         /// Default: table in a terminal, .actions DSL when piped.
@@ -433,7 +432,7 @@ pub enum ReadTarget {
         #[arg(long = "state", value_enum)]
         states: Vec<ActionStateArg>,
 
-        /// Read from a specific .actions file (also loads sibling .acts.jsonld)
+        /// Read from a specific .actions file (also loads sibling .actions.jsonld)
         #[arg(long)]
         file: Option<PathBuf>,
     },
@@ -464,7 +463,6 @@ pub enum ShowTarget {
     },
 
     /// Show details of a specific action
-    #[command(alias = "act")]
     Action {
         /// UUID, short UUID, alias, or name of the action
         query: String,
@@ -700,7 +698,6 @@ pub enum CompleteTarget {
     },
 
     /// Mark an action as completed
-    #[command(alias = "act")]
     Action {
         /// UUID, 8-char prefix, alias, or name of the action
         query: String,
@@ -898,7 +895,6 @@ pub enum ArchiveTarget {
 #[derive(Subcommand)]
 pub enum ExpandTarget {
     /// Expand recurring plans into Action instances
-    #[command(alias = "acts")]
     Actions {
         /// File to expand (.actions format). If not provided, uses the default file.
         file: Option<PathBuf>,

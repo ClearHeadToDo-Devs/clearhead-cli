@@ -8,7 +8,7 @@ use crate::commands::CommandContext;
 pub enum ResolvedScope {
     Charter { file_path: PathBuf },
     Plan { file_path: PathBuf, #[allow(dead_code)] plan_id: Uuid },
-    Action { file_path: PathBuf, #[allow(dead_code)] act_id: Uuid },
+    Action { file_path: PathBuf, #[allow(dead_code)] action_id: Uuid },
 }
 
 /// Resolve a domain reference string (e.g. `"health"`, `"health/exercise"`,
@@ -58,15 +58,15 @@ pub fn resolve_domain_ref(ctx: &CommandContext, ref_str: &str) -> Result<Resolve
             let file_path = charter_actions_path(model, charter_id, &ws_dir)?;
             Ok(ResolvedScope::Plan { file_path, plan_id })
         }
-        ReferenceTarget::Action(act_id) => {
+        ReferenceTarget::Action(action_id) => {
             let charter_id = model
                 .charters
                 .iter()
-                .find(|c| c.actions.iter().any(|a| a.id == act_id))
+                .find(|c| c.actions.iter().any(|a| a.id == action_id))
                 .map(|c| c.id)
-                .ok_or_else(|| format!("Action {} not found in model", act_id))?;
+                .ok_or_else(|| format!("Action {} not found in model", action_id))?;
             let file_path = charter_actions_path(model, charter_id, &ws_dir)?;
-            Ok(ResolvedScope::Action { file_path, act_id })
+            Ok(ResolvedScope::Action { file_path, action_id })
         }
     }
 }

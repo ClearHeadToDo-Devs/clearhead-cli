@@ -9,7 +9,7 @@ fn test_empty_actions_file() {
     env.write_actions("empty.actions", "");
     let empty_path = env.data_dir.join("charters").join("empty.actions");
     env.command()
-        .arg("read").arg("acts").arg("--file").arg(empty_path)
+        .arg("read").arg("actions").arg("--file").arg(empty_path)
         .assert().success();
 }
 
@@ -19,7 +19,7 @@ fn test_actions_file_with_only_whitespace() {
     env.write_actions("whitespace.actions", "   \n\n  \t  \n");
     let ws_path = env.data_dir.join("charters").join("whitespace.actions");
     env.command()
-        .arg("read").arg("acts").arg("--file").arg(ws_path)
+        .arg("read").arg("actions").arg("--file").arg(ws_path)
         .assert().success();
 }
 
@@ -115,8 +115,8 @@ fn test_normalize_write_creates_sidecar() {
     let sidecar_path = env.data_dir.join("charters").join(".work.json");
     assert!(sidecar_path.exists(), "sidecar must be created by normalize --write");
     let meta = read_sidecar(&sidecar_path).unwrap();
-    assert!(meta.acts.contains_key(uuid), "sidecar must have entry for the act UUID");
-    assert!(meta.acts[uuid].created.is_some(), "sidecar entry must have created timestamp");
+    assert!(meta.actions.contains_key(uuid), "sidecar must have entry for the action UUID");
+    assert!(meta.actions[uuid].created.is_some(), "sidecar entry must have created timestamp");
 }
 
 #[test]
@@ -130,10 +130,10 @@ fn test_sidecar_additive_on_repeated_normalize() {
     env.command()
         .arg("normalize").arg("file").arg(&file_path).arg("--write")
         .assert().success();
-    let created_first = read_sidecar(&sidecar_path).unwrap().acts[uuid].created.unwrap();
+    let created_first = read_sidecar(&sidecar_path).unwrap().actions[uuid].created.unwrap();
     env.command()
         .arg("normalize").arg("file").arg(&file_path).arg("--write")
         .assert().success();
-    let created_second = read_sidecar(&sidecar_path).unwrap().acts[uuid].created.unwrap();
+    let created_second = read_sidecar(&sidecar_path).unwrap().actions[uuid].created.unwrap();
     assert_eq!(created_first, created_second, "created timestamp must not change on re-normalize");
 }

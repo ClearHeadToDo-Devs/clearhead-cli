@@ -135,8 +135,8 @@ const BUILT_IN_INDEX_QUERIES: &[(&str, &str)] = &[
 // Vendored v4 queries embedded at compile time.
 const BUILT_IN_QUERIES: &[(&str, &str)] = &[
     (
-        "acts-by-phase",
-        include_str!("../queries/acts-by-phase.sparql"),
+        "actions-by-phase",
+        include_str!("../queries/actions-by-phase.sparql"),
     ),
     ("all-plans", include_str!("../queries/all-plans.sparql")),
     (
@@ -160,8 +160,8 @@ const BUILT_IN_QUERIES: &[(&str, &str)] = &[
         include_str!("../queries/next-actions.sparql"),
     ),
     (
-        "orphaned-acts",
-        include_str!("../queries/orphaned-acts.sparql"),
+        "orphaned-actions",
+        include_str!("../queries/orphaned-actions.sparql"),
     ),
     (
         "overdue-tasks",

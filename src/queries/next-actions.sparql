@@ -14,24 +14,24 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 
 SELECT DISTINCT ?name ?context ?priority ?scheduled_at ?due_date ?source_file ?source_line WHERE {
-    ?act a actions:Action ;
+    ?action a actions:Action ;
          rdfs:label ?name ;
          cco:ont00001868 actions:NotStarted .
 
     FILTER NOT EXISTS {
-        ?act cco:ont00001775 ?dep .
+        ?action cco:ont00001775 ?dep .
         ?dep cco:ont00001868 ?dep_state .
         FILTER(?dep_state != actions:Completed && ?dep_state != actions:Cancelled)
     }
 
     OPTIONAL {
-        ?act actions:requiresContext ?ctx .
+        ?action actions:requiresContext ?ctx .
         ?ctx actions:hasContextIdentifier ?context .
     }
-    OPTIONAL { ?act actions:hasPriority ?priority }
-    OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
-    OPTIONAL { ?act actions:hasDueDateTime ?due_date }
-    OPTIONAL { ?act ws:hasSourceFile ?source_file }
-    OPTIONAL { ?act ws:hasSourceLine ?source_line }
+    OPTIONAL { ?action actions:hasPriority ?priority }
+    OPTIONAL { ?action actions:hasScheduledDateTime ?scheduled_at }
+    OPTIONAL { ?action actions:hasDueDateTime ?due_date }
+    OPTIONAL { ?action ws:hasSourceFile ?source_file }
+    OPTIONAL { ?action ws:hasSourceLine ?source_line }
 }
 ORDER BY ?priority ?scheduled_at ?due_date ?name

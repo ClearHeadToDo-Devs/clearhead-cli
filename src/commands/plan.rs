@@ -247,7 +247,7 @@ pub fn show_plan(
 fn synthetic_charter(
     title: impl Into<String>,
     parent: Option<String>,
-    acts_file: Option<PathBuf>,
+    actions_file: Option<PathBuf>,
 ) -> clearhead_core::MarkdownCharter {
     clearhead_core::MarkdownCharter {
         id: uuid::Uuid::nil(),
@@ -260,7 +260,7 @@ fn synthetic_charter(
         plans: Vec::new(),
         actions: Vec::new(),
         md_file: None,
-        acts_file,
+        actions_file,
         plans_dir: None,
     }
 }
@@ -669,7 +669,7 @@ pub fn archive_plans(
         return Ok(());
     }
 
-    // Load workspace to find charter → acts_file mapping
+    // Load workspace to find charter → actions_file mapping
     let charters = ctx.load_charters()?;
     let ch_root = charter_root(&ctx.data_dir);
     let now = Local::now();
@@ -697,7 +697,7 @@ pub fn archive_plans(
                         .unwrap_or(&c.title)
                         .eq_ignore_ascii_case(&entry.charter_name)
                 })
-                .and_then(|c| c.acts_file.as_ref())
+                .and_then(|c| c.actions_file.as_ref())
                 .map(|rel| ch_root.join(rel));
 
             // Classify actions linked to this plan
@@ -768,7 +768,7 @@ pub fn archive_plans(
         }
     } else {
         println!(
-            "Retired {} plan(s): {} overdue act(s) completed, {} projected act(s) dropped.",
+            "Retired {} plan(s): {} overdue action(s) completed, {} projected action(s) dropped.",
             total_plans, total_completed, total_dropped
         );
     }

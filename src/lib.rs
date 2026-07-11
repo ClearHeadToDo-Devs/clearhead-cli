@@ -288,11 +288,11 @@ mod multi_workspace_tests {
         ).unwrap();
 
         // Write a single .actions file with one action
-        let act_id = uuid::Uuid::now_v7();
+        let action_id = uuid::Uuid::now_v7();
         let content = format!(
             "[ ] {} #{}\n",
             action_name,
-            act_id
+            action_id
         );
         fs::write(charters.join("inbox.actions"), content).unwrap();
 

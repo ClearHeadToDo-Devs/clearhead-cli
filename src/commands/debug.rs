@@ -119,14 +119,14 @@ fn print_workspace_section(ctx: &CommandContext) -> Result<(), String> {
 
     let charter_count = read.charters.len();
     let plan_count: usize = read.charters.iter().map(|c| c.plans.len()).sum();
-    let act_count: usize = read.charters.iter().map(|c| c.actions.len()).sum();
+    let action_count: usize = read.charters.iter().map(|c| c.actions.len()).sum();
 
     let diagnosis = diagnose_read(&ctx.data_dir, &read);
     println!(
         "  graph_summary: {} charters | {} plans | {} actions | {} violations, {} warnings",
         charter_count,
         plan_count,
-        act_count,
+        action_count,
         diagnosis.violations(),
         diagnosis.warnings()
     );

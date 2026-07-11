@@ -22,9 +22,9 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT (?act AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?priority ?scheduled_at ?due_date WHERE {
+SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?priority ?scheduled_at ?due_date WHERE {
     GRAPH ?g {
-        ?act a actions:Action ;
+        ?action a actions:Action ;
              rdfs:label ?name ;
              cco:ont00001868 ?raw_state ;
              ws:hasSourceFile ?source_file ;
@@ -32,9 +32,9 @@ SELECT (?act AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?prio
         ?workspace_node a ws:Workspace ;
                         ws:charterRoot ?charter_root .
         FILTER(?raw_state != actions:Completed && ?raw_state != actions:Cancelled)
-        OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
-        OPTIONAL { ?act actions:hasDueDateTime ?due_date }
-        OPTIONAL { ?act actions:hasPriority ?priority }
+        OPTIONAL { ?action actions:hasScheduledDateTime ?scheduled_at }
+        OPTIONAL { ?action actions:hasDueDateTime ?due_date }
+        OPTIONAL { ?action actions:hasPriority ?priority }
     }
     BIND(STRAFTER(STR(?raw_state), "#") AS ?status)
     FILTER(

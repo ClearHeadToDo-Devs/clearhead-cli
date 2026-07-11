@@ -569,7 +569,7 @@ impl Backend {
                     let charter_root = clearhead_core::charter_root(&workspace_root);
                     let rel = source_path.strip_prefix(&charter_root).unwrap_or(&source_path);
                     mcs.iter()
-                        .find(|mc| mc.acts_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel))
+                        .find(|mc| mc.actions_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel))
                         .map(|mc| mc.alias.clone().unwrap_or_else(|| mc.title.clone()))
                         .ok_or_else(|| format!("No charter found for file: {}", source_path.display()))?
                 }

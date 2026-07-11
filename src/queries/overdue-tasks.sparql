@@ -16,7 +16,7 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 SELECT ?name ?due_date ?scheduled_at ?state ?priority ?source_file ?source_line WHERE {
     VALUES ?cutoff { ?CUTOFF_DATE }
 
-    ?act a actions:Action ;
+    ?action a actions:Action ;
          rdfs:label ?name ;
          cco:ont00001868 ?raw_state ;
          actions:hasDueDateTime ?due_date .
@@ -25,9 +25,9 @@ SELECT ?name ?due_date ?scheduled_at ?state ?priority ?source_file ?source_line 
     FILTER(?due_date <= ?cutoff)
     BIND(STRAFTER(STR(?raw_state), "#") AS ?state)
 
-    OPTIONAL { ?act actions:hasScheduledDateTime ?scheduled_at }
-    OPTIONAL { ?act actions:hasPriority ?priority }
-    OPTIONAL { ?act ws:hasSourceFile ?source_file }
-    OPTIONAL { ?act ws:hasSourceLine ?source_line }
+    OPTIONAL { ?action actions:hasScheduledDateTime ?scheduled_at }
+    OPTIONAL { ?action actions:hasPriority ?priority }
+    OPTIONAL { ?action ws:hasSourceFile ?source_file }
+    OPTIONAL { ?action ws:hasSourceLine ?source_line }
 }
 ORDER BY ?priority ?due_date
