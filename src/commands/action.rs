@@ -286,17 +286,34 @@ pub fn complete_action(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
+    close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Completed, "complete", "Completed")
+}
+
+/// Shared body of `complete`/`cancel`: resolve the action, close its subtree via
+/// core's `close_subtree`, save the open list, and append the closed subtree to
+/// `.completed.actions`. Only the target state and message wording differ.
+fn close_action_subtree(
+    ctx: &CommandContext,
+    query: &str,
+    charter: &Option<String>,
+    file: &Option<PathBuf>,
+    dry_run: bool,
+    closing_state: ActionState,
+    verb_present: &str,
+    verb_past: &str,
+) -> Result<(), String> {
     let (actions_path, mut open_actions) = find_and_load_open_actions(ctx, file, charter, query)?;
 
     let action_id = find_action_mut(&mut open_actions, query)
         .ok_or_else(|| format!("No open action found matching '{}'", query))?
         .id;
 
-    let subtree_ids = collect_subtree_ids(&open_actions, action_id);
+    let subtree_ids = clearhead_core::collect_subtree_ids(&open_actions, action_id);
 
     if dry_run {
         println!(
-            "Would complete action {} and {} child(ren)",
+            "Would {} action {} and {} child(ren)",
+            verb_present,
             &action_id.to_string()[..8],
             subtree_ids.len() - 1,
         );
@@ -304,17 +321,7 @@ pub fn complete_action(
     }
 
     let now = Local::now();
-    let mut to_close: Vec<Action> = open_actions
-        .iter()
-        .filter(|a| subtree_ids.contains(&a.id))
-        .map(|a| {
-            let mut closed = a.clone();
-            closed.state = ActionState::Completed;
-            closed.completed_at = Some(now);
-            closed.parent_id = None;
-            closed
-        })
-        .collect();
+    let mut to_close = clearhead_core::close_subtree(&open_actions, action_id, closing_state, now);
 
     open_actions.retain(|a| !subtree_ids.contains(&a.id));
     super::save_file(&actions_path, &open_actions)?;
@@ -324,8 +331,8 @@ pub fn complete_action(
     closed.append(&mut to_close);
     action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
 
-    info!(%action_id, children = subtree_ids.len() - 1, "Action subtree completed");
-    println!("Completed action {} (+{} children)", action_id, subtree_ids.len() - 1);
+    info!(%action_id, children = subtree_ids.len() - 1, "Action subtree {}", verb_past.to_lowercase());
+    println!("{} action {} (+{} children)", verb_past, action_id, subtree_ids.len() - 1);
     Ok(())
 }
 
@@ -359,24 +366,15 @@ pub fn update_action(
             .ok_or_else(|| format!("No open action found matching '{}'", query))?;
         let id = action.id;
         if !dry_run {
-            if let Some(n) = name {
-                action.name = n.clone();
-            }
-            if let Some(p) = priority {
-                action.priority = Some(p);
-            }
-            if let Some(s) = state {
-                action.state = s.into();
-            }
-            if let Some(dt) = new_scheduled {
-                action.scheduled_at = Some(dt);
-            }
-            if let Some(dur) = duration {
-                action.duration = Some(*dur);
-            }
-            if let Some(d) = description {
-                action.description = Some(d.clone());
-            }
+            clearhead_cli::mutations::apply_updates(action, clearhead_cli::mutations::ActionUpdate {
+                name: name.clone(),
+                description: description.clone(),
+                priority,
+                state: state.map(Into::into),
+                scheduled_at: new_scheduled,
+                duration: *duration,
+                ..Default::default()
+            });
         }
         id
     };
@@ -422,8 +420,8 @@ pub fn delete_action(
 
     for actions_path in &action_files {
         let mut open = action_files::read_actions(actions_path).map_err(|e| e.to_string())?;
-        if let Some(action_id) = open.iter().find(|a| action_matches(a, query)).map(|a| a.id) {
-            let subtree_ids = collect_subtree_ids(&open, action_id);
+        if let Some(action_id) = find_best_match(&open, query, |_| true).map(|a| a.id) {
+            let subtree_ids = clearhead_core::collect_subtree_ids(&open, action_id);
             if dry_run {
                 println!(
                     "Would delete action {} (+{} children)",
@@ -442,7 +440,7 @@ pub fn delete_action(
         // Check completed file — single action only (no tree context in closed file)
         let completed_path = action_files::completed_actions_path(actions_path);
         let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
-        if let Some(pos) = closed.iter().position(|a| action_matches(a, query)) {
+        if let Some(pos) = find_best_match_pos(&closed, query, |_| true) {
             let action_id = closed[pos].id;
             if dry_run {
                 println!("Would delete action {}", &action_id.to_string()[..8]);
@@ -467,47 +465,7 @@ pub fn cancel_action(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let (actions_path, mut open_actions) = find_and_load_open_actions(ctx, file, charter, query)?;
-
-    let action_id = find_action_mut(&mut open_actions, query)
-        .ok_or_else(|| format!("No open action found matching '{}'", query))?
-        .id;
-
-    let subtree_ids = collect_subtree_ids(&open_actions, action_id);
-
-    if dry_run {
-        println!(
-            "Would cancel action {} and {} child(ren)",
-            &action_id.to_string()[..8],
-            subtree_ids.len() - 1,
-        );
-        return Ok(());
-    }
-
-    let now = Local::now();
-    let mut to_close: Vec<Action> = open_actions
-        .iter()
-        .filter(|a| subtree_ids.contains(&a.id))
-        .map(|a| {
-            let mut closed = a.clone();
-            closed.state = ActionState::Cancelled;
-            closed.completed_at = Some(now);
-            closed.parent_id = None;
-            closed
-        })
-        .collect();
-
-    open_actions.retain(|a| !subtree_ids.contains(&a.id));
-    super::save_file(&actions_path, &open_actions)?;
-
-    let completed_path = action_files::completed_actions_path(&actions_path);
-    let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
-    closed.append(&mut to_close);
-    action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
-
-    info!(%action_id, children = subtree_ids.len() - 1, "Action subtree cancelled");
-    println!("Cancelled action {} (+{} children)", action_id, subtree_ids.len() - 1);
-    Ok(())
+    close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Cancelled, "cancel", "Cancelled")
 }
 
 // ============================================================================
@@ -649,6 +607,10 @@ fn filtered_primary_model(
 
 /// Collect actions from the primary workspace and all configured additional workspaces.
 /// Each action is paired with its workspace name (`None` when not in multi-workspace context).
+/// Same convergence as `collect_all_actions`, fanned out across every configured
+/// workspace: the loader gives journal recovery, sidecar hydration, and its own
+/// load-finding warnings per workspace, instead of the CLI re-deriving a coarser
+/// per-file warn! from a raw parse.
 fn collect_workspace_actions(
     ctx: &CommandContext,
     open_only: bool,
@@ -660,23 +622,23 @@ fn collect_workspace_actions(
         let is_primary = ws_path == ctx.data_dir;
         let label = if multi_ws { Some(ws_name) } else { None };
 
-        let files = match clearhead_core::list_action_files(&ws_path) {
-            Ok(f) => f,
+        let charters = match clearhead_core::load_workspace(&ws_path) {
+            Ok(c) => c,
             Err(e) if is_primary => return Err(e.to_string()),
             Err(e) => { warn!("Skipping workspace '{}': {}", ws_path.display(), e); continue; }
         };
+        let charter_root = clearhead_core::charter_root(&ws_path);
 
-        for actions_path in files {
-            let mut open = match action_files::read_actions(&actions_path) {
-                Ok(a) => a,
-                Err(e) => { warn!("Skipping {}: {}", actions_path.display(), e); continue; }
-            };
+        for mc in &charters {
+            let mut open: Vec<Action> = mc.actions.iter().map(|sourced| sourced.action.clone()).collect();
             if open_only { open.retain(is_open_action); }
             for action in open { result.push((label.clone(), action)); }
             if !open_only {
-                let completed_path = action_files::completed_actions_path(&actions_path);
-                if let Ok(completed) = action_files::read_actions(&completed_path) {
-                    for action in completed { result.push((label.clone(), action)); }
+                if let Some(actions_file) = &mc.actions_file {
+                    let completed_path = action_files::completed_actions_path(&charter_root.join(actions_file));
+                    if let Ok(completed) = action_files::read_actions(&completed_path) {
+                        for action in completed { result.push((label.clone(), action)); }
+                    }
                 }
             }
         }
@@ -693,9 +655,7 @@ pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) ->
         collect_all_actions(ctx, file, false)?
     };
 
-    let action = actions
-        .iter()
-        .find(|action| action_matches(action, query))
+    let action = find_best_match(&actions, query, |_| true)
         .ok_or_else(|| format!("No action found matching '{}'", query))?;
 
     println!("{}", crate::display::render_action_detail(action));
@@ -928,40 +888,51 @@ fn apply_template_in_place(
     Some(instantiated)
 }
 
-fn action_matches(action: &Action, query: &str) -> bool {
+/// Precedence tier for `query` against `action`: 0 = full UUID, 1 = short UUID,
+/// 2 = alias, 3 = name-contains, `None` = no match. Lower wins.
+fn action_match_tier(action: &Action, query: &str) -> Option<u8> {
     let q = query.trim_start_matches('/');
-    let query_lower = q.to_lowercase();
     let id_str = action.id.to_string();
     let short = &id_str[..8.min(id_str.len())];
-    id_str == q
-        || short == q
-        || action
-            .alias
-            .as_deref()
-            .map(|alias| alias.eq_ignore_ascii_case(q))
-            .unwrap_or(false)
-        || action.name.to_lowercase().contains(&query_lower)
+    if id_str == q {
+        Some(0)
+    } else if short == q {
+        Some(1)
+    } else if action.alias.as_deref().map(|alias| alias.eq_ignore_ascii_case(q)).unwrap_or(false) {
+        Some(2)
+    } else if action.name.to_lowercase().contains(&q.to_lowercase()) {
+        Some(3)
+    } else {
+        None
+    }
 }
 
-/// Collect the IDs of `root_id` and all its recursive descendants in `actions`.
-fn collect_subtree_ids(actions: &ActionList, root_id: uuid::Uuid) -> Vec<uuid::Uuid> {
-    let mut ids = vec![root_id];
-    let mut i = 0;
-    while i < ids.len() {
-        let parent = ids[i];
-        for a in actions.iter() {
-            if a.parent_id == Some(parent) && !ids.contains(&a.id) {
-                ids.push(a.id);
-            }
-        }
-        i += 1;
-    }
-    ids
+/// True if `query` matches `action` under any tier. Existence-only — does not
+/// resolve precedence across a list, so never use this to pick *which* action
+/// when more than one might match. Use `find_best_match`/`_mut`/`_pos` for that.
+fn action_matches(action: &Action, query: &str) -> bool {
+    action_match_tier(action, query).is_some()
+}
+
+/// Resolve `query` against `actions` honoring precedence — full UUID, then short
+/// UUID, then alias, then name-contains — across the whole list, rather than the
+/// first list-order action that matches any criterion. An earlier name-contains
+/// match must never shadow a later exact alias or UUID match.
+fn find_best_match_pos(actions: &[Action], query: &str, filter: impl Fn(&Action) -> bool) -> Option<usize> {
+    (0..=3u8).find_map(|tier| {
+        actions
+            .iter()
+            .position(|a| filter(a) && action_match_tier(a, query) == Some(tier))
+    })
+}
+
+fn find_best_match<'a>(actions: &'a [Action], query: &str, filter: impl Fn(&Action) -> bool) -> Option<&'a Action> {
+    find_best_match_pos(actions, query, filter).map(|i| &actions[i])
 }
 
 fn find_action_mut<'a>(actions: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {
-    actions.iter_mut()
-        .find(|a| is_open_action(a) && action_matches(a, query))
+    let idx = find_best_match_pos(actions, query, is_open_action)?;
+    actions.get_mut(idx)
 }
 
 pub(super) fn resolve_markdown_charter<'a>(
@@ -1016,39 +987,51 @@ pub(super) fn resolve_charter_across_workspaces(
     Err(format!("No charter found matching '{}'", query))
 }
 
+/// True if `actions_file` (relative to the charter root) resolves to the same
+/// file as `target` (an absolute or CWD-relative path from the caller).
+fn same_actions_file(charter_root: &Path, actions_file: &Path, target: &Path) -> bool {
+    let candidate = charter_root.join(actions_file);
+    let candidate = std::fs::canonicalize(&candidate).unwrap_or(candidate);
+    let target = std::fs::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+    candidate == target
+}
+
+/// Collect actions for the `read` command via the workspace loader — the same
+/// journal recovery, sidecar hydration, and load-finding warnings every other
+/// command gets. `.completed.actions` files fall outside the loader's domain
+/// model by design (they're a closed-action archive, not live workspace state,
+/// see `discover_action_files`), so those are still read directly per matching
+/// file when `open_only` is false.
 fn collect_all_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     open_only: bool,
 ) -> Result<Vec<Action>, String> {
-    if let Some(path) = file {
-        let mut result: Vec<Action> = action_files::read_actions(path).map_err(|e| e.to_string())?;
-        if open_only {
-            result.retain(is_open_action);
-        }
-        if !open_only {
-            let completed_path = action_files::completed_actions_path(path);
+    let charter_root = clearhead_core::charter_root(&ctx.data_dir);
+    let charters = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+
+    let matches = |mc: &clearhead_core::MarkdownCharter| match (file, &mc.actions_file) {
+        (Some(target), Some(actions_file)) => same_actions_file(&charter_root, actions_file, target),
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+
+    let matching: Vec<&clearhead_core::MarkdownCharter> = charters.iter().filter(|mc| matches(mc)).collect();
+
+    let mut result: Vec<Action> = matching
+        .iter()
+        .flat_map(|mc| mc.actions.iter().map(|sourced| sourced.action.clone()))
+        .collect();
+    if open_only {
+        result.retain(is_open_action);
+    } else {
+        for mc in &matching {
+            let Some(actions_file) = &mc.actions_file else { continue };
+            let completed_path = action_files::completed_actions_path(&charter_root.join(actions_file));
             result.extend(action_files::read_actions(&completed_path).map_err(|e| e.to_string())?);
         }
-        return Ok(result);
     }
-
-    let action_files = clearhead_core::list_action_files(&ctx.data_dir)
-        .map_err(|e| format!("Failed to list workspace: {}", e))?;
-
-    let mut all = Vec::new();
-    for actions_path in action_files {
-        let mut open = action_files::read_actions(&actions_path).map_err(|e| e.to_string())?;
-        if open_only {
-            open.retain(is_open_action);
-        }
-        all.extend(open);
-        if !open_only {
-            let completed_path = action_files::completed_actions_path(&actions_path);
-            all.extend(action_files::read_actions(&completed_path).map_err(|e| e.to_string())?);
-        }
-    }
-    Ok(all)
+    Ok(result)
 }
 
 fn is_open_action(action: &Action) -> bool {
@@ -1088,4 +1071,58 @@ fn print_acts_table(ws_actions: &[(Option<&str>, &Action)], multi_ws: bool) {
     }
 
     println!("{}", table);
+}
+
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn make_action(name: &str, alias: Option<&str>) -> Action {
+        Action {
+            id: Uuid::now_v7(),
+            name: name.to_string(),
+            alias: alias.map(|s| s.to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn alias_beats_earlier_name_contains_match() {
+        // An earlier name-contains match must not shadow a later exact alias —
+        // the bug that let `complete`/`update`/`cancel`/`delete` act on the
+        // wrong action when a query happened to substring-match an earlier name.
+        let actions = vec![
+            make_action("Fix staging server", None),
+            make_action("Deploy", Some("staging")),
+        ];
+
+        let found = find_best_match(&actions, "staging", |_| true).unwrap();
+        assert_eq!(found.name, "Deploy");
+        assert_eq!(found.alias.as_deref(), Some("staging"));
+    }
+
+    #[test]
+    fn short_uuid_beats_alias_and_name() {
+        let mut target = make_action("Target action", None);
+        target.id = Uuid::parse_str("aaaaaaaa-0000-7000-8000-000000000000").unwrap();
+        let short = &target.id.to_string()[..8];
+        let actions = vec![
+            make_action("Alias holder", Some(short.to_owned()).as_deref()),
+            target.clone(),
+        ];
+
+        let found = find_best_match(&actions, short, |_| true).unwrap();
+        assert_eq!(found.id, target.id);
+    }
+
+    #[test]
+    fn full_uuid_beats_everything() {
+        let target = make_action("Target action", None);
+        let decoy = make_action(&target.id.to_string(), None);
+        let actions = vec![decoy, target.clone()];
+
+        let found = find_best_match(&actions, &target.id.to_string(), |_| true).unwrap();
+        assert_eq!(found.id, target.id);
+    }
 }

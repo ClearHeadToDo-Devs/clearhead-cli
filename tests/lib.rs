@@ -7,9 +7,8 @@ use common::read_example;
 #[test]
 fn parse_minimal_action_from_grammar_examples() {
     let test_action = read_example("minimal.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::NotStarted);
@@ -21,9 +20,8 @@ fn parse_minimal_action_from_grammar_examples() {
 #[test]
 fn parse_action_with_children_from_grammar_examples() {
     let test_action = read_example("with_children.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     // Should have 1 root + 2 children + 1 grandchild = 4 total
     assert_eq!(actions.len(), 4);
@@ -57,9 +55,8 @@ fn parse_action_with_children_from_grammar_examples() {
 #[test]
 fn parse_action_with_description_from_grammar_examples() {
     let test_action = read_example("with_description.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::Completed);
@@ -74,9 +71,8 @@ fn parse_action_with_description_from_grammar_examples() {
 #[test]
 fn parse_action_with_priority_from_grammar_examples() {
     let test_action = read_example("with_priority.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::Completed);
@@ -88,9 +84,8 @@ fn parse_action_with_priority_from_grammar_examples() {
 #[test]
 fn parse_action_with_story_from_grammar_examples() {
     let test_action = read_example("with_story.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::Completed);
@@ -105,9 +100,8 @@ fn parse_action_with_story_from_grammar_examples() {
 #[test]
 fn parse_action_with_context_from_grammar_examples() {
     let test_action = read_example("with_context.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::NotStarted);
@@ -123,9 +117,8 @@ fn parse_action_with_context_from_grammar_examples() {
 #[test]
 fn parse_action_with_id_from_grammar_examples() {
     let test_action = read_example("with_id_no_dash.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].state, ActionState::Completed);
@@ -137,9 +130,8 @@ fn parse_action_with_id_from_grammar_examples() {
 #[test]
 fn parse_action_with_everything_from_grammar_examples() {
     let test_action = read_example("with_everything.actions");
-    let test_config = serde_json::json!({});
 
-    let actions = get_action_list_struct(&test_config, &test_action).unwrap();
+    let actions = get_action_list_struct(&test_action).unwrap();
 
     // Should have root + 5 nested children + 1 predecessor action = 7 total
     assert_eq!(actions.len(), 7);
@@ -161,17 +153,16 @@ fn parse_action_with_everything_from_grammar_examples() {
 #[test]
 fn roundtrip_minimal_action() {
     let original = read_example("minimal.actions");
-    let test_config = serde_json::json!({});
 
     // Parse original
-    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+    let actions1 = get_action_list_struct(&original).unwrap();
 
     // Format back to string
     let formatted =
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
 
     // Verify equivalence
     assert_eq!(actions1.len(), actions2.len());
@@ -184,17 +175,16 @@ fn roundtrip_minimal_action() {
 #[test]
 fn roundtrip_action_with_children() {
     let original = read_example("with_children.actions");
-    let test_config = serde_json::json!({});
 
     // Parse original
-    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+    let actions1 = get_action_list_struct(&original).unwrap();
 
     // Format back to string
     let formatted =
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
 
     // Verify equivalence - should have same number of actions
     assert_eq!(actions1.len(), actions2.len());
@@ -212,17 +202,16 @@ fn roundtrip_action_with_children() {
 #[test]
 fn roundtrip_action_with_metadata() {
     let original = read_example("with_description.actions");
-    let test_config = serde_json::json!({});
 
     // Parse original
-    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+    let actions1 = get_action_list_struct(&original).unwrap();
 
     // Format back to string
     let formatted =
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
 
     // Verify equivalence
     assert_eq!(actions1.len(), actions2.len());
@@ -236,8 +225,7 @@ fn roundtrip_action_with_metadata() {
 #[test]
 fn show_formatted_output() {
     let original = read_example("with_children.actions");
-    let test_config = serde_json::json!({});
-    let actions = get_action_list_struct(&test_config, &original).unwrap();
+    let actions = get_action_list_struct(&original).unwrap();
     let formatted =
         clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
@@ -250,17 +238,16 @@ fn show_formatted_output() {
 #[test]
 fn roundtrip_action_with_everything() {
     let original = read_example("with_everything.actions");
-    let test_config = serde_json::json!({});
 
     // Parse original
-    let actions1 = get_action_list_struct(&test_config, &original).unwrap();
+    let actions1 = get_action_list_struct(&original).unwrap();
 
     // Format back to string
     let formatted =
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&test_config, &formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
 
     // Verify equivalence - all 6 actions
     assert_eq!(actions1.len(), actions2.len());

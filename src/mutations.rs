@@ -1,4 +1,5 @@
-use clearhead_core::{Action, ActionList, ActionState, Charter, CharterState};
+use chrono::{DateTime, Local};
+use clearhead_core::{Action, ActionState, Charter, CharterState};
 
 /// Updates to apply to a charter's metadata fields.
 ///
@@ -33,86 +34,8 @@ pub struct ActionUpdate {
     pub context: Option<Vec<String>>,
     pub alias: Option<String>,
     pub state: Option<ActionState>,
-}
-
-/// Result of resolving an action reference
-#[derive(Debug, Clone)]
-pub struct ResolvedAction {
-    /// Index into the ActionList
-    pub index: usize,
-    /// How the reference was matched
-    pub match_type: MatchType,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchType {
-    /// Matched by full UUID (36 chars with hyphens)
-    FullUuid,
-    /// Matched by short UUID prefix (8 hex chars)
-    ShortUuid,
-    /// Matched by alias
-    Alias,
-    /// Matched by name (case-insensitive)
-    Name,
-}
-
-/// Resolve a reference to an action following the spec's resolution order:
-/// 1. Full UUID match (36 characters with hyphens)
-/// 2. Short UUID match (8 hex character prefix)
-/// 3. Alias match (case-insensitive)
-/// 4. Name match (case-insensitive, partial match)
-///
-/// Returns the first match found, or None if no action matches.
-pub fn resolve_reference(actions: &ActionList, query: &str) -> Option<ResolvedAction> {
-    let query_lower = query.to_lowercase();
-
-    // 1. Full UUID match (36 chars: 8-4-4-4-12 with hyphens)
-    if query.len() == 36 && query.chars().filter(|c| *c == '-').count() == 4 {
-        for (i, action) in actions.iter().enumerate() {
-            if action.id.to_string() == query {
-                return Some(ResolvedAction {
-                    index: i,
-                    match_type: MatchType::FullUuid,
-                });
-            }
-        }
-    }
-
-    // 2. Short UUID match (8 hex chars prefix)
-    if query.len() == 8 && query.chars().all(|c| c.is_ascii_hexdigit()) {
-        for (i, action) in actions.iter().enumerate() {
-            if action.id.to_string().starts_with(query) {
-                return Some(ResolvedAction {
-                    index: i,
-                    match_type: MatchType::ShortUuid,
-                });
-            }
-        }
-    }
-
-    // 3. Alias match (case-insensitive)
-    for (i, action) in actions.iter().enumerate() {
-        if let Some(ref alias) = action.alias {
-            if alias.to_lowercase() == query_lower {
-                return Some(ResolvedAction {
-                    index: i,
-                    match_type: MatchType::Alias,
-                });
-            }
-        }
-    }
-
-    // 4. Name match (case-insensitive, partial/contains match)
-    for (i, action) in actions.iter().enumerate() {
-        if action.name.to_lowercase().contains(&query_lower) {
-            return Some(ResolvedAction {
-                index: i,
-                match_type: MatchType::Name,
-            });
-        }
-    }
-
-    None
+    pub scheduled_at: Option<DateTime<Local>>,
+    pub duration: Option<u32>,
 }
 
 /// Apply updates to an action
@@ -146,6 +69,12 @@ pub fn apply_updates(action: &mut Action, updates: ActionUpdate) {
             action.completed_at = Some(chrono::Local::now());
         }
     }
+    if let Some(scheduled_at) = updates.scheduled_at {
+        action.scheduled_at = Some(scheduled_at);
+    }
+    if let Some(duration) = updates.duration {
+        action.duration = Some(duration);
+    }
 }
 
 #[cfg(test)]
@@ -160,45 +89,6 @@ mod tests {
             alias: alias.map(|s| s.to_string()),
             ..Default::default()
         }
-    }
-
-    #[test]
-    fn test_resolve_by_name() {
-        let actions = vec![
-            make_action("Buy groceries", None),
-            make_action("Fix bug", None),
-        ];
-
-        let result = resolve_reference(&actions, "groceries");
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().match_type, MatchType::Name);
-    }
-
-    #[test]
-    fn test_resolve_by_alias() {
-        let actions = vec![
-            make_action("Deploy to staging", Some("staging")),
-            make_action("Fix bug", None),
-        ];
-
-        let result = resolve_reference(&actions, "staging");
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().match_type, MatchType::Alias);
-    }
-
-    #[test]
-    fn test_resolve_alias_before_name() {
-        // If "staging" is both an alias and part of a name, alias wins
-        let actions = vec![
-            make_action("Fix staging server", None),
-            make_action("Deploy", Some("staging")),
-        ];
-
-        let result = resolve_reference(&actions, "staging");
-        assert!(result.is_some());
-        let resolved = result.unwrap();
-        assert_eq!(resolved.match_type, MatchType::Alias);
-        assert_eq!(resolved.index, 1);
     }
 
     #[test]

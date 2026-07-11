@@ -88,7 +88,7 @@ pub fn archive_actions(
     content: &str,
     source_path: &PathBuf,
 ) -> Result<(String, ArchiveResult), String> {
-    let all_actions = crate::get_action_list_struct(&serde_json::json!({}), content)?;
+    let all_actions = crate::get_action_list_struct(content)?;
     let (active_actions, archived_actions) = partition_actions_for_archive(&all_actions);
 
     if archived_actions.is_empty() {

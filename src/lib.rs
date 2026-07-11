@@ -3,7 +3,6 @@
 //! This library provides the CLI and LSP server implementation for the ClearHead framework.
 //! It builds on top of clearhead_core, adding filesystem, configuration, and runtime concerns.
 
-use serde_json::{Map, Value};
 use tree_sitter::Tree;
 use clearhead_core::WorkspaceConfig;
 
@@ -49,7 +48,7 @@ pub use export::format_as_icalendar;
 pub mod archive;
 
 pub mod mutations;
-pub use mutations::{ActionUpdate, MatchType, ResolvedAction, apply_updates, resolve_reference};
+pub use mutations::{ActionUpdate, apply_updates};
 
 pub mod environment_reader;
 pub use environment_reader::{Config, get_config_dir, get_data_dir, load_config};
@@ -64,22 +63,10 @@ pub use telemetry::{
     event_from_state_change, get_telemetry_dir,
 };
 
-/// Merge two JSON hashmaps (right overwrites left on key conflicts)
-pub fn merge_hashmaps(
-    left: &Map<String, Value>,
-    right: &Map<String, Value>,
-) -> Result<Value, String> {
-    let mut merged = left.clone();
-    for (key, value) in right {
-        merged.insert(key.clone(), value.clone());
-    }
-    Ok(Value::Object(merged))
-}
-
 // CLI wrappers for backward compatibility
 
 /// Parse a .actions file into a structured ActionList
-pub fn get_action_list_struct(_opts: &Value, actions: &str) -> Result<ActionList, String> {
+pub fn get_action_list_struct(actions: &str) -> Result<ActionList, String> {
     parse_actions(actions)
 }
 
@@ -88,23 +75,9 @@ pub fn get_parsed_document(actions: &str) -> Result<ParsedDocument, String> {
     parse_document(actions)
 }
 
-/// Parse a .actions file and return as JSON Value
-pub fn get_action_list(opts: &Value, actions: String) -> Result<Value, String> {
-    let action_list = get_action_list_struct(opts, &actions)?;
-    serde_json::to_value(&action_list)
-        .map_err(|e| format!("Failed to serialize actions to JSON: {}", e))
-}
-
 /// Parse a .actions file into a tree-sitter Tree
 pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
     parse_tree(actions)
-}
-
-/// Load all workspace .actions files as a multi-charter DomainModel.
-pub fn load_workspace_domain_model(
-    data_dir: &std::path::Path,
-) -> Result<clearhead_core::DomainModel, String> {
-    clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())
 }
 
 /// Build a [`WorkspaceConfig`] from a tag hierarchy map.
@@ -117,13 +90,6 @@ pub fn workspace_config_from(tag_hierarchies: &std::collections::HashMap<String,
         tag_hierarchies: tag_hierarchies.clone(),
         ..WorkspaceConfig::default()
     }
-}
-
-/// Load all actions from the workspace as a flat ActionList.
-pub fn load_workspace_actions(data_dir: &std::path::Path) -> Result<ActionList, String> {
-    use clearhead_core::workspace::actions::convert;
-    let model = clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())?;
-    Ok(convert::to_action_list(&model))
 }
 
 /// Load a single additional workspace into an existing store under its own named graph.
@@ -178,46 +144,6 @@ fn load_workspace_at_path_into_store(
         .map_err(|e| format!("Failed to insert workspace {} into store: {}", workspace_path.display(), e))?;
 
     Ok(())
-}
-
-/// Run a SPARQL query across all workspace actions
-///
-/// Loads the workspace as a full DomainModel (preserving Charter → Plan hierarchy)
-/// so that charter-based SPARQL patterns (bfo:has_part) resolve correctly.
-/// Pass `config` to materialise tag hierarchies as contextBroader triples.
-pub fn run_workspace_sql_query(
-    data_dir: &std::path::Path,
-    sparql_query: &str,
-    config: Option<&WorkspaceConfig>,
-) -> Result<ActionList, String> {
-    use clearhead_core::graph;
-    use clearhead_core::workspace::actions::convert;
-    use std::collections::HashSet;
-
-    let model = load_workspace_domain_model(data_dir)?;
-    let store = graph::create_store().map_err(|e| format!("Failed to create store: {}", e))?;
-    graph::load_domain_model(&store, &model, config, workspace_graph_name_from_config(config))
-        .map_err(|e| format!("Failed to load domain model into store: {}", e))?;
-
-    // Load each additional workspace into its own named graph in the same store.
-    if let Some(cfg) = config {
-        for path_str in &cfg.additional_workspaces {
-            let path = std::path::Path::new(path_str);
-            if let Err(e) = load_workspace_at_path_into_store(&store, path) {
-                tracing::warn!("Skipping additional workspace '{}': {}", path_str, e);
-            }
-        }
-    }
-
-    let matching_ids = graph::query_action_ids(&store, sparql_query)
-        .map_err(|e| format!("SPARQL query failed: {}", e))?;
-    let id_set: HashSet<String> = matching_ids.into_iter().collect();
-
-    let all_actions = convert::to_action_list(&model);
-    Ok(all_actions
-        .into_iter()
-        .filter(|a| id_set.contains(&a.id.to_string()))
-        .collect())
 }
 
 /// Run a raw SPARQL SELECT query across the workspace and return all variable bindings

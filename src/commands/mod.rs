@@ -396,44 +396,6 @@ pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
     }
 }
 
-#[allow(dead_code)]
-/// Search all workspace .actions files for a plan matching `query`.
-///
-/// Returns the resolved file path and the full ActionList from that file.
-/// Uses recover-mode parsing for read-oriented lookup compatibility.
-pub fn find_plan_file(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionList), String> {
-    let action_files = clearhead_core::list_action_files(data_dir)
-        .map_err(|e| format!("Failed to list workspace: {}", e))?;
-
-    for file_path in action_files {
-        let actions = load_file_for_read(&file_path, "find-plan-file")?;
-        if clearhead_cli::resolve_reference(&actions, query).is_some() {
-            return Ok((file_path, actions));
-        }
-    }
-
-    Err(format!("No plan found matching '{}'", query))
-}
-
-/// Search all workspace .actions files for a plan matching `query`, using mutation-safe parsing.
-#[allow(dead_code)]
-pub fn find_plan_file_for_mutation(
-    data_dir: &Path,
-    query: &str,
-    command: &str,
-) -> Result<(PathBuf, ActionList), String> {
-    let action_files = clearhead_core::list_action_files(data_dir)
-        .map_err(|e| format!("Failed to list workspace: {}", e))?;
-
-    for file_path in action_files {
-        let actions = load_file_for_mutation(&file_path, command)?;
-        if clearhead_cli::resolve_reference(&actions, query).is_some() {
-            return Ok((file_path, actions));
-        }
-    }
-
-    Err(format!("No plan found matching '{}'", query))
-}
 
 /// Read input from a file or stdin
 pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {

@@ -253,13 +253,18 @@ fn test_read_acts_skips_hidden_directories() {
 }
 
 #[test]
-fn test_read_acts_file_fails_on_malformed_input() {
+fn test_read_acts_file_recovers_from_malformed_input() {
+    // `read` now goes through the same workspace loader every other command uses
+    // (Decision 34's relaxed reader): a malformed file becomes a warning plus
+    // whatever recovered, not a hard failure — consistent with `doctor`, `sync`, etc.
     let env = TestEnv::new();
     env.write_text("charters/malformed.actions", "not valid actions syntax !!!\n[ ] Keep me\n");
     let path = env.data_dir.join("charters").join("malformed.actions");
     env.command()
         .arg("read").arg("actions").arg("--file").arg(&path)
-        .assert().failure();
+        .assert().success()
+        .stderr(predicate::str::contains("recoverable action"))
+        .stdout(predicate::str::contains("Keep me"));
 }
 
 #[test]
