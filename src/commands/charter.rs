@@ -334,6 +334,13 @@ pub fn add_charter(
         std::fs::write(&actions_path, "").map_err(|e| format!("Failed to create actions file: {}", e))?;
     }
 
+    // Record the charter's identity in the sidecar so it self-identifies in the
+    // data, independent of the filename (best-effort — a sidecar failure must
+    // never fail charter creation).
+    if let Err(e) = clearhead_core::workspace::sidecar::stamp_charter_id(&actions_path, id) {
+        tracing::warn!(path = %actions_path.display(), error = %e, "Failed to record charter id in sidecar");
+    }
+
     info!(title = %title, id = %id, path = %file_path.display(), "Charter created");
     println!("{}", id);
 
