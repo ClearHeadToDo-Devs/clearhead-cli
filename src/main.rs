@@ -41,15 +41,17 @@ fn main() {
 
     if let Err(e) = run_command(&cli) {
         if cli.debug > 0 {
-            error!(error = %e, "Command failed");
+            error!(error = ?e, "Command failed");
         } else {
-            eprintln!("{}", e);
+            // anyhow's Debug format prints the full "Caused by:" chain, not just
+            // the top-level message — the whole point of adopting it here.
+            eprintln!("Error: {:?}", e);
         }
         process::exit(1);
     }
 }
 
-fn run_command(cli: &argparser::Cli) -> Result<(), String> {
+fn run_command(cli: &argparser::Cli) -> anyhow::Result<()> {
     // Init bootstraps the workspace — runs before CommandContext to avoid
     // creating XDG dirs in a directory that isn't yet initialized.
     if let Verb::Init = &cli.command {
@@ -60,6 +62,10 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
 
     debug!(data_dir = %ctx.data_dir.display(), "Data directory resolved");
 
+    dispatch(cli, &ctx)
+}
+
+fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
     match &cli.command {
         Verb::Read { target } => match target {
             argparser::ReadTarget::Plans {
@@ -294,7 +300,7 @@ fn run_command(cli: &argparser::Cli) -> Result<(), String> {
                 #[cfg(feature = "lsp")]
                 return commands::service::start_lsp();
                 #[cfg(not(feature = "lsp"))]
-                Err("This binary was compiled without LSP support. Install with the `lsp` feature or use the `clearhead-lsp` binary.".to_string())
+                anyhow::bail!("This binary was compiled without LSP support. Install with the `lsp` feature or use the `clearhead-lsp` binary.")
             }
         },
         Verb::Sync { target } => match target {

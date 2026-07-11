@@ -1,6 +1,5 @@
 pub mod action;
 pub mod charter;
-pub mod complete;
 pub mod debug;
 pub mod doctor;
 pub mod file;
@@ -14,6 +13,7 @@ pub mod template;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use anyhow::Context;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -37,10 +37,9 @@ pub struct CommandContext {
 }
 
 impl CommandContext {
-    pub fn new(cli: &crate::argparser::Cli) -> Result<Self, String> {
+    pub fn new(cli: &crate::argparser::Cli) -> anyhow::Result<Self> {
         let config_path = resolve_config_path(cli.config.clone());
-        let config =
-            load_config(cli.config.clone()).map_err(|e| format!("Failed to load config: {}", e))?;
+        let config = load_config(cli.config.clone()).context("Failed to load config")?;
 
         let project_root = find_project_data_dir();
 
@@ -63,9 +62,8 @@ impl CommandContext {
             &crate::environment_reader::get_config_dir(),
         );
 
-        ensure_dir_exists(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
-        ensure_dir_exists(&config_dir)
-            .map_err(|e| format!("Failed to create config dir: {}", e))?;
+        ensure_dir_exists(&data_dir).context("Failed to create data dir")?;
+        ensure_dir_exists(&config_dir).context("Failed to create config dir")?;
 
         Ok(Self {
             config,
@@ -144,7 +142,7 @@ impl CommandContext {
     ///
     /// The primary workspace is a hard failure; additional workspaces warn and
     /// are skipped on error so a single bad workspace never blocks the others.
-    pub fn all_domain_models(&self) -> Result<Vec<(String, clearhead_core::DomainModel)>, String> {
+    pub fn all_domain_models(&self) -> anyhow::Result<Vec<(String, clearhead_core::DomainModel)>> {
         let mut models = Vec::new();
         for (name, path) in self.workspace_dirs() {
             let is_primary = path == self.data_dir;
@@ -156,7 +154,7 @@ impl CommandContext {
             };
             match loaded {
                 Ok(m) => models.push((name, m)),
-                Err(e) if is_primary => return Err(e.to_string()),
+                Err(e) if is_primary => return Err(e.into()),
                 Err(e) => warn!("Skipping workspace '{}': {}", path.display(), e),
             }
         }
@@ -219,21 +217,18 @@ impl CommandContext {
     }
 
     /// Load the primary workspace's domain model, honoring `plan_path`.
-    pub fn load_model(&self) -> Result<clearhead_core::DomainModel, String> {
-        clearhead_core::load_domain_model_with_plans(&self.data_dir, self.plan_override().as_deref())
-            .map_err(|e| e.to_string())
+    pub fn load_model(&self) -> anyhow::Result<clearhead_core::DomainModel> {
+        Ok(clearhead_core::load_domain_model_with_plans(&self.data_dir, self.plan_override().as_deref())?)
     }
 
     /// Load the primary workspace's charters, honoring `plan_path`.
-    pub fn load_charters(&self) -> Result<Vec<clearhead_core::MarkdownCharter>, String> {
-        clearhead_core::load_workspace_with_plans(&self.data_dir, self.plan_override().as_deref())
-            .map_err(|e| e.to_string())
+    pub fn load_charters(&self) -> anyhow::Result<Vec<clearhead_core::MarkdownCharter>> {
+        Ok(clearhead_core::load_workspace_with_plans(&self.data_dir, self.plan_override().as_deref())?)
     }
 
     /// Discover the primary workspace's plan `.ics` entries, honoring `plan_path`.
-    pub fn collect_plan_files(&self) -> Result<Vec<clearhead_core::workspace::PlanFileEntry>, String> {
-        clearhead_core::collect_plan_files_with_plans(&self.data_dir, self.plan_override().as_deref())
-            .map_err(|e| e.to_string())
+    pub fn collect_plan_files(&self) -> anyhow::Result<Vec<clearhead_core::workspace::PlanFileEntry>> {
+        Ok(clearhead_core::collect_plan_files_with_plans(&self.data_dir, self.plan_override().as_deref())?)
     }
 
     /// The primary workspace's `plans_root`, honoring `plan_path`.
@@ -260,13 +255,13 @@ pub fn workspace_name_from_path(path: &Path) -> String {
 }
 
 /// Load actions for read-only operations using recoverable parse mode.
-pub fn load_file_for_read(path: &Path, command: &str) -> Result<ActionList, String> {
+pub fn load_file_for_read(path: &Path, command: &str) -> anyhow::Result<ActionList> {
     if !path.exists() {
         return Ok(ActionList::new());
     }
 
     let content = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
+        .with_context(|| format!("Failed to read file '{}'", path.display()))?;
     parse_content_for_read(&content, &path.display().to_string(), command)
 }
 
@@ -275,10 +270,10 @@ pub fn parse_content_for_read(
     content: &str,
     source: &str,
     command: &str,
-) -> Result<ActionList, String> {
+) -> anyhow::Result<ActionList> {
     let outcome =
         clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
-            .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
+            .with_context(|| format!("Failed to parse '{}'", source))?;
 
     if !outcome.syntax_errors.is_empty() {
         report_parse_recovered(
@@ -299,18 +294,18 @@ pub fn parse_content_for_mutation(
     content: &str,
     source: &str,
     command: &str,
-) -> Result<ActionList, String> {
+) -> anyhow::Result<ActionList> {
     let outcome =
         clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
-            .map_err(|e| format!("Failed to parse '{}': {}", source, e))?;
+            .with_context(|| format!("Failed to parse '{}'", source))?;
 
     if !outcome.syntax_errors.is_empty() {
         report_mutation_parse_failure(Path::new(source), command, &outcome.syntax_errors);
-        return Err(format!(
+        anyhow::bail!(
             "Parse error in '{}': {} issue(s). File not modified.",
             source,
             outcome.syntax_errors.len()
-        ));
+        );
     }
 
     Ok(outcome.document.actions)
@@ -319,13 +314,13 @@ pub fn parse_content_for_mutation(
 /// Load actions for mutating operations.
 ///
 /// If syntax issues are present, this returns an error and callers must not write.
-pub fn load_file_for_mutation(path: &Path, command: &str) -> Result<ActionList, String> {
+pub fn load_file_for_mutation(path: &Path, command: &str) -> anyhow::Result<ActionList> {
     if !path.exists() {
         return Ok(ActionList::new());
     }
 
     let content = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
+        .with_context(|| format!("Failed to read file '{}'", path.display()))?;
     parse_content_for_mutation(&content, &path.display().to_string(), command)
 }
 
@@ -333,9 +328,8 @@ pub fn load_file_for_mutation(path: &Path, command: &str) -> Result<ActionList, 
 ///
 /// Also updates the charter sidecar (best-effort — sidecar failures
 /// are logged but do not prevent the actions file from being saved).
-pub fn save_file(path: &Path, actions: &ActionList) -> Result<(), String> {
-    clearhead_core::workspace::action_files::write_actions(actions, path)
-        .map_err(|e| e.to_string())?;
+pub fn save_file(path: &Path, actions: &ActionList) -> anyhow::Result<()> {
+    clearhead_core::workspace::action_files::write_actions(actions, path)?;
     if let Err(e) = update_sidecar(path, actions) {
         warn!(path = %path.display(), error = %e, "Failed to update sidecar");
     }
@@ -344,16 +338,17 @@ pub fn save_file(path: &Path, actions: &ActionList) -> Result<(), String> {
 
 /// Ensure every action in the list has an entry in the charter sidecar.
 /// Delegates to `clearhead_core::workspace::sidecar::stamp_sidecar_entries`.
-pub fn update_sidecar(actions_path: &Path, actions: &ActionList) -> Result<(), String> {
+pub fn update_sidecar(actions_path: &Path, actions: &ActionList) -> anyhow::Result<()> {
     use clearhead_core::workspace::sidecar;
-    sidecar::stamp_sidecar_entries(actions_path, actions).map_err(|e| e.to_string())
+    Ok(sidecar::stamp_sidecar_entries(actions_path, actions)?)
 }
 
 /// Write content to a file if `write` is true, otherwise print to stdout.
-pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> Result<(), String> {
+pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> anyhow::Result<()> {
     if write {
-        let path = file.ok_or("Cannot use --write without specifying a file")?;
-        fs::write(path, content).map_err(|e| format!("Failed to write to file: {}", e))
+        let path = file.context("Cannot use --write without specifying a file")?;
+        fs::write(path, content).context("Failed to write to file")?;
+        Ok(())
     } else {
         println!("{}", content);
         Ok(())
@@ -365,7 +360,7 @@ pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> Res
 /// Intended for use with `clearhead _complete <kind>`. Shell completions can
 /// call this and feed the output to their completion engine, e.g. in fish:
 ///   complete -c clearhead -l charter -a "(clearhead _complete charters 2>/dev/null)"
-pub fn complete_values(ctx: &CommandContext, kind: crate::argparser::CompleteKind) -> Result<(), String> {
+pub fn complete_values(ctx: &CommandContext, kind: crate::argparser::CompleteKind) -> anyhow::Result<()> {
     use crate::argparser::CompleteKind;
     match kind {
         CompleteKind::Charters => {
@@ -398,15 +393,15 @@ pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
 
 
 /// Read input from a file or stdin
-pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
+pub fn read_input(file: Option<&PathBuf>) -> anyhow::Result<String> {
     match file {
         Some(path) => fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e)),
+            .with_context(|| format!("Failed to read file '{}'", path.display())),
         None => {
             let mut buffer = String::new();
             io::stdin()
                 .read_to_string(&mut buffer)
-                .map_err(|e| format!("Failed to read from stdin: {}", e))?;
+                .context("Failed to read from stdin")?;
             Ok(buffer)
         }
     }
@@ -416,10 +411,10 @@ pub fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
 ///
 /// Scans all workspace action files and matches the inferred charter name against
 /// the query (by UUID prefix, alias, or inferred file stem / directory name).
-pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<PathBuf, String> {
+pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> anyhow::Result<PathBuf> {
     let data_root = clearhead_core::charter_root(data_dir);
     let action_files = clearhead_core::list_action_files(data_dir)
-        .map_err(|e| format!("Failed to list workspace: {}", e))?;
+        .context("Failed to list workspace")?;
 
     let query_lower = charter_query.to_lowercase();
 
@@ -434,9 +429,9 @@ pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<Path
     }
 
     // Fall back to model-level resolution (matches alias, UUID, partial title)
-    let model = clearhead_core::load_domain_model(data_dir).map_err(|e| e.to_string())?;
+    let model = clearhead_core::load_domain_model(data_dir)?;
     let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)
-        .ok_or_else(|| format!("No charter found matching '{}'", charter_query))?;
+        .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", charter_query))?;
 
     let key = found.alias.as_deref().unwrap_or(&found.title);
     let key_lower = key.to_lowercase();
@@ -451,10 +446,7 @@ pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> Result<Path
         }
     }
 
-    Err(format!(
-        "No actions file found for charter '{}'",
-        charter_query
-    ))
+    anyhow::bail!("No actions file found for charter '{}'", charter_query)
 }
 
 fn parse_indent_style(s: &str) -> clearhead_cli::IndentStyle {

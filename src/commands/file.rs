@@ -1,3 +1,4 @@
+use anyhow::Context;
 use tracing::debug;
 
 use crate::commands::{
@@ -11,7 +12,7 @@ pub fn format_file(
     style: &Option<crate::argparser::Style>,
     indent_style: &Option<crate::argparser::Indent>,
     indent_width: &Option<usize>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let input_file = path.as_ref();
     debug!(input_file = ?input_file, write = write, "Executing Format File");
     let content = read_input(input_file)?;
@@ -44,19 +45,20 @@ pub fn format_file(
         clearhead_cli::OutputFormat::Actions,
         Some(format_config),
         None,
-    )?;
+    )
+    .map_err(|e| anyhow::anyhow!(e))?;
 
     write_or_print(&formatted, write, input_file)?;
     Ok(())
 }
 
-pub fn lint_file(path: &Option<std::path::PathBuf>) -> Result<(), String> {
+pub fn lint_file(path: &Option<std::path::PathBuf>) -> anyhow::Result<()> {
     let input_file = path.as_ref();
     debug!(input_file = ?input_file, "Executing Lint File");
     let content = read_input(input_file)?;
 
     let parsed = clearhead_cli::get_parsed_document(&content)
-        .map_err(|e| format!("Failed to parse document: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse document: {}", e))?;
 
     let results = clearhead_cli::lint_document(&parsed);
 
@@ -89,7 +91,7 @@ pub fn lint_file(path: &Option<std::path::PathBuf>) -> Result<(), String> {
 
     if has_errors {
         tracing::warn!("Linting failed with errors");
-        return Err("Linting failed with errors".to_string());
+        anyhow::bail!("Linting failed with errors");
     }
     Ok(())
 }
@@ -99,7 +101,7 @@ pub fn normalize_file(
     path: &Option<std::path::PathBuf>,
     write: bool,
     no_format: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let input_file = path.as_ref();
     debug!(input_file = ?input_file, write = write, "Executing Normalize File");
     let content = read_input(input_file)?;
@@ -111,7 +113,8 @@ pub fn normalize_file(
     };
 
     let output = if no_format {
-        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)?
+        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)
+            .map_err(|e| anyhow::anyhow!(e))?
     } else {
         let (resolved_indent_style, resolved_indent_width) = ctx.indent_config();
 
@@ -126,7 +129,8 @@ pub fn normalize_file(
             clearhead_cli::OutputFormat::Actions,
             Some(format_config),
             None,
-        )?
+        )
+        .map_err(|e| anyhow::anyhow!(e))?
     };
 
     write_or_print(&output, write, input_file)?;
@@ -144,14 +148,14 @@ pub fn patch_file(
     primary: &std::path::PathBuf,
     secondary: &std::path::PathBuf,
     write: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     use std::fs;
 
     debug!(primary = %primary.display(), secondary = %secondary.display(), write = write, "Executing Patch File");
     let primary_content =
-        fs::read_to_string(primary).map_err(|e| format!("Failed to read primary file: {}", e))?;
+        fs::read_to_string(primary).context("Failed to read primary file")?;
     let secondary_content = fs::read_to_string(secondary)
-        .map_err(|e| format!("Failed to read secondary file: {}", e))?;
+        .context("Failed to read secondary file")?;
 
     let mut primary_actions = if write {
         parse_content_for_mutation(
@@ -179,7 +183,8 @@ pub fn patch_file(
         clearhead_cli::OutputFormat::Actions,
         None,
         None,
-    )?;
+    )
+    .map_err(|e| anyhow::anyhow!(e))?;
 
     write_or_print(&formatted, write, Some(primary))?;
     Ok(())

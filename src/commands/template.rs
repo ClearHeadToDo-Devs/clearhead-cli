@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::Context;
 use tracing::info;
 use uuid::Uuid;
 
@@ -13,7 +14,7 @@ pub fn apply_template(
     charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let actions_path = if let Some(f) = file {
         f.clone()
     } else if let Some(c) = charter {
@@ -26,20 +27,19 @@ pub fn apply_template(
     let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
 
     let tpl_path = templates::resolve_template(charter_dir, &data_root, name)
-        .map_err(|e| format!("Failed to resolve template: {}", e))?
-        .ok_or_else(|| format!("Template '{}' not found", name))?;
+        .context("Failed to resolve template")?
+        .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", name))?;
 
-    let tpl_acts = read_actions(&tpl_path).map_err(|e| {
+    let tpl_acts = read_actions(&tpl_path).with_context(|| {
         format!(
-            "Failed to read template '{}' at {}: {}",
+            "Failed to read template '{}' at {}",
             name,
             tpl_path.display(),
-            e
         )
     })?;
 
     if tpl_acts.is_empty() {
-        return Err(format!("Template '{}' is empty", name));
+        anyhow::bail!("Template '{}' is empty", name);
     }
 
     let instantiated = templates::instantiate_template(&tpl_acts, |_| Uuid::now_v7(), None);

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use tracing::{debug, info, warn};
 
 use crate::commands::{CommandContext, load_file_for_read};
@@ -5,12 +6,12 @@ use clearhead_cli::telemetry::{TelemetryEvent, TelemetryRecord, Tool, emit};
 use clearhead_core::{Reconcile, SyncEntry};
 
 #[cfg(feature = "lsp")]
-pub fn start_lsp() -> Result<(), String> {
+pub fn start_lsp() -> anyhow::Result<()> {
     info!("Starting Language Server");
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|e| format!("Failed to start async runtime: {}", e))?;
+        .context("Failed to start async runtime")?;
 
     rt.block_on(crate::lsp::start_lsp());
     Ok(())
@@ -20,7 +21,7 @@ pub fn sync_events(
     ctx: &CommandContext,
     file: &Option<std::path::PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let input_file = ctx.resolve_action_file(file.as_ref());
     debug!(input_file = %input_file.display(), dry_run = dry_run, "Executing Sync Events");
 
@@ -78,10 +79,10 @@ pub fn sync_calendar(
     ctx: &CommandContext,
     dry_run: bool,
     conflict: Option<crate::argparser::ConflictResolutionArg>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let plans_root = ctx.plans_root();
     let model = ctx.load_model()?;
-    let ics_dates = clearhead_core::read_ics_dates(&plans_root).map_err(|e| e.to_string())?;
+    let ics_dates = clearhead_core::read_ics_dates(&plans_root)?;
     let report = clearhead_core::plan_sync(&model, &ics_dates);
     let report = resolve_conflicts(report, conflict);
 
@@ -110,7 +111,7 @@ pub fn sync_calendar(
 
     let applied =
         clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)
-            .map_err(|e| e.to_string())?;
+            ?;
     info!(?applied, "Calendar sync complete");
     println!(
         "Sync complete. {} push, {} pull, {} converged, {} conflict.",

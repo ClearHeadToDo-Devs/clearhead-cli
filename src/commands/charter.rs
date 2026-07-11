@@ -1,3 +1,4 @@
+use anyhow::Context;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
@@ -14,10 +15,10 @@ use super::action::resolve_charter_across_workspaces;
 /// - Root charter (`next.actions`): children go flat in charter_root
 /// - Named flat charter (`lsp.actions`): children go in `charter_root/lsp/`
 /// - Nested charter (`lsp/diag.actions`): children go in `charter_root/lsp/diag/`
-fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> Result<PathBuf, String> {
+fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> anyhow::Result<PathBuf> {
     let charter_root = clearhead_core::charter_root(ws_root);
     let acts_rel = parent.actions_file.as_ref()
-        .ok_or_else(|| format!("Parent charter '{}' has no associated actions file; cannot determine placement", parent.title))?;
+        .ok_or_else(|| anyhow::anyhow!("Parent charter '{}' has no associated actions file; cannot determine placement", parent.title))?;
     let without_ext = acts_rel
         .to_str()
         .and_then(|s| s.strip_suffix(".actions"))
@@ -51,27 +52,27 @@ fn find_target_charter<'a>(
     query: Option<&str>,
     file: Option<&std::path::Path>,
     charter_root: &std::path::Path,
-) -> Result<&'a clearhead_core::MarkdownCharter, String> {
+) -> anyhow::Result<&'a clearhead_core::MarkdownCharter> {
     if let Some(file_path) = file {
         return resolve_charter_by_file(mcs, file_path, charter_root)
-            .ok_or_else(|| format!("No charter found for file: {}", file_path.display()));
+            .ok_or_else(|| anyhow::anyhow!("No charter found for file: {}", file_path.display()));
     }
     if let Some(q) = query {
         let charters: Vec<Charter> = mcs.iter().cloned().map(Charter::from).collect();
         let mc = resolve_charter(&charters, q)
-            .ok_or_else(|| format!("No charter found matching '{}'", q))?;
+            .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", q))?;
         return mcs.iter()
             .find(|c| c.id == mc.id)
-            .ok_or_else(|| format!("Internal: MarkdownCharter for '{}' missing", q));
+            .ok_or_else(|| anyhow::anyhow!("Internal: MarkdownCharter for '{}' missing", q));
     }
-    Err("Provide a charter name/alias/UUID or --file <path>".to_string())
+    anyhow::bail!("Provide a charter name/alias/UUID or --file <path>")
 }
 
 pub fn read_charters(
     ctx: &CommandContext,
     format: &Option<argparser::OutputMode>,
     explicit_only: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let multi_ws = ctx.workspace_dirs().len() > 1;
 
     // Load full models — tree view needs plans and actions, not just charters.
@@ -98,7 +99,7 @@ pub fn read_charters(
         Some(argparser::OutputMode::JsonLd) => {
             for (_, model) in &models {
                 let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(model)
-                    .map_err(|e| format!("Failed to serialize JSON-LD: {}", e))?;
+                    .context("Failed to serialize JSON-LD")?;
                 println!("{}", jsonld);
             }
         }
@@ -215,14 +216,14 @@ fn open_act_count(charter: &Charter) -> usize {
         .count()
 }
 
-pub fn show_charter(ctx: &CommandContext, query: &str) -> Result<(), String> {
+pub fn show_charter(ctx: &CommandContext, query: &str) -> anyhow::Result<()> {
     let models = ctx.all_domain_models()?;
 
     let found = models
         .iter()
         .flat_map(|(_, m)| m.charters.iter())
         .find(|c| resolve_charter(std::slice::from_ref(c), query).is_some())
-        .ok_or_else(|| format!("No charter found matching '{}'", query))?;
+        .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", query))?;
 
     println!("{}", crate::display::render_charter_detail(found));
     Ok(())
@@ -272,7 +273,7 @@ pub fn add_charter(
     parent: &Option<String>,
     template: &Option<String>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     use clearhead_core::domain::Charter;
     use clearhead_core::workspace::templates;
 
@@ -310,7 +311,7 @@ pub fn add_charter(
         let (parent_mc, ws_root) = resolve_charter_across_workspaces(ctx, parent_query)?;
         let dir = sub_charter_dir(&ws_root, &parent_mc)?;
         std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create directory '{}': {}", dir.display(), e))?;
+            .with_context(|| format!("Failed to create directory '{}'", dir.display()))?;
         (dir, clearhead_core::workspace_data_root(&ws_root))
     } else {
         (
@@ -322,18 +323,18 @@ pub fn add_charter(
     let file_path = target_dir.join(format!("{}.md", filename));
 
     if file_path.exists() {
-        return Err(format!("File already exists: {}", file_path.display()));
+        anyhow::bail!("File already exists: {}", file_path.display());
     }
 
     let content = clearhead_core::format_charter(&charter);
     clearhead_core::workspace::durability::atomic_write(&file_path, content)
-        .map_err(|e| format!("Failed to write charter: {}", e))?;
+        .context("Failed to write charter")?;
 
     // Always create the companion .actions file so the charter is immediately usable.
     let actions_path = target_dir.join(format!("{}.actions", filename));
     if !actions_path.exists() {
         clearhead_core::workspace::durability::atomic_write(&actions_path, "")
-            .map_err(|e| format!("Failed to create actions file: {}", e))?;
+            .context("Failed to create actions file")?;
     }
 
     // Record the charter's identity in the sidecar so it self-identifies in the
@@ -350,11 +351,11 @@ pub fn add_charter(
         let charter_dir = file_path.parent().unwrap_or(std::path::Path::new(""));
 
         let tpl_path = templates::resolve_template(charter_dir, &data_root, tpl_name)
-            .map_err(|e| format!("Failed to resolve template: {}", e))?
-            .ok_or_else(|| format!("Template '{}' not found", tpl_name))?;
+            .context("Failed to resolve template")?
+            .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", tpl_name))?;
 
         let tpl_acts = clearhead_core::workspace::read_actions(&tpl_path)
-            .map_err(|e| format!("Failed to read template: {}", e))?;
+            .context("Failed to read template")?;
 
         let instantiated =
             templates::instantiate_template(&tpl_acts, |_| uuid::Uuid::now_v7(), None);
@@ -388,7 +389,7 @@ pub fn archive_charter(
     closed: bool,
     force: bool,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     use clearhead_core::{ArchiveCharterOptions, archive_charter as do_archive, archive_terminal_charters};
 
     let opts = ArchiveCharterOptions { force, dry_run };
@@ -397,7 +398,7 @@ pub fn archive_charter(
         let mut any = false;
         for (_, ws_dir) in ctx.workspace_dirs() {
             let results = archive_terminal_charters(&ws_dir, &opts)
-                .map_err(|e| e.to_string())?;
+                ?;
             for r in &results {
                 print_archive_result(r);
                 any = true;
@@ -412,14 +413,14 @@ pub fn archive_charter(
     // Resolve query: from --file, explicit query, or error
     let q: String = if let Some(file_path) = file {
         let ws_dir = ctx.workspace_for_file(file_path);
-        let mcs = clearhead_core::load_workspace(&ws_dir).map_err(|e| e.to_string())?;
+        let mcs = clearhead_core::load_workspace(&ws_dir)?;
         let charter_root = clearhead_core::charter_root(&ws_dir);
         let mc_full = resolve_charter_by_file(&mcs, file_path, &charter_root)
-            .ok_or_else(|| format!("No charter found for file: {}", file_path.display()))?;
+            .ok_or_else(|| anyhow::anyhow!("No charter found for file: {}", file_path.display()))?;
         mc_full.alias.clone().unwrap_or_else(|| mc_full.title.clone())
     } else {
         query.as_deref()
-            .ok_or_else(|| "Provide a charter name/alias/UUID, --file <path>, or --closed".to_string())?
+            .context("Provide a charter name/alias/UUID, --file <path>, or --closed")?
             .to_string()
     };
 
@@ -427,10 +428,10 @@ pub fn archive_charter(
         match do_archive(&ws_dir, &q, &opts) {
             Ok(result) => { print_archive_result(&result); return Ok(()); }
             Err(clearhead_core::ArchiveCharterError::NotFound(_)) => continue,
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err(e.into()),
         }
     }
-    Err(format!("Charter '{}' not found in any workspace", q))
+    anyhow::bail!("Charter '{}' not found in any workspace", q)
 }
 
 fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {
@@ -460,7 +461,7 @@ pub fn update_charter(
     title: &Option<String>,
     alias: &Option<String>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     use clearhead_cli::mutations::{CharterUpdate, apply_charter_update};
 
     let mcs = ctx.load_charters()?;
@@ -471,7 +472,7 @@ pub fn update_charter(
     let md_path_rel = mc_full
         .md_file
         .as_ref()
-        .ok_or_else(|| format!("Charter '{}' has no .md file; use 'close charter' to create one", updated.title))?;
+        .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no .md file; use 'close charter' to create one", updated.title))?;
     let md_path = charter_root.join(md_path_rel);
 
     apply_charter_update(&mut updated, CharterUpdate {
@@ -488,7 +489,7 @@ pub fn update_charter(
     }
 
     clearhead_core::workspace::durability::atomic_write(&md_path, &formatted)
-        .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
+        .with_context(|| format!("Failed to write '{}'", md_path.display()))?;
 
     info!(charter = %updated.title, path = %md_path.display(), state = ?updated.state, "Charter updated");
 
@@ -515,14 +516,14 @@ pub fn close_charter(
     query: Option<&str>,
     file: Option<&std::path::Path>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     use clearhead_cli::mutations::{CharterUpdate, apply_charter_update};
     use clearhead_core::CharterState;
 
     let ws_root = file
         .map(|f| ctx.workspace_for_file(f))
         .unwrap_or_else(|| ctx.data_dir.clone());
-    let mcs = clearhead_core::load_workspace(&ws_root).map_err(|e| e.to_string())?;
+    let mcs = clearhead_core::load_workspace(&ws_root)?;
     let charter_root = clearhead_core::charter_root(&ws_root);
     let mc_full = find_target_charter(&mcs, query, file, &charter_root)?;
     let mut updated = Charter::from(mc_full.clone());
@@ -559,7 +560,7 @@ pub fn close_charter(
     }
 
     clearhead_core::workspace::durability::atomic_write(&md_path, &formatted)
-        .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
+        .with_context(|| format!("Failed to write '{}'", md_path.display()))?;
 
     info!(charter = %updated.title, path = %md_path.display(), created = is_new, "Charter closed");
 

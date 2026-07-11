@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use chrono::Local;
 use tracing::{info, warn};
 
@@ -30,16 +31,16 @@ pub fn add_action(
     scheduled_at: &Option<String>,
     duration: Option<u32>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let actions_path = resolve_acts_file(ctx, charter, file)?;
 
     let parent_id = parent
         .as_deref()
-        .map(|q| {
-            let mut list = action_files::read_actions(&actions_path).map_err(|e| e.to_string())?;
+        .map(|q| -> anyhow::Result<_> {
+            let mut list = action_files::read_actions(&actions_path)?;
             find_action_mut(&mut list, q)
                 .map(|a| a.id)
-                .ok_or_else(|| format!("No action found matching parent '{}'", q))
+                .ok_or_else(|| anyhow::anyhow!("No action found matching parent '{}'", q))
         })
         .transpose()?;
 
@@ -48,7 +49,7 @@ pub fn add_action(
         .map(|s| {
             chrono::DateTime::parse_from_rfc3339(s)
                 .map(|dt| dt.with_timezone(&Local))
-                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", s, e))
+                .map_err(|e| anyhow::anyhow!("Invalid --scheduled-at '{}': {}", s, e))
         })
         .transpose()?;
 
@@ -70,7 +71,7 @@ pub fn add_action(
         return Ok(());
     }
 
-    let mut list = action_files::read_actions(&actions_path).map_err(|e| e.to_string())?;
+    let mut list = action_files::read_actions(&actions_path)?;
     list.push(action.clone());
     super::save_file(&actions_path, &list)?;
 
@@ -84,7 +85,7 @@ fn resolve_acts_file(
     ctx: &CommandContext,
     charter: &Option<String>,
     file: &Option<PathBuf>,
-) -> Result<PathBuf, String> {
+) -> anyhow::Result<PathBuf> {
     if let Some(path) = file {
         return Ok(path.clone());
     }
@@ -93,11 +94,11 @@ fn resolve_acts_file(
         let rel = mc
             .actions_file
             .as_ref()
-            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
+            .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no associated actions file", mc.title))?;
         let root = clearhead_core::charter_root(&ws_root);
         return Ok(root.join(rel));
     }
-    Err("Specify --charter <name> or --file <path> to target a charter's actions file".to_string())
+    anyhow::bail!("Specify --charter <name> or --file <path> to target a charter's actions file")
 }
 
 /// Expand ICS schedule VEVENTs into actions in the charter's `.actions` and
@@ -106,7 +107,7 @@ pub fn expand_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     use clearhead_core::workspace::calendar::ics::parse_ics_file;
     use clearhead_core::{ExpansionConfig, upcoming_actions_path};
 
@@ -119,13 +120,13 @@ pub fn expand_actions(
     };
 
     let all_entries = ctx.collect_plan_files()
-        .map_err(|e| format!("Failed to discover ICS files: {}", e))?;
+        .context("Failed to discover ICS files")?;
 
     let entries: Vec<_> = if let Some(actions_path) = file {
         let relative = actions_path
             .strip_prefix(&data_root)
             .unwrap_or(actions_path.as_path());
-        let charter_name = clearhead_core::infer_charter_name(relative).ok_or_else(|| {
+        let charter_name = clearhead_core::infer_charter_name(relative).with_context(|| {
             format!(
                 "Cannot infer charter name from '{}'",
                 actions_path.display()
@@ -187,7 +188,7 @@ pub fn expand_actions(
         for entry in &charter_entries {
             match parse_ics_file(&entry.path) {
                 Ok(plans) => all_plans.extend(plans.into_iter().map(|ip| ip.plan)),
-                Err(e) => return Err(format!("Failed to parse {}: {}", entry.path.display(), e)),
+                Err(e) => anyhow::bail!("Failed to parse {}: {}", entry.path.display(), e),
             }
         }
 
@@ -265,10 +266,10 @@ pub fn expand_actions(
         for path in &parse_failures {
             eprintln!("  - {}", path.display());
         }
-        return Err(format!(
+        anyhow::bail!(
             "expand actions skipped {} file(s) due to parse errors",
             parse_failures.len()
-        ));
+        );
     }
 
     Ok(())
@@ -285,7 +286,7 @@ pub fn complete_action(
     charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Completed, "complete", "Completed")
 }
 
@@ -301,11 +302,11 @@ fn close_action_subtree(
     closing_state: ActionState,
     verb_present: &str,
     verb_past: &str,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let (actions_path, mut open_actions) = find_and_load_open_actions(ctx, file, charter, query)?;
 
     let action_id = find_action_mut(&mut open_actions, query)
-        .ok_or_else(|| format!("No open action found matching '{}'", query))?
+        .ok_or_else(|| anyhow::anyhow!("No open action found matching '{}'", query))?
         .id;
 
     let subtree_ids = clearhead_core::collect_subtree_ids(&open_actions, action_id);
@@ -327,9 +328,9 @@ fn close_action_subtree(
     super::save_file(&actions_path, &open_actions)?;
 
     let completed_path = action_files::completed_actions_path(&actions_path);
-    let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
+    let mut closed = action_files::read_actions(&completed_path)?;
     closed.append(&mut to_close);
-    action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
+    action_files::write_actions(&closed, &completed_path)?;
 
     info!(%action_id, children = subtree_ids.len() - 1, "Action subtree {}", verb_past.to_lowercase());
     println!("{} action {} (+{} children)", verb_past, action_id, subtree_ids.len() - 1);
@@ -349,7 +350,7 @@ pub fn update_action(
     charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let (actions_path, mut open_actions) = find_and_load_open_actions(ctx, file, charter, query)?;
 
     let new_scheduled = scheduled_at
@@ -357,13 +358,13 @@ pub fn update_action(
         .map(|s| {
             chrono::DateTime::parse_from_rfc3339(s)
                 .map(|dt| dt.with_timezone(&Local))
-                .map_err(|e| format!("Invalid --scheduled-at '{}': {}", s, e))
+                .map_err(|e| anyhow::anyhow!("Invalid --scheduled-at '{}': {}", s, e))
         })
         .transpose()?;
 
     let action_id = {
         let action = find_action_mut(&mut open_actions, query)
-            .ok_or_else(|| format!("No open action found matching '{}'", query))?;
+            .ok_or_else(|| anyhow::anyhow!("No open action found matching '{}'", query))?;
         let id = action.id;
         if !dry_run {
             clearhead_cli::mutations::apply_updates(action, clearhead_cli::mutations::ActionUpdate {
@@ -397,7 +398,7 @@ pub fn delete_action(
     charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     // Try open actions first, then completed.
     let action_files: Vec<PathBuf> = if let Some(path) = file {
         vec![path.clone()]
@@ -406,20 +407,20 @@ pub fn delete_action(
         let rel = mc
             .actions_file
             .as_ref()
-            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
+            .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no associated actions file", mc.title))?;
         vec![clearhead_core::charter_root(&ws_root).join(rel)]
     } else {
         let mut all = Vec::new();
         for (_, ws_dir) in ctx.workspace_dirs() {
             let files = clearhead_core::list_action_files(&ws_dir)
-                .map_err(|e| format!("Failed to list workspace '{}': {}", ws_dir.display(), e))?;
+                .with_context(|| format!("Failed to list workspace '{}'", ws_dir.display()))?;
             all.extend(files);
         }
         all
     };
 
     for actions_path in &action_files {
-        let mut open = action_files::read_actions(actions_path).map_err(|e| e.to_string())?;
+        let mut open = action_files::read_actions(actions_path)?;
         if let Some(action_id) = find_best_match(&open, query, |_| true).map(|a| a.id) {
             let subtree_ids = clearhead_core::collect_subtree_ids(&open, action_id);
             if dry_run {
@@ -439,7 +440,7 @@ pub fn delete_action(
 
         // Check completed file — single action only (no tree context in closed file)
         let completed_path = action_files::completed_actions_path(actions_path);
-        let mut closed = action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
+        let mut closed = action_files::read_actions(&completed_path)?;
         if let Some(pos) = find_best_match_pos(&closed, query, |_| true) {
             let action_id = closed[pos].id;
             if dry_run {
@@ -447,14 +448,14 @@ pub fn delete_action(
                 return Ok(());
             }
             closed.remove(pos);
-            action_files::write_actions(&closed, &completed_path).map_err(|e| e.to_string())?;
+            action_files::write_actions(&closed, &completed_path)?;
             info!(%action_id, "Action deleted from completed");
             println!("Deleted action {}", &action_id.to_string()[..8]);
             return Ok(());
         }
     }
 
-    Err(format!("No action found matching '{}'", query))
+    anyhow::bail!("No action found matching '{}'", query)
 }
 
 /// Cancel an open action and all its descendants (moves to `.completed.actions` with Cancelled state).
@@ -464,7 +465,7 @@ pub fn cancel_action(
     charter: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Cancelled, "cancel", "Cancelled")
 }
 
@@ -482,13 +483,13 @@ pub fn read_actions_cmd(
     open_only: bool,
     states: &[crate::argparser::ActionStateArg],
     file: &Option<PathBuf>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let charter_acts_file: Option<PathBuf> = if let Some(query) = charter_filter {
         let (mc, ws_root) = resolve_charter_across_workspaces(ctx, query)?;
         let rel = mc
             .actions_file
             .as_ref()
-            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
+            .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no associated actions file", mc.title))?;
         let root = clearhead_core::charter_root(&ws_root);
         Some(root.join(rel))
     } else {
@@ -536,7 +537,7 @@ pub fn read_actions_cmd(
             // must narrow JSON-LD output just as they narrow the table and tree.
             let model = filtered_primary_model(ctx, charter_filter, &action_filter)?;
             let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(&model)
-                .map_err(|e| format!("Failed to serialize JSON-LD: {}", e))?;
+                .context("Failed to serialize JSON-LD")?;
             println!("{}", jsonld);
         }
         Some(crate::argparser::OutputMode::Ids) => {
@@ -551,7 +552,7 @@ pub fn read_actions_cmd(
                 let actions: Vec<&Action> = filtered.iter().map(|(_, a)| *a).collect();
                 let list: clearhead_core::ActionList = actions.into_iter().cloned().collect();
                 let text = clearhead_core::format(&list, clearhead_core::OutputFormat::Actions, None, None)
-                    .map_err(|e| format!("Failed to format actions: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to format actions: {}", e))?;
                 print!("{}", text);
             } else {
                 // TTY: always render the domain hierarchy tree, filtered if needed.
@@ -591,11 +592,11 @@ fn filtered_primary_model(
     ctx: &CommandContext,
     charter_filter: Option<&str>,
     action_filter: &clearhead_core::ActionFilter,
-) -> Result<clearhead_core::DomainModel, String> {
+) -> anyhow::Result<clearhead_core::DomainModel> {
     let primary = ctx.load_model()?;
     let mut model = if let Some(query) = charter_filter {
         let charter = super::charter::resolve_charter(&primary.charters, query)
-            .ok_or_else(|| format!("No charter found matching '{}'", query))?
+            .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", query))?
             .clone();
         clearhead_core::DomainModel { objectives: vec![], charters: vec![charter] }
     } else {
@@ -614,7 +615,7 @@ fn filtered_primary_model(
 fn collect_workspace_actions(
     ctx: &CommandContext,
     open_only: bool,
-) -> Result<Vec<(Option<String>, Action)>, String> {
+) -> anyhow::Result<Vec<(Option<String>, Action)>> {
     let multi_ws = ctx.workspace_dirs().len() > 1;
     let mut result = Vec::new();
 
@@ -624,7 +625,7 @@ fn collect_workspace_actions(
 
         let charters = match clearhead_core::load_workspace(&ws_path) {
             Ok(c) => c,
-            Err(e) if is_primary => return Err(e.to_string()),
+            Err(e) if is_primary => return Err(e.into()),
             Err(e) => { warn!("Skipping workspace '{}': {}", ws_path.display(), e); continue; }
         };
         let charter_root = clearhead_core::charter_root(&ws_path);
@@ -648,7 +649,7 @@ fn collect_workspace_actions(
 }
 
 /// Show details for one action from open and completed action stores.
-pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> Result<(), String> {
+pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) -> anyhow::Result<()> {
     let actions: Vec<Action> = if file.is_none() && !ctx.workspace_config().additional_workspaces.is_empty() {
         collect_workspace_actions(ctx, false)?.into_iter().map(|(_, a)| a).collect()
     } else {
@@ -656,7 +657,7 @@ pub fn show_action(ctx: &CommandContext, query: &str, file: &Option<PathBuf>) ->
     };
 
     let action = find_best_match(&actions, query, |_| true)
-        .ok_or_else(|| format!("No action found matching '{}'", query))?;
+        .ok_or_else(|| anyhow::anyhow!("No action found matching '{}'", query))?;
 
     println!("{}", crate::display::render_action_detail(action));
     Ok(())
@@ -672,26 +673,26 @@ pub fn archive_actions(
     scope: &Option<String>,
     file: &Option<PathBuf>,
     dry_run: bool,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let charter_paths: Vec<PathBuf> = if let Some(f) = file {
         vec![f.clone()]
     } else if let Some(s) = scope {
         use crate::commands::resolver::{ResolvedScope, resolve_domain_ref};
         match resolve_domain_ref(ctx, s)? {
             ResolvedScope::Charter { file_path }
-            | ResolvedScope::Plan { file_path, .. }
-            | ResolvedScope::Action { file_path, .. } => vec![file_path],
+            | ResolvedScope::Plan { file_path }
+            | ResolvedScope::Action { file_path } => vec![file_path],
         }
     } else {
         clearhead_core::list_action_files(&ctx.data_dir)
-            .map_err(|e| format!("Failed to list workspace: {}", e))?
+            .context("Failed to list workspace")?
     };
 
     let mut total_archived = 0usize;
     let mut charters_touched = 0usize;
 
     for actions_path in &charter_paths {
-        let open_actions = action_files::read_actions(actions_path).map_err(|e| e.to_string())?;
+        let open_actions = action_files::read_actions(actions_path)?;
 
         let (to_close, to_keep): (Vec<Action>, Vec<Action>) = open_actions
             .into_iter()
@@ -712,10 +713,10 @@ pub fn archive_actions(
 
             let completed_path = action_files::completed_actions_path(actions_path);
             let mut existing_closed =
-                action_files::read_actions(&completed_path).map_err(|e| e.to_string())?;
+                action_files::read_actions(&completed_path)?;
             // Clear parent_id — the completed file is a flat list with no parent context.
             existing_closed.extend(to_close.iter().cloned().map(|mut a| { a.parent_id = None; a }));
-            action_files::write_actions(&existing_closed, &completed_path).map_err(|e| e.to_string())?;
+            action_files::write_actions(&existing_closed, &completed_path)?;
 
             info!(
                 count = to_close.len(),
@@ -754,7 +755,7 @@ fn find_and_load_open_actions(
     file: &Option<PathBuf>,
     charter: &Option<String>,
     query: &str,
-) -> Result<(PathBuf, ActionList), String> {
+) -> anyhow::Result<(PathBuf, ActionList)> {
     if let Some(path) = file {
         let actions = super::load_file_for_mutation(path, "action lifecycle")?;
         return Ok((path.clone(), actions));
@@ -764,7 +765,7 @@ fn find_and_load_open_actions(
         let rel = mc
             .actions_file
             .as_ref()
-            .ok_or_else(|| format!("Charter '{}' has no associated actions file", mc.title))?;
+            .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no associated actions file", mc.title))?;
         let path = clearhead_core::charter_root(&ws_root).join(rel);
         let actions = super::load_file_for_mutation(&path, "action lifecycle")?;
         return Ok((path, actions));
@@ -773,12 +774,12 @@ fn find_and_load_open_actions(
 }
 
 /// Scan `.actions` files in the workspace for one containing an action matching `query`.
-fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, ActionList), String> {
+fn find_act_in_open_files(data_dir: &Path, query: &str) -> anyhow::Result<(PathBuf, ActionList)> {
     let action_files = clearhead_core::list_action_files(data_dir)
-        .map_err(|e| format!("Failed to list workspace: {}", e))?;
+        .context("Failed to list workspace")?;
 
     for actions_path in action_files {
-        let action_list = action_files::read_actions(&actions_path).map_err(|e| e.to_string())?;
+        let action_list = action_files::read_actions(&actions_path)?;
         if action_list
             .iter()
             .any(|a| is_open_action(a) && action_matches(a, query))
@@ -787,7 +788,7 @@ fn find_act_in_open_files(data_dir: &Path, query: &str) -> Result<(PathBuf, Acti
         }
     }
 
-    Err(format!("No open action found matching '{}'", query))
+    anyhow::bail!("No open action found matching '{}'", query)
 }
 
 /// For each action in `actions`, if its plan has a template, replace it with the instantiated
@@ -972,19 +973,19 @@ pub(super) fn resolve_markdown_charter<'a>(
 pub(super) fn resolve_charter_across_workspaces(
     ctx: &CommandContext,
     query: &str,
-) -> Result<(clearhead_core::MarkdownCharter, PathBuf), String> {
+) -> anyhow::Result<(clearhead_core::MarkdownCharter, PathBuf)> {
     for (_, ws_root) in ctx.workspace_dirs() {
         let is_primary = ws_root == ctx.data_dir;
         let mcs = match clearhead_core::load_workspace(&ws_root) {
             Ok(m) => m,
-            Err(e) if is_primary => return Err(e.to_string()),
+            Err(e) if is_primary => return Err(e.into()),
             Err(e) => { warn!("Skipping workspace '{}': {}", ws_root.display(), e); continue; }
         };
         if let Some(mc) = resolve_markdown_charter(&mcs, query) {
             return Ok((mc.clone(), ws_root));
         }
     }
-    Err(format!("No charter found matching '{}'", query))
+    anyhow::bail!("No charter found matching '{}'", query)
 }
 
 /// True if `actions_file` (relative to the charter root) resolves to the same
@@ -1006,9 +1007,9 @@ fn collect_all_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     open_only: bool,
-) -> Result<Vec<Action>, String> {
+) -> anyhow::Result<Vec<Action>> {
     let charter_root = clearhead_core::charter_root(&ctx.data_dir);
-    let charters = clearhead_core::load_workspace(&ctx.data_dir).map_err(|e| e.to_string())?;
+    let charters = clearhead_core::load_workspace(&ctx.data_dir)?;
 
     let matches = |mc: &clearhead_core::MarkdownCharter| match (file, &mc.actions_file) {
         (Some(target), Some(actions_file)) => same_actions_file(&charter_root, actions_file, target),
@@ -1028,7 +1029,7 @@ fn collect_all_actions(
         for mc in &matching {
             let Some(actions_file) = &mc.actions_file else { continue };
             let completed_path = action_files::completed_actions_path(&charter_root.join(actions_file));
-            result.extend(action_files::read_actions(&completed_path).map_err(|e| e.to_string())?);
+            result.extend(action_files::read_actions(&completed_path)?);
         }
     }
     Ok(result)

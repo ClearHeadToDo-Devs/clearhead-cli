@@ -4,17 +4,18 @@
 //! or 2 (violations) so CI and hooks can gate on it. Never fixes anything:
 //! cleanup belongs to the commands that own each file surface (Decision 34).
 
+use anyhow::Context;
 use crate::commands::CommandContext;
 use clearhead_core::workspace::{Diagnosis, FindingSeverity, diagnose};
 
-pub fn run(ctx: &CommandContext, json: bool) -> Result<(), String> {
+pub fn run(ctx: &CommandContext, json: bool) -> anyhow::Result<()> {
     let diagnosis = diagnose(&ctx.data_dir, ctx.plan_override().as_deref())
-        .map_err(|e| format!("doctor: {e}"))?;
+        .context("doctor")?;
 
     if json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&diagnosis).map_err(|e| e.to_string())?
+            serde_json::to_string_pretty(&diagnosis)?
         );
     } else {
         print_report(&diagnosis);

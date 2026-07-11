@@ -1,3 +1,4 @@
+use anyhow::Context;
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
 use std::io::IsTerminal;
@@ -59,7 +60,7 @@ pub fn query_workspace(
     sparql: Option<&str>,
     where_clause: Option<&str>,
     format: Option<QueryFormat>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let full_query = match (sparql, where_clause) {
         (Some(q), None) => q.to_string(),
         (None, Some(w)) => {
@@ -67,17 +68,17 @@ pub fn query_workspace(
             clearhead_core::graph::build_raw_where_query(w)
         }
         (None, None) => {
-            return Err("Provide a SPARQL query or --where clause.\n\
-             Usage: clearhead query \"SELECT ?name WHERE { ... }\"\n\
-             Usage: clearhead query --where \"?s rdfs:label ?name\""
-                .to_string());
+            anyhow::bail!("Provide a SPARQL query or --where clause.\n\
+             Usage: clearhead query \"SELECT ?name WHERE {{ ... }}\"\n\
+             Usage: clearhead query --where \"?s rdfs:label ?name\"");
         }
-        (Some(_), Some(_)) => return Err("Cannot combine positional query and --where".to_string()),
+        (Some(_), Some(_)) => anyhow::bail!("Cannot combine positional query and --where"),
     };
 
     let wc = ctx.workspace_config();
     let rows =
-        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None), Some(&wc))?;
+        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None), Some(&wc))
+            .map_err(|e| anyhow::anyhow!(e))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -224,10 +225,10 @@ pub fn run_named_query(
     name: &str,
     status: Option<&str>,
     format: Option<QueryFormat>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let queries = resolve_named_queries(ctx);
     let named = queries.get(name).ok_or_else(|| {
-        format!(
+        anyhow::anyhow!(
             "No query named '{}'. Use `clearhead query list` to see available.",
             name
         )
@@ -238,7 +239,8 @@ pub fn run_named_query(
         &ctx.data_dir,
         &inject_params(&named.sparql, status),
         Some(&wc),
-    )?;
+    )
+    .map_err(|e| anyhow::anyhow!(e))?;
 
     if rows.is_empty() {
         println!("(no results)");
@@ -296,7 +298,7 @@ pub fn run_index_query(
     ctx: &CommandContext,
     name: Option<&str>,
     format: Option<QueryFormat>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let name = name.unwrap_or("default");
     // Most-local wins: a project or user file shadows the built-in of the
     // same name — "the query is the wisdom: transparent, inspectable,
@@ -311,7 +313,7 @@ pub fn run_index_query(
                 .map(|(_, s)| s.to_string())
         })
         .ok_or_else(|| {
-            format!(
+            anyhow::anyhow!(
                 "No index query named '{}'. Save a .sparql file to \
                  <config>/queries/index/ or <workspace>/.clearhead/queries/index/",
                 name
@@ -323,19 +325,20 @@ pub fn run_index_query(
         &ctx.data_dir,
         &inject_params(&sparql, None),
         Some(&wc),
-    )?;
+    )
+    .map_err(|e| anyhow::anyhow!(e))?;
 
     match format.unwrap_or(QueryFormat::Json) {
         QueryFormat::Json => {
-            let doc = clearhead_core::graph::frame_index(&rows).map_err(|e| e.to_string())?;
+            let doc = clearhead_core::graph::frame_index(&rows)?;
             let json = serde_json::to_string_pretty(&doc)
-                .map_err(|e| format!("Failed to serialize: {}", e))?;
+                .context("Failed to serialize")?;
             println!("{}", json);
             Ok(())
         }
         QueryFormat::Table => {
             // Human view — rendered from raw rows; still contract-checked.
-            clearhead_core::graph::frame_index(&rows).map_err(|e| e.to_string())?;
+            clearhead_core::graph::frame_index(&rows)?;
             if rows.is_empty() {
                 println!("(no results)");
                 return Ok(());
@@ -345,7 +348,7 @@ pub fn run_index_query(
     }
 }
 
-pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
+pub fn list_named_queries(ctx: &CommandContext) -> anyhow::Result<()> {
     use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
     let mut table = Table::new();
@@ -390,7 +393,7 @@ pub fn list_named_queries(ctx: &CommandContext) -> Result<(), String> {
 /// Print a query's SPARQL to stdout, raw and pipeable:
 /// `clearhead query show agenda > ~/.config/clearhead/queries/index/agenda.sparql`
 /// is the sanctioned copy-and-tweak override workflow.
-pub fn show_named_query(ctx: &CommandContext, name: &str) -> Result<(), String> {
+pub fn show_named_query(ctx: &CommandContext, name: &str) -> anyhow::Result<()> {
     // Same resolution order the runners use: typed (project > user), then
     // built-in index, then freeform named (project > user > built-in).
     let sparql = resolve_typed_queries(ctx, "index")
@@ -404,7 +407,7 @@ pub fn show_named_query(ctx: &CommandContext, name: &str) -> Result<(), String> 
         })
         .or_else(|| resolve_named_queries(ctx).remove(name).map(|q| q.sparql))
         .ok_or_else(|| {
-            format!("No query named '{}'. Use `clearhead query list` to see available.", name)
+            anyhow::anyhow!("No query named '{}'. Use `clearhead query list` to see available.", name)
         })?;
     print!("{}", sparql);
     Ok(())
@@ -465,14 +468,13 @@ mod tests {
     }
 }
 
-fn format_as_json(rows: &[HashMap<String, String>]) -> Result<(), String> {
-    let json =
-        serde_json::to_string_pretty(rows).map_err(|e| format!("Failed to serialize: {}", e))?;
+fn format_as_json(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
+    let json = serde_json::to_string_pretty(rows).context("Failed to serialize")?;
     println!("{}", json);
     Ok(())
 }
 
-fn format_as_table(rows: &[HashMap<String, String>]) -> Result<(), String> {
+fn format_as_table(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
     use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
     use std::collections::BTreeSet;
 

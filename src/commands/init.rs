@@ -1,3 +1,4 @@
+use anyhow::Context;
 use serde_json::json;
 use std::fs;
 
@@ -12,18 +13,18 @@ const CONFIG_SCHEMA_URL: &str = "https://raw.githubusercontent.com/ClearHeadToDo
 /// Creates `.clearhead/config.json` with a stable workspace UUID and a name
 /// derived from the current directory. Creates `.clearhead/charters/` if
 /// absent. Idempotent — safe to rerun; does not overwrite an existing config.
-pub fn run() -> Result<(), String> {
+pub fn run() -> anyhow::Result<()> {
     let cwd = std::env::current_dir()
-        .map_err(|e| format!("Cannot determine current directory: {}", e))?;
+        .context("Cannot determine current directory")?;
 
     let clearhead_dir = cwd.join(".clearhead");
     let config_path = clearhead_dir.join("config.json");
     let charters_dir = clearhead_dir.join("charters");
 
     fs::create_dir_all(&clearhead_dir)
-        .map_err(|e| format!("Failed to create .clearhead/: {}", e))?;
+        .context("Failed to create .clearhead/")?;
     fs::create_dir_all(&charters_dir)
-        .map_err(|e| format!("Failed to create .clearhead/charters/: {}", e))?;
+        .context("Failed to create .clearhead/charters/")?;
 
     // Keep config.local.json — the git-ignored personal override — out of version
     // control. A scoped .clearhead/.gitignore owns this rule so we don't touch the
@@ -32,7 +33,7 @@ pub fn run() -> Result<(), String> {
     let gitignore_path = clearhead_dir.join(".gitignore");
     if !gitignore_path.exists() {
         fs::write(&gitignore_path, "config.local.json\n")
-            .map_err(|e| format!("Failed to write .clearhead/.gitignore: {}", e))?;
+            .context("Failed to write .clearhead/.gitignore")?;
     }
 
     if config_path.exists() {
@@ -61,10 +62,10 @@ pub fn run() -> Result<(), String> {
     });
 
     let json_str = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+        .context("Failed to serialize config")?;
 
     fs::write(&config_path, json_str)
-        .map_err(|e| format!("Failed to write config.json: {}", e))?;
+        .context("Failed to write config.json")?;
 
     println!(
         "Initialized workspace '{}' ({})",
