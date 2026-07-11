@@ -1,6 +1,12 @@
 use serde_json::json;
 use std::fs;
 
+/// The published contract for `.clearhead/config.json`. Stamped on every
+/// workspace this command initializes so the file is self-describing and
+/// editors validate on write — see `charter_metadata`'s matching pointer in
+/// clearhead-core for the sidecar half of this convention.
+const CONFIG_SCHEMA_URL: &str = "https://raw.githubusercontent.com/ClearHeadToDo-Devs/specifications/master/schemas/config.schema.json";
+
 /// Initialize a clearhead workspace in the current directory.
 ///
 /// Creates `.clearhead/config.json` with a stable workspace UUID and a name
@@ -48,6 +54,7 @@ pub fn run() -> Result<(), String> {
     let created_at = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     let config = json!({
+        "$schema": CONFIG_SCHEMA_URL,
         "workspace_id": workspace_id,
         "workspace_name": workspace_name,
         "created_at": created_at,

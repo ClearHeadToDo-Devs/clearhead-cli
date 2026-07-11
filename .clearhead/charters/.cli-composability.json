@@ -1,5 +1,6 @@
 {
-  "acts": {
+  "$schema": "https://raw.githubusercontent.com/ClearHeadToDo-Devs/specifications/master/schemas/charter_metadata.schema.json",
+  "actions": {
     "019e579b-d5e5-7053-a574-ff658facfedb": {
       "created": "2026-05-23T18:31:31.173749563-07:00"
     },
