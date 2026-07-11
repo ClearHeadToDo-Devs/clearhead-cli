@@ -326,12 +326,14 @@ pub fn add_charter(
     }
 
     let content = clearhead_core::format_charter(&charter);
-    std::fs::write(&file_path, content).map_err(|e| format!("Failed to write charter: {}", e))?;
+    clearhead_core::workspace::durability::atomic_write(&file_path, content)
+        .map_err(|e| format!("Failed to write charter: {}", e))?;
 
     // Always create the companion .actions file so the charter is immediately usable.
     let actions_path = target_dir.join(format!("{}.actions", filename));
     if !actions_path.exists() {
-        std::fs::write(&actions_path, "").map_err(|e| format!("Failed to create actions file: {}", e))?;
+        clearhead_core::workspace::durability::atomic_write(&actions_path, "")
+            .map_err(|e| format!("Failed to create actions file: {}", e))?;
     }
 
     // Record the charter's identity in the sidecar so it self-identifies in the
@@ -485,7 +487,7 @@ pub fn update_charter(
         return Ok(());
     }
 
-    std::fs::write(&md_path, &formatted)
+    clearhead_core::workspace::durability::atomic_write(&md_path, &formatted)
         .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
 
     info!(charter = %updated.title, path = %md_path.display(), state = ?updated.state, "Charter updated");
@@ -556,7 +558,7 @@ pub fn close_charter(
         return Ok(());
     }
 
-    std::fs::write(&md_path, &formatted)
+    clearhead_core::workspace::durability::atomic_write(&md_path, &formatted)
         .map_err(|e| format!("Failed to write '{}': {}", md_path.display(), e))?;
 
     info!(charter = %updated.title, path = %md_path.display(), created = is_new, "Charter closed");

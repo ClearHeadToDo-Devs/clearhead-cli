@@ -347,11 +347,11 @@ fn charter_stem_from_source(source: &Path) -> Result<String, String> {
 }
 
 fn save_plan_file(path: &Path, plan: &clearhead_core::Plan) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
-    }
-    fs::write(path, format_plans_as_ics(std::slice::from_ref(plan)))
-        .map_err(|e| format!("Failed to write plan file '{}': {}", path.display(), e))
+    clearhead_core::workspace::durability::atomic_write(
+        path,
+        format_plans_as_ics(std::slice::from_ref(plan)),
+    )
+    .map_err(|e| format!("Failed to write plan file '{}': {}", path.display(), e))
 }
 
 fn format_plans_as_ics(plans: &[clearhead_core::Plan]) -> String {
