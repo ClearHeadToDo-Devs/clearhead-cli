@@ -1,13 +1,12 @@
 ---
 source: tests/linting_conformance.rs
-assertion_line: 103
 expression: diagnostics
 ---
 [
     LintDiagnostic {
         code: "I002",
         severity: Info,
-        message: "Action has a completion date but is not marked as completed (I002).",
+        message: "Action has a completion date but is not marked as closed (completed/cancelled) (I002).",
         range: SourceRange {
             start_row: 1,
             start_col: 30,
@@ -29,7 +28,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I002",
         severity: Info,
-        message: "Action has a completion date but is not marked as completed (I002).",
+        message: "Action has a completion date but is not marked as closed (completed/cancelled) (I002).",
         range: SourceRange {
             start_row: 2,
             start_col: 38,
@@ -51,7 +50,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I002",
         severity: Info,
-        message: "Action has a completion date but is not marked as completed (I002).",
+        message: "Action has a completion date but is not marked as closed (completed/cancelled) (I002).",
         range: SourceRange {
             start_row: 3,
             start_col: 17,

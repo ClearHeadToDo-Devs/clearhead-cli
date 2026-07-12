@@ -6,7 +6,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "W002",
         severity: Warning,
-        message: "Parent is completed but some children are still active (W002).",
+        message: "Parent is closed but some children are still active (W002).",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -17,7 +17,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "W002",
         severity: Warning,
-        message: "Parent is completed but some children are still active (W002).",
+        message: "Parent is closed but some children are still active (W002).",
         range: SourceRange {
             start_row: 5,
             start_col: 0,
@@ -28,7 +28,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I001",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Closed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -72,7 +72,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I001",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Closed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 5,
             start_col: 0,
@@ -105,7 +105,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I001",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Closed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 7,
             start_col: 0,

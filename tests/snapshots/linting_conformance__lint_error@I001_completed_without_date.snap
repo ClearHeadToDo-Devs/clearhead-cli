@@ -17,7 +17,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I001",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Closed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -39,7 +39,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I001",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Closed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 2,
             start_col: 0,
@@ -50,7 +50,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I001",
         severity: Info,
-        message: "Completed action is missing a completion date (I001).",
+        message: "Closed action is missing a completion date (I001).",
         range: SourceRange {
             start_row: 3,
             start_col: 0,
