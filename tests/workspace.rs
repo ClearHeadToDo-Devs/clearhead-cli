@@ -139,3 +139,36 @@ fn test_read_empty_workspace() {
     let env = TestEnv::new();
     env.command().arg("read").arg("plans").assert().success();
 }
+
+#[test]
+fn action_verbs_resolve_across_additional_workspaces() {
+    let env = TestEnv::new();
+
+    // Project at pwd whose config links a sibling workspace (workspace.md).
+    let project_ch = env.work_dir.join(".clearhead");
+    fs::create_dir_all(project_ch.join("charters")).expect("create project charters");
+    fs::write(
+        project_ch.join("config.json"),
+        r#"{"workspace_name":"primary","additional_workspaces":["../../other"]}"#,
+    )
+    .expect("write project config");
+
+    // The target lives in a non-default actions file of the sibling workspace.
+    let other_ch = env._temp_dir.path().join("other/.clearhead/charters");
+    fs::create_dir_all(&other_ch).expect("create sibling charters");
+    fs::write(
+        other_ch.join("lsp.actions"),
+        "[ ] sibling task #019e0000-0000-7000-0000-000000000003\n",
+    )
+    .expect("write sibling actions");
+
+    // Bare uuid-prefix resolution must reach the sibling workspace without -f.
+    env.command()
+        .args(["update", "action", "019e0000", "-p", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("updated"));
+
+    let updated = fs::read_to_string(other_ch.join("lsp.actions")).expect("read back");
+    assert!(updated.contains("!1"), "priority written to sibling file: {updated}");
+}

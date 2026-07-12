@@ -726,14 +726,28 @@ fn emit_diff_telemetry(diff: &Diff, current: &ParsedDocument, file_path: &str) {
 ///
 /// Handles full UUIDs, short UUID prefixes, alias names, and path notation.
 /// Returns `None` when the reference cannot be resolved or the workspace is unavailable.
+/// Read and parse every action file in the workspace, skipping files that
+/// fail to read or parse.
+fn parsed_action_files(
+    workspace_root: &std::path::Path,
+) -> impl Iterator<Item = (std::path::PathBuf, clearhead_core::ParsedDocument)> {
+    use clearhead_core::{list_action_files, parse_document};
+
+    list_action_files(workspace_root)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|path| {
+            let content = std::fs::read_to_string(&path).ok()?;
+            let parsed = parse_document(&content).ok()?;
+            Some((path, parsed))
+        })
+}
+
 fn find_definition_in_workspace(
     workspace_root: &std::path::Path,
     ref_text: &str,
 ) -> Option<(std::path::PathBuf, tower_lsp_server::ls_types::Range)> {
-    use clearhead_core::{
-        ReferenceOptions, ReferenceTarget, list_action_files, load_domain_model,
-        parse_document, resolve_reference,
-    };
+    use clearhead_core::{ReferenceOptions, ReferenceTarget, load_domain_model, resolve_reference};
 
     let model = load_domain_model(workspace_root).ok()?;
     let opts = ReferenceOptions::default();
@@ -743,17 +757,10 @@ fn find_definition_in_workspace(
         ReferenceTarget::Action(id) | ReferenceTarget::Charter(id) | ReferenceTarget::Plan(id) => id,
     };
 
-    // Walk all action files to find which one defines this UUID
-    let action_files = list_action_files(&workspace_root).ok()?;
-    for file_path in action_files {
-        let content = std::fs::read_to_string(&file_path).ok()?;
-        let parsed = parse_document(&content).ok()?;
-        if let Some(meta) = parsed.source_map.get(&target_uuid) {
-            return Some((file_path, source_range_to_lsp_range(meta.root)));
-        }
-    }
-
-    None
+    parsed_action_files(workspace_root).find_map(|(file_path, parsed)| {
+        let meta = parsed.source_map.get(&target_uuid)?;
+        Some((file_path, source_range_to_lsp_range(meta.root)))
+    })
 }
 
 /// Find all locations in the workspace that reference a given UUID as a predecessor.
@@ -763,23 +770,12 @@ fn find_references_in_workspace(
     workspace_root: &std::path::Path,
     ref_text: &str,
 ) -> Option<Vec<tower_lsp_server::ls_types::Location>> {
-    use clearhead_core::{list_action_files, parse_document};
-
     let target_uuid = uuid::Uuid::parse_str(ref_text).ok();
 
-    let action_files = list_action_files(workspace_root).ok()?;
     let mut locations = Vec::new();
 
-    for file_path in &action_files {
-        let content = match std::fs::read_to_string(file_path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let parsed = match parse_document(&content) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-        let file_uri = match Uri::from_file_path(file_path) {
+    for (file_path, parsed) in parsed_action_files(workspace_root) {
+        let file_uri = match Uri::from_file_path(&file_path) {
             Some(u) => u,
             None => continue,
         };

@@ -786,7 +786,17 @@ fn find_and_load_open_actions(
         let actions = super::load_file_for_mutation(&path, "action lifecycle")?;
         return Ok(Some((path, actions)));
     }
-    find_act_in_open_files(&ctx.data_dir, query)
+    // Search every workspace (respects --workspace); primary errors are hard,
+    // additional workspaces are skipped on error like all_domain_models.
+    for (_, ws_dir) in ctx.workspace_dirs() {
+        match find_act_in_open_files(&ws_dir, query) {
+            Ok(Some(found)) => return Ok(Some(found)),
+            Ok(None) => {}
+            Err(e) if ws_dir == ctx.data_dir => return Err(e),
+            Err(_) => {}
+        }
+    }
+    Ok(None)
 }
 
 /// Scan `.actions` files in the workspace for one containing an action matching
@@ -813,17 +823,19 @@ fn find_act_in_open_files(data_dir: &Path, query: &str) -> anyhow::Result<Option
 /// open file (not yet archived) or in a completed archive — either way the
 /// action is already closed; with no match anywhere it is not found.
 fn verb_target_error(ctx: &CommandContext, query: &str) -> VerbError {
-    let open_files = clearhead_core::list_action_files(&ctx.data_dir).unwrap_or_default();
-    let archives: Vec<PathBuf> =
-        open_files.iter().map(|p| action_files::completed_actions_path(p)).collect();
-    for path in open_files.iter().chain(&archives) {
-        let Ok(actions) = action_files::read_actions(path) else { continue };
-        if let Some(action) = find_best_match(&actions, query, |a| !is_open_action(a)) {
-            return VerbError::AlreadyClosed {
-                id: canonical_id(action.id),
-                state: format!("{:?}", action.state),
-                query: query.to_string(),
-            };
+    for (_, ws_dir) in ctx.workspace_dirs() {
+        let open_files = clearhead_core::list_action_files(&ws_dir).unwrap_or_default();
+        let archives: Vec<PathBuf> =
+            open_files.iter().map(|p| action_files::completed_actions_path(p)).collect();
+        for path in open_files.iter().chain(&archives) {
+            let Ok(actions) = action_files::read_actions(path) else { continue };
+            if let Some(action) = find_best_match(&actions, query, |a| !is_open_action(a)) {
+                return VerbError::AlreadyClosed {
+                    id: canonical_id(action.id),
+                    state: format!("{:?}", action.state),
+                    query: query.to_string(),
+                };
+            }
         }
     }
     VerbError::NotFound { query: query.to_string() }

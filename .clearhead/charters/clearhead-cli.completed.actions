@@ -1,0 +1,1 @@
+[x] fix workspace-wide action resolution to search all .actions files $resolution by uuid/prefix fails without -f even for the default next.actions file (bare and with --workspace both return not-found from a subdirectory cwd); only -f <path> works, so the search scope or cwd handling is broken$ !1 %2026-07-11T19:56 #019f543a-0388-7651-a388-cd3158a9c581
