@@ -38,6 +38,27 @@ pub fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
         .collect()
 }
 
+pub fn date_completion_items(now: DateTime<Local>) -> Vec<CompletionItem> {
+    let make_item = |label: String, detail: &str| CompletionItem {
+        label: label.clone(),
+        kind: Some(CompletionItemKind::VALUE),
+        detail: Some(detail.to_string()),
+        insert_text: Some(label),
+        ..Default::default()
+    };
+
+    vec![
+        make_item(now.format("%Y-%m-%dT%H:%M").to_string(), "Now"),
+        make_item(now.format("%Y-%m-%d").to_string(), "Today"),
+        make_item(
+            (now + chrono::Duration::days(1))
+                .format("%Y-%m-%d")
+                .to_string(),
+            "Tomorrow",
+        ),
+    ]
+}
+
 fn create_quick_fix(
     uri: Uri,
     pos: Position,
@@ -210,6 +231,20 @@ mod tests {
                 .all(|d| d.source == Some("clearhead-lsp".to_string()))
         );
         assert!(diagnostics.iter().all(|d| d.code.is_some()));
+    }
+
+    #[test]
+    fn test_date_completion_items() {
+        use chrono::TimeZone;
+
+        let now = Local.with_ymd_and_hms(2026, 1, 15, 10, 30, 0).unwrap();
+
+        let items = date_completion_items(now);
+        let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+        let details: Vec<_> = items.iter().filter_map(|i| i.detail.as_deref()).collect();
+
+        assert_eq!(labels, vec!["2026-01-15T10:30", "2026-01-15", "2026-01-16"]);
+        assert_eq!(details, vec!["Now", "Today", "Tomorrow"]);
     }
 
     // Unit tests for compute_code_actions

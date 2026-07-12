@@ -99,7 +99,27 @@ fn resolve_acts_file(
         let root = clearhead_core::charter_root(&ws_root);
         return Ok(root.join(rel));
     }
-    anyhow::bail!("Specify --charter <name> or --file <path> to target a charter's actions file")
+
+    let primary_charters = ctx.load_charters()?;
+    let actionable: Vec<_> = primary_charters
+        .iter()
+        .filter_map(|mc| mc.actions_file.as_ref().map(|rel| (mc, rel)))
+        .collect();
+
+    if actionable.len() == 1 {
+        let (_mc, rel) = actionable[0];
+        let root = clearhead_core::charter_root(&ctx.data_dir);
+        return Ok(root.join(rel));
+    }
+
+    let default_path = ctx.resolve_action_file(None);
+    if default_path.exists() {
+        return Ok(default_path);
+    }
+
+    anyhow::bail!(
+        "Specify --charter <name> or --file <path> to target a charter's actions file"
+    )
 }
 
 /// Expand ICS schedule VEVENTs into actions in the charter's `.actions` and

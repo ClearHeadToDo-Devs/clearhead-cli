@@ -129,6 +129,48 @@ fn test_json_output_validates_against_schema() {
 }
 
 #[test]
+fn test_add_action_defaults_to_only_charter() {
+    let env = TestEnv::new();
+    env.write_actions("work.actions", "[ ] Existing work\n");
+
+    env.command()
+        .arg("add").arg("action").arg("New task")
+        .assert().success()
+        .stdout(predicate::str::contains("Added action"));
+
+    let content = fs::read_to_string(env.data_dir.join("charters").join("work.actions")).unwrap();
+    assert!(content.contains("[ ] Existing work"));
+    assert!(content.contains("[ ] New task"));
+}
+
+#[test]
+fn test_add_action_defaults_to_existing_default_file() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Existing inbox\n");
+
+    env.command()
+        .arg("add").arg("action").arg("New inbox task")
+        .assert().success()
+        .stdout(predicate::str::contains("Added action"));
+
+    let content = fs::read_to_string(env.data_dir.join("charters").join("inbox.actions")).unwrap();
+    assert!(content.contains("[ ] Existing inbox"));
+    assert!(content.contains("[ ] New inbox task"));
+}
+
+#[test]
+fn test_add_action_without_target_errors_when_ambiguous() {
+    let env = TestEnv::new();
+    env.write_actions("one.actions", "[ ] One\n");
+    env.write_actions("two.actions", "[ ] Two\n");
+
+    env.command()
+        .arg("add").arg("action").arg("Ambiguous task")
+        .assert().failure()
+        .stderr(predicate::str::contains("Specify --charter <name> or --file <path>"));
+}
+
+#[test]
 fn test_complete_command() {
     let env = TestEnv::new();
     let uuid = "019baaec-00b6-7991-be34-94b68212619a";

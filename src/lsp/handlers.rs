@@ -634,27 +634,6 @@ fn internal_error(msg: impl std::fmt::Display) -> Error {
     }
 }
 
-fn date_completion_items(now: chrono::DateTime<Local>) -> Vec<CompletionItem> {
-    let make_item = |label: String, detail: &str| CompletionItem {
-        label: label.clone(),
-        kind: Some(CompletionItemKind::VALUE),
-        detail: Some(detail.to_string()),
-        insert_text: Some(label),
-        ..Default::default()
-    };
-
-    vec![
-        make_item(now.format("%Y-%m-%dT%H:%M").to_string(), "Now"),
-        make_item(now.format("%Y-%m-%d").to_string(), "Today"),
-        make_item(
-            (now + chrono::Duration::days(1))
-                .format("%Y-%m-%d")
-                .to_string(),
-            "Tomorrow",
-        ),
-    ]
-}
-
 fn emit_diff_telemetry(diff: &Diff, current: &ParsedDocument, file_path: &str) {
     if !diff.is_empty() {
         info!(
