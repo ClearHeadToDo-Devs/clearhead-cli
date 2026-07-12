@@ -12,6 +12,7 @@ use clearhead_core::workspace::{action_files, read_actions, templates};
 use clearhead_core::{Action, ActionList, ActionState};
 
 use super::CommandContext;
+use super::verb_result::{VerbError, VerbOutcome, canonical_id};
 
 // ============================================================================
 // expand actions — ICS schedule → .actions file
@@ -287,7 +288,7 @@ pub fn complete_action(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Completed, "complete", "Completed")
+    close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Completed, "complete")
 }
 
 /// Shared body of `complete`/`cancel`: resolve the action, close its subtree via
@@ -301,13 +302,16 @@ fn close_action_subtree(
     dry_run: bool,
     closing_state: ActionState,
     verb_present: &str,
-    verb_past: &str,
 ) -> anyhow::Result<()> {
-    let (actions_path, mut open_actions) = find_and_load_open_actions(ctx, file, charter, query)?;
+    let Some((actions_path, mut open_actions)) = find_and_load_open_actions(ctx, file, charter, query)?
+    else {
+        return Err(verb_target_error(ctx, query).into());
+    };
 
-    let action_id = find_action_mut(&mut open_actions, query)
-        .ok_or_else(|| anyhow::anyhow!("No open action found matching '{}'", query))?
-        .id;
+    let action_id = match find_action_mut(&mut open_actions, query) {
+        Some(action) => action.id,
+        None => return Err(verb_target_error(ctx, query).into()),
+    };
 
     let subtree_ids = clearhead_core::collect_subtree_ids(&open_actions, action_id);
 
@@ -332,8 +336,13 @@ fn close_action_subtree(
     closed.append(&mut to_close);
     action_files::write_actions(&closed, &completed_path)?;
 
-    info!(%action_id, children = subtree_ids.len() - 1, "Action subtree {}", verb_past.to_lowercase());
-    println!("{} action {} (+{} children)", verb_past, action_id, subtree_ids.len() - 1);
+    let children = subtree_ids.len() - 1;
+    let outcome = match closing_state {
+        ActionState::Cancelled => VerbOutcome::Cancelled { id: canonical_id(action_id), children },
+        _ => VerbOutcome::Completed { id: canonical_id(action_id), children },
+    };
+    info!(%action_id, children, "Action subtree closed ({:?})", closing_state);
+    outcome.emit();
     Ok(())
 }
 
@@ -351,7 +360,10 @@ pub fn update_action(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let (actions_path, mut open_actions) = find_and_load_open_actions(ctx, file, charter, query)?;
+    let Some((actions_path, mut open_actions)) = find_and_load_open_actions(ctx, file, charter, query)?
+    else {
+        return Err(verb_target_error(ctx, query).into());
+    };
 
     let new_scheduled = scheduled_at
         .as_deref()
@@ -363,8 +375,9 @@ pub fn update_action(
         .transpose()?;
 
     let action_id = {
-        let action = find_action_mut(&mut open_actions, query)
-            .ok_or_else(|| anyhow::anyhow!("No open action found matching '{}'", query))?;
+        let Some(action) = find_action_mut(&mut open_actions, query) else {
+            return Err(verb_target_error(ctx, query).into());
+        };
         let id = action.id;
         if !dry_run {
             clearhead_cli::mutations::apply_updates(action, clearhead_cli::mutations::ActionUpdate {
@@ -387,7 +400,7 @@ pub fn update_action(
 
     super::save_file(&actions_path, &open_actions)?;
     info!(%action_id, "Action updated");
-    println!("Updated action {}", action_id);
+    VerbOutcome::Updated { id: canonical_id(action_id) }.emit();
     Ok(())
 }
 
@@ -466,7 +479,7 @@ pub fn cancel_action(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Cancelled, "cancel", "Cancelled")
+    close_action_subtree(ctx, query, charter, file, dry_run, ActionState::Cancelled, "cancel")
 }
 
 // ============================================================================
@@ -750,15 +763,18 @@ pub fn archive_actions(
 // Private helpers
 // ============================================================================
 
+/// Locate the `.actions` file a mutation verb should operate on. `Ok(None)`
+/// means the workspace scan found no open match — the caller builds the typed
+/// target error; hard errors (io, parse, unknown charter) stay `Err`.
 fn find_and_load_open_actions(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
     charter: &Option<String>,
     query: &str,
-) -> anyhow::Result<(PathBuf, ActionList)> {
+) -> anyhow::Result<Option<(PathBuf, ActionList)>> {
     if let Some(path) = file {
         let actions = super::load_file_for_mutation(path, "action lifecycle")?;
-        return Ok((path.clone(), actions));
+        return Ok(Some((path.clone(), actions)));
     }
     if let Some(charter_query) = charter {
         let (mc, ws_root) = resolve_charter_across_workspaces(ctx, charter_query)?;
@@ -768,13 +784,14 @@ fn find_and_load_open_actions(
             .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no associated actions file", mc.title))?;
         let path = clearhead_core::charter_root(&ws_root).join(rel);
         let actions = super::load_file_for_mutation(&path, "action lifecycle")?;
-        return Ok((path, actions));
+        return Ok(Some((path, actions)));
     }
     find_act_in_open_files(&ctx.data_dir, query)
 }
 
-/// Scan `.actions` files in the workspace for one containing an action matching `query`.
-fn find_act_in_open_files(data_dir: &Path, query: &str) -> anyhow::Result<(PathBuf, ActionList)> {
+/// Scan `.actions` files in the workspace for one containing an action matching
+/// `query`. `Ok(None)` when no file has an open match.
+fn find_act_in_open_files(data_dir: &Path, query: &str) -> anyhow::Result<Option<(PathBuf, ActionList)>> {
     let action_files = clearhead_core::list_action_files(data_dir)
         .context("Failed to list workspace")?;
 
@@ -784,11 +801,32 @@ fn find_act_in_open_files(data_dir: &Path, query: &str) -> anyhow::Result<(PathB
             .iter()
             .any(|a| is_open_action(a) && action_matches(a, query))
         {
-            return Ok((actions_path, action_list));
+            return Ok(Some((actions_path, action_list)));
         }
     }
 
-    anyhow::bail!("No open action found matching '{}'", query)
+    Ok(None)
+}
+
+/// Build the typed error for a verb whose query matched nothing open
+/// (query_output.md, "Errors as data"). A closed match may still sit in an
+/// open file (not yet archived) or in a completed archive — either way the
+/// action is already closed; with no match anywhere it is not found.
+fn verb_target_error(ctx: &CommandContext, query: &str) -> VerbError {
+    let open_files = clearhead_core::list_action_files(&ctx.data_dir).unwrap_or_default();
+    let archives: Vec<PathBuf> =
+        open_files.iter().map(|p| action_files::completed_actions_path(p)).collect();
+    for path in open_files.iter().chain(&archives) {
+        let Ok(actions) = action_files::read_actions(path) else { continue };
+        if let Some(action) = find_best_match(&actions, query, |a| !is_open_action(a)) {
+            return VerbError::AlreadyClosed {
+                id: canonical_id(action.id),
+                state: format!("{:?}", action.state),
+                query: query.to_string(),
+            };
+        }
+    }
+    VerbError::NotFound { query: query.to_string() }
 }
 
 /// For each action in `actions`, if its plan has a template, replace it with the instantiated

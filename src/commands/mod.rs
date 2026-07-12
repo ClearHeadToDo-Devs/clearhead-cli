@@ -9,6 +9,7 @@ pub mod query;
 pub mod resolver;
 pub mod service;
 pub mod template;
+pub mod verb_result;
 
 use std::fs;
 use std::io::{self, Read};

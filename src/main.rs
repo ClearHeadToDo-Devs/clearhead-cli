@@ -40,6 +40,18 @@ fn main() {
     }
 
     if let Err(e) = run_command(&cli) {
+        // Verb failures are data (query_output.md, "Errors as data"): when a
+        // machine is reading stdout, emit the typed result there so a loop can
+        // branch on `kind` instead of parsing stderr prose.
+        if let Some(verb_err) = e.downcast_ref::<commands::verb_result::VerbError>()
+            && !std::io::IsTerminal::is_terminal(&io::stdout())
+        {
+            println!(
+                "{}",
+                serde_json::to_string(verb_err).expect("verb error serializes")
+            );
+            process::exit(1);
+        }
         if cli.debug > 0 {
             error!(error = ?e, "Command failed");
         } else {

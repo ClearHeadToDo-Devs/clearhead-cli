@@ -200,13 +200,27 @@ fn test_archive_actions_project_root_next_actions_uses_project_name() {
 }
 
 #[test]
-fn test_complete_command_idempotent_fail() {
+fn test_complete_command_already_closed_is_typed_data() {
+    // Verb errors are data (query_output.md): with stdout piped, an
+    // already-completed target comes back as a branchable JSON result,
+    // not stderr prose.
     let env = TestEnv::new();
     env.write_actions("inbox.actions", "[x] Already Done");
     env.command()
         .arg("complete").arg("action").arg("Already Done")
         .assert().failure()
-        .stderr(predicate::str::contains("No open action found"));
+        .stdout(predicate::str::contains(r#""kind":"already-closed""#))
+        .stdout(predicate::str::contains(r#""state":"Completed""#));
+}
+
+#[test]
+fn test_complete_command_unknown_target_is_typed_not_found() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[ ] Something else");
+    env.command()
+        .arg("complete").arg("action").arg("urn:uuid:01951111-dead-7000-8000-000000000009")
+        .assert().failure()
+        .stdout(predicate::str::contains(r#""kind":"not-found""#));
 }
 
 #[test]

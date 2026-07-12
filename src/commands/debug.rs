@@ -122,7 +122,7 @@ fn print_workspace_section(ctx: &CommandContext) -> anyhow::Result<()> {
     let plan_count: usize = read.charters.iter().map(|c| c.plans.len()).sum();
     let action_count: usize = read.charters.iter().map(|c| c.actions.len()).sum();
 
-    let diagnosis = diagnose_read(&ctx.data_dir, &read);
+    let diagnosis = diagnose_read(&ctx.data_dir, &read, &ctx.workspace_config());
     println!(
         "  graph_summary: {} charters | {} plans | {} actions | {} violations, {} warnings",
         charter_count,

@@ -9,7 +9,8 @@ use crate::commands::CommandContext;
 use clearhead_core::workspace::{Diagnosis, FindingSeverity, diagnose};
 
 pub fn run(ctx: &CommandContext, json: bool) -> anyhow::Result<()> {
-    let diagnosis = diagnose(&ctx.data_dir, ctx.plan_override().as_deref())
+    let wc = ctx.workspace_config();
+    let diagnosis = diagnose(&ctx.data_dir, ctx.plan_override().as_deref(), &wc)
         .context("doctor")?;
 
     if json {
