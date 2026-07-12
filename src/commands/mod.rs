@@ -127,7 +127,7 @@ impl CommandContext {
         let wc = self.workspace_config();
         for path_str in &wc.additional_workspaces {
             let path = PathBuf::from(path_str);
-            let name = workspace_name_from_path(&path);
+            let name = workspace_name_for_root(&path);
             dirs.push((name, path));
         }
 
@@ -253,6 +253,45 @@ pub fn workspace_name_from_path(path: &Path) -> String {
         .and_then(|n| n.to_str())
         .unwrap_or("unknown")
         .to_string()
+}
+
+/// Resolve the human-facing workspace name for a workspace root.
+///
+/// Preference order:
+/// 1. `<root>/.clearhead/config.json` → `workspace_name`
+/// 2. fallback to the directory name (`workspace_name_from_path`)
+///
+/// This keeps `--workspace` filtering aligned with the workspace's own declared
+/// identity instead of silently keying additional workspaces by their folder
+/// names only.
+pub fn workspace_name_for_root(path: &Path) -> String {
+    let config_path = path.join(".clearhead").join("config.json");
+    if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(json) => match serde_json::from_str::<serde_json::Value>(&json) {
+                Ok(v) => {
+                    if let Some(name) = v.get("workspace_name").and_then(|n| n.as_str()) {
+                        let trimmed = name.trim();
+                        if !trimmed.is_empty() {
+                            return trimmed.to_string();
+                        }
+                    }
+                }
+                Err(e) => warn!(
+                    "Failed to parse workspace config '{}': {}; falling back to directory name",
+                    config_path.display(),
+                    e
+                ),
+            },
+            Err(e) => warn!(
+                "Failed to read workspace config '{}': {}; falling back to directory name",
+                config_path.display(),
+                e
+            ),
+        }
+    }
+
+    workspace_name_from_path(path)
 }
 
 /// Load actions for read-only operations using recoverable parse mode.

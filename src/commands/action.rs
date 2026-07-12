@@ -511,7 +511,9 @@ pub fn read_actions_cmd(
     let effective_file = charter_acts_file.as_ref().or(file.as_ref()).cloned();
 
     let wc = ctx.workspace_config();
-    let multi_ws = effective_file.is_none() && !wc.additional_workspaces.is_empty();
+    let search_all_workspaces =
+        effective_file.is_none() && (ctx.workspace_filter.is_some() || !wc.additional_workspaces.is_empty());
+    let multi_ws = effective_file.is_none() && ctx.workspace_dirs().len() > 1;
 
     // Pre-expand context filter tags downward (general → specific) so ActionFilter::matches
     // can do a simple set-membership check. Filtering by "computer" will match actions
@@ -529,7 +531,7 @@ pub fn read_actions_cmd(
 
     // ws_actions drives non-TTY output (DSL, JSON, table). collect open_only early as a
     // performance hint; action_filter.matches enforces all remaining criteria.
-    let ws_actions: Vec<(Option<String>, Action)> = if multi_ws {
+    let ws_actions: Vec<(Option<String>, Action)> = if search_all_workspaces {
         collect_workspace_actions(ctx, open_only)?
     } else {
         collect_all_actions(ctx, &effective_file, open_only)?
@@ -572,20 +574,22 @@ pub fn read_actions_cmd(
                 let model = filtered_primary_model(ctx, charter_filter, &action_filter)?;
 
                 if multi_ws {
-                    let ws_name = ctx.config.workspace_name.clone()
-                        .unwrap_or_else(|| "primary".to_string());
-                    println!("▸ {}", ws_name);
-                    print!("{}", crate::display::render_domain_tree(&model));
-                    for path_str in &wc.additional_workspaces {
-                        let path = std::path::Path::new(path_str);
-                        match clearhead_core::load_domain_model(path) {
-                            Ok(mut ws_model) => {
-                                clearhead_core::apply_filter(&mut ws_model, &action_filter);
-                                println!("▸ {}", super::workspace_name_from_path(path));
-                                print!("{}", crate::display::render_domain_tree(&ws_model));
+                    for (ws_name, ws_path) in ctx.workspace_dirs() {
+                        let is_primary = ws_path == ctx.data_dir;
+                        let mut ws_model = if is_primary {
+                            model.clone()
+                        } else {
+                            match clearhead_core::load_domain_model(&ws_path) {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    tracing::warn!("Skipping workspace '{}': {}", ws_path.display(), e);
+                                    continue;
+                                }
                             }
-                            Err(e) => tracing::warn!("Skipping workspace '{}': {}", path_str, e),
-                        }
+                        };
+                        clearhead_core::apply_filter(&mut ws_model, &action_filter);
+                        println!("▸ {}", ws_name);
+                        print!("{}", crate::display::render_domain_tree(&ws_model));
                     }
                 } else {
                     print!("{}", crate::display::render_domain_tree(&model));
