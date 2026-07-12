@@ -891,13 +891,20 @@ fn apply_template_in_place(
 
 /// Precedence tier for `query` against `action`: 0 = full UUID, 1 = short UUID,
 /// 2 = alias, 3 = name-contains, `None` = no match. Lower wins.
+///
+/// Canonical identity short-circuits: a query that parses as a full UUID —
+/// bare or `urn:uuid:` exactly as the query contract exports `id`
+/// (specifications/query_output.md) — resolves by identity only. It never
+/// degrades to alias or name matching, so a client holding a node id acts on
+/// exactly that node or fails.
 fn action_match_tier(action: &Action, query: &str) -> Option<u8> {
     let q = query.trim_start_matches('/');
+    if let Ok(uuid) = uuid::Uuid::parse_str(q) {
+        return (action.id == uuid).then_some(0);
+    }
     let id_str = action.id.to_string();
     let short = &id_str[..8.min(id_str.len())];
-    if id_str == q {
-        Some(0)
-    } else if short == q {
+    if short == q {
         Some(1)
     } else if action.alias.as_deref().map(|alias| alias.eq_ignore_ascii_case(q)).unwrap_or(false) {
         Some(2)
@@ -1125,5 +1132,30 @@ mod resolution_tests {
 
         let found = find_best_match(&actions, &target.id.to_string(), |_| true).unwrap();
         assert_eq!(found.id, target.id);
+    }
+
+    #[test]
+    fn urn_uuid_form_resolves_by_identity() {
+        // The query contract exports `id` as `urn:uuid:…` — the verb must
+        // accept canonical identity exactly as exported, unpeeled.
+        let target = make_action("Target action", None);
+        let actions = vec![make_action("Decoy", None), target.clone()];
+
+        let query = format!("urn:uuid:{}", target.id);
+        let found = find_best_match(&actions, &query, |_| true).unwrap();
+        assert_eq!(found.id, target.id);
+    }
+
+    #[test]
+    fn uuid_query_never_degrades_to_fuzzy_match() {
+        // A UUID-shaped query that matches no id must fail, not fall through
+        // to name-contains — an automated loop acting on a stale id must get
+        // not-found, never a write to an unrelated action.
+        let ghost = Uuid::now_v7();
+        let decoy = make_action(&format!("Notes about {}", ghost), None);
+        let actions = vec![decoy];
+
+        assert!(find_best_match(&actions, &ghost.to_string(), |_| true).is_none());
+        assert!(find_best_match(&actions, &format!("urn:uuid:{}", ghost), |_| true).is_none());
     }
 }
