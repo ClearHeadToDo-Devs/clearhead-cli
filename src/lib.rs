@@ -21,18 +21,15 @@ pub use clearhead_core::workspace::actions::TableFormatOptions;
 // without reaching back through the CLI binary layer.
 pub use environment_reader::resolve_workspace_paths;
 
-fn transient_graph() -> clearhead_core::graph::GraphName {
-    clearhead_core::graph::GraphName::NamedNode(
-        oxigraph::model::NamedNode::new(clearhead_core::graph::TRANSIENT_GRAPH_URI).unwrap(),
-    )
-}
-
-fn workspace_graph_name_from_config(config: Option<&WorkspaceConfig>) -> clearhead_core::graph::GraphName {
-    config
-        .and_then(|c| c.workspace_id.as_deref())
-        .map(clearhead_core::graph::workspace_graph_uri)
-        .map(clearhead_core::graph::GraphName::NamedNode)
-        .unwrap_or_else(transient_graph)
+/// Named graph for a loaded workspace: its configured `workspace_id` when
+/// initialized, otherwise the deterministic fallback id — matching the
+/// `ws:Workspace` node `insert_workspace_metadata` emits into the same graph.
+fn workspace_graph_name(
+    workspace: &clearhead_core::workspace::store::load::Workspace,
+) -> clearhead_core::graph::GraphName {
+    clearhead_core::graph::GraphName::NamedNode(clearhead_core::graph::workspace_graph_uri(
+        &workspace.effective_id(),
+    ))
 }
 
 pub use clearhead_core::workspace::actions::{
@@ -126,16 +123,11 @@ fn load_workspace_at_path_into_store(
         (None, None)
     };
 
-    let graph_name = workspace_id
-        .as_deref()
-        .map(clearhead_core::graph::workspace_graph_uri)
-        .map(clearhead_core::graph::GraphName::NamedNode)
-        .unwrap_or_else(transient_graph);
-
     let mut workspace = clearhead_core::workspace::store::load::Workspace::load(workspace_path)
         .map_err(|e| format!("Failed to load workspace at {}: {}", workspace_path.display(), e))?;
     workspace.id = workspace_id;
     workspace.name = workspace_name;
+    let graph_name = workspace_graph_name(&workspace);
 
     clearhead_core::graph::insert_workspace_metadata(store, &workspace, graph_name.clone())
         .map_err(|e| format!("Failed to insert workspace metadata for {}: {}", workspace_path.display(), e))?;
@@ -154,7 +146,6 @@ pub fn run_workspace_raw_query(
 ) -> Result<Vec<std::collections::HashMap<String, String>>, String> {
     let store = clearhead_core::graph::create_store()
         .map_err(|e| format!("Failed to create store: {}", e))?;
-    let gn = workspace_graph_name_from_config(config);
 
     let mut primary = clearhead_core::workspace::store::load::Workspace::load(data_dir)
         .map_err(|e| format!("Failed to load workspace: {}", e))?;
@@ -162,6 +153,7 @@ pub fn run_workspace_raw_query(
         primary.id = cfg.workspace_id.clone();
         primary.name = cfg.workspace_name.clone();
     }
+    let gn = workspace_graph_name(&primary);
     // Insert workspace metadata first (borrows primary), then convert to model (consumes primary).
     clearhead_core::graph::insert_workspace_metadata(&store, &primary, gn.clone())
         .map_err(|e| format!("Failed to insert workspace metadata: {}", e))?;
@@ -307,5 +299,35 @@ mod multi_workspace_tests {
             .filter_map(|r| r.get("label").map(|s| s.as_str()))
             .collect();
         assert!(labels.contains(&"Primary task"), "primary task must still appear; got: {:?}", labels);
+    }
+
+    /// A workspace with no config.json (uninitialized — e.g. the XDG user
+    /// workspace) must still emit its `ws:Workspace` node under a derived
+    /// identity, so index queries that join actions to `ws:charterRoot`
+    /// return rows instead of silently dropping everything.
+    #[test]
+    fn uninitialized_workspace_gets_fallback_identity() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("plain");
+        fs::create_dir_all(ws.join("charters")).unwrap();
+        fs::write(
+            ws.join("charters").join("inbox.actions"),
+            format!("[ ] Plain task #{}\n", uuid::Uuid::now_v7()),
+        ).unwrap();
+
+        let sparql = "PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
+                      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                      PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
+                      SELECT ?label ?charter_root WHERE { GRAPH ?g {
+                        ?s a actions:Action ; rdfs:label ?label .
+                        ?w a ws:Workspace ; ws:charterRoot ?charter_root .
+                      } }";
+
+        let rows = run_workspace_raw_query(&ws, sparql, None).expect("query");
+        assert!(
+            rows.iter().any(|r| r.get("label").map(|l| l.as_str()) == Some("Plain task")),
+            "action must join to the fallback workspace node; got: {:?}",
+            rows
+        );
     }
 }

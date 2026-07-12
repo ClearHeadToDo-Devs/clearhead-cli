@@ -1,1 +1,1 @@
-
+[ ] make init user-workspace aware\: running inside a workspace data root (esp. data_dir) must not nest a .clearhead/ shell that shadows the real charters !2 #019f54cf-5418-7282-9f0c-b07dde4d9016
