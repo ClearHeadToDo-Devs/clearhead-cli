@@ -227,6 +227,63 @@ fn weekly_includes_blocked_actions() {
     assert_eq!(rows[0]["status"], "Blocked");
 }
 
+// ── unscheduled: the date-light working view ─────────────────────────────────
+// The agenda's complement: actionable now and unplanned. Undated in scope
+// means neither the action nor any ancestor carries a scheduled/due date.
+
+#[test]
+fn unscheduled_includes_undated_and_excludes_dated() {
+    let env = TestEnv::new();
+    let content = format!("{DATED_ACTION}{UNDATED_ACTION}");
+    env.with_workspace_identity().write_actions("next.actions", &content);
+    let rows = run_index(&env, "unscheduled");
+    assert_eq!(rows.len(), 1, "expected only the undated action, got {rows:?}");
+    assert_eq!(rows[0]["name"], "undated action");
+}
+
+#[test]
+fn unscheduled_excludes_children_of_dated_parents() {
+    let env = TestEnv::new();
+    // The child carries no date itself, but its parent is planned work —
+    // dates scope down the tree.
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] dated parent @2000-01-01T00:00 #01900000-0000-7000-8000-000000000061\n\
+         >[ ] undated child #01900000-0000-7000-8000-000000000062\n",
+    );
+    let rows = run_index(&env, "unscheduled");
+    assert!(rows.is_empty(), "planned work must not appear, got {rows:?}");
+}
+
+#[test]
+fn unscheduled_hides_actions_with_open_predecessors_and_blocked() {
+    let env = TestEnv::new();
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] alpha task =alpha #01900000-0000-7000-8000-000000000063\n\
+         [ ] beta task <alpha #01900000-0000-7000-8000-000000000064\n\
+         [=] blocked task #01900000-0000-7000-8000-000000000065\n",
+    );
+    let rows = run_index(&env, "unscheduled");
+    assert_eq!(rows.len(), 1, "expected only the chain head, got {rows:?}");
+    assert_eq!(rows[0]["name"], "alpha task");
+}
+
+#[test]
+fn unscheduled_shows_lowest_open_child_and_sorts_by_priority() {
+    let env = TestEnv::new();
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] loose end !3 #01900000-0000-7000-8000-000000000066\n\
+         [ ] undated parent #01900000-0000-7000-8000-000000000067\n\
+         >[ ] urgent leaf !1 #01900000-0000-7000-8000-000000000068\n",
+    );
+    let rows = run_index(&env, "unscheduled");
+    assert_eq!(rows.len(), 2, "parent is a container, got {rows:?}");
+    assert_eq!(rows[0]["name"], "urgent leaf", "priority orders the list: {rows:?}");
+    assert_eq!(rows[1]["name"], "loose end");
+}
+
 #[test]
 fn project_index_query_shadows_built_in() {
     let env = TestEnv::new();
