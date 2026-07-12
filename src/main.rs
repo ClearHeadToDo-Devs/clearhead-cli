@@ -67,7 +67,7 @@ fn run_command(cli: &argparser::Cli) -> anyhow::Result<()> {
     // Init bootstraps the workspace — runs before CommandContext to avoid
     // creating XDG dirs in a directory that isn't yet initialized.
     if let Verb::Init = &cli.command {
-        return commands::init::run();
+        return commands::init::run(cli.config.clone());
     }
 
     let ctx = CommandContext::new(cli)?;
