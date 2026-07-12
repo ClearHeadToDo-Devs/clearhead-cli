@@ -1,1 +1,1 @@
-
+[ ] add --sequential (and --context) flags to 'add action'/'update action' $add action has no way to set the ~ sequential marker or context tags (+foo) at creation time; both require a hand-edit after the fact. Found while implementing implicit sequential-chain edges (clearhead-core c339009) and hand-editing a scratch workspace to test it.$ !3 #019f57b9-40a6-7c71-872c-4f7fc4b0947b
