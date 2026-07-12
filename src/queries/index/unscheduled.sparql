@@ -12,7 +12,8 @@
 #     ancestor* — a child of a dated parent is planned work, not unscheduled
 # Sorted by priority (unset sorts last), then name.
 # Returns: index contract columns (id, name, status, source_file, source_line,
-#          charter_root) + priority sort key per specifications/query_output.md
+#          charter_root) + priority sort key, parent/parent_name edge
+#          (denormalized, unset for root actions) per specifications/query_output.md
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
@@ -22,7 +23,7 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?priority WHERE {
+SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?priority ?parent ?parent_name WHERE {
     GRAPH ?g {
         ?action a actions:Action ;
              rdfs:label ?name ;
@@ -33,6 +34,7 @@ SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?p
                         ws:charterRoot ?charter_root .
         FILTER(?raw_state = actions:NotStarted || ?raw_state = actions:InProgress)
         OPTIONAL { ?action actions:hasPriority ?priority }
+        OPTIONAL { ?action bfo:BFO_0000050 ?parent . ?parent rdfs:label ?parent_name }
 
         # Undated in scope: neither the action nor any ancestor carries a
         # scheduled or due date (bfo:BFO_0000050* = part-of, zero-or-more).

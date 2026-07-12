@@ -15,8 +15,9 @@
 # Parameters:
 #   ?END_OF_TODAY — injected as today at 23:59:59 UTC
 # Returns: index contract columns (id, name, status, source_file, source_line,
-#          charter_root) + priority/scheduled_at/due_date sort keys per
-#          specifications/query_output.md
+#          charter_root) + priority/scheduled_at/due_date sort keys,
+#          parent/parent_name edge (denormalized, unset for root actions)
+#          per specifications/query_output.md
 # =============================================================================
 
 PREFIX actions: <https://clearhead.us/vocab/actions/v4#>
@@ -26,7 +27,7 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ws: <https://clearhead.us/vocab/workspace/v1#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?priority ?scheduled_at ?due_date WHERE {
+SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?priority ?scheduled_at ?due_date ?parent ?parent_name WHERE {
     GRAPH ?g {
         ?action a actions:Action ;
              rdfs:label ?name ;
@@ -39,6 +40,7 @@ SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?p
         OPTIONAL { ?action actions:hasScheduledDateTime ?scheduled_at }
         OPTIONAL { ?action actions:hasDueDateTime ?due_date }
         OPTIONAL { ?action actions:hasPriority ?priority }
+        OPTIONAL { ?action bfo:BFO_0000050 ?parent . ?parent rdfs:label ?parent_name }
 
         # First in the dependency chain: no predecessor still open.
         FILTER NOT EXISTS {
