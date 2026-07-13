@@ -175,6 +175,22 @@ fn agenda_excludes_blocked_actions() {
 }
 
 #[test]
+fn agenda_hides_child_of_action_blocked_by_predecessor() {
+    let env = TestEnv::new();
+    // container depends on setup (still open); leaf is container's child.
+    // A blocked parent must block its descendants too, not just itself.
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] setup task =setup @2000-01-01T00:00 #01900000-0000-7000-8000-000000000045\n\
+         [ ] container task <setup @2000-01-01T00:00 #01900000-0000-7000-8000-000000000046\n\
+         >[ ] leaf task @2000-01-01T00:00 #01900000-0000-7000-8000-000000000047\n",
+    );
+    let rows = run_agenda(&env);
+    assert_eq!(rows.len(), 1, "expected only the chain head, got {rows:?}");
+    assert_eq!(rows[0]["name"], "setup task");
+}
+
+#[test]
 fn agenda_sorts_by_priority_before_date() {
     let env = TestEnv::new();
     env.with_workspace_identity().write_actions(
@@ -267,6 +283,22 @@ fn unscheduled_hides_actions_with_open_predecessors_and_blocked() {
     let rows = run_index(&env, "unscheduled");
     assert_eq!(rows.len(), 1, "expected only the chain head, got {rows:?}");
     assert_eq!(rows[0]["name"], "alpha task");
+}
+
+#[test]
+fn unscheduled_hides_child_of_action_blocked_by_predecessor() {
+    let env = TestEnv::new();
+    // container depends on setup (still open); leaf is container's child.
+    // A blocked parent must block its descendants too, not just itself.
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] setup task =setup #01900000-0000-7000-8000-000000000069\n\
+         [ ] container task <setup #01900000-0000-7000-8000-000000000070\n\
+         >[ ] leaf task #01900000-0000-7000-8000-000000000071\n",
+    );
+    let rows = run_index(&env, "unscheduled");
+    assert_eq!(rows.len(), 1, "expected only the chain head, got {rows:?}");
+    assert_eq!(rows[0]["name"], "setup task");
 }
 
 #[test]

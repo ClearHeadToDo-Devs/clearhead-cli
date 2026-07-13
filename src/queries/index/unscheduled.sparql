@@ -5,7 +5,8 @@
 # given nothing on the calendar demands it? The complement of the agenda —
 # an action appears when it is actionable now and *unplanned*:
 #   - open or in-progress (blocked is not actionable)
-#   - first in its dependency chain: no open predecessor
+#   - first in its dependency chain: no open predecessor, at this action or
+#     any ancestor — a blocked parent blocks every descendant beneath it
 #   - the lowest open child: parents with open work below are containers,
 #     you act on the leaf
 #   - undated in scope: no scheduled or due date on the action *or any
@@ -43,9 +44,12 @@ SELECT (?action AS ?id) ?name ?status ?source_file ?source_line ?charter_root ?p
             ?scope actions:hasScheduledDateTime|actions:hasDueDateTime ?when .
         }
 
-        # First in the dependency chain: no predecessor still open.
+        # First in the dependency chain: no predecessor still open, at this
+        # action or any ancestor (bfo:BFO_0000050* = part-of, zero-or-more,
+        # includes ?action itself at zero hops).
         FILTER NOT EXISTS {
-            ?action cco:ont00001775 ?predecessor .
+            ?action bfo:BFO_0000050* ?gated .
+            ?gated cco:ont00001775 ?predecessor .
             ?predecessor cco:ont00001868 ?pred_state .
             FILTER(?pred_state != actions:Completed && ?pred_state != actions:Cancelled)
         }
