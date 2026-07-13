@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::{DateTime, Local, Utc};
-use icalendar::{Calendar, Component, Event, EventLike};
+use icalendar::{Calendar, Component, EventLike, Todo};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
@@ -361,27 +361,27 @@ fn format_plans_as_ics(plans: &[clearhead_core::Plan]) -> String {
         .done();
 
     for plan in plans {
-        calendar.push(plan_to_event(plan));
+        calendar.push(plan_to_todo(plan));
     }
 
     calendar.to_string()
 }
 
-fn plan_to_event(plan: &clearhead_core::Plan) -> Event {
-    let mut event = Event::new();
+fn plan_to_todo(plan: &clearhead_core::Plan) -> Todo {
+    let mut todo = Todo::new();
     let uid = plan
         .external_id
         .clone()
         .unwrap_or_else(|| plan.id.to_string());
-    event.uid(&uid);
-    event.summary(&plan.name);
+    todo.uid(&uid);
+    todo.summary(&plan.name);
 
     if let Some(dtstart) = plan.dtstart {
-        event.starts(dtstart.with_timezone(&Utc));
+        todo.starts(dtstart.with_timezone(&Utc));
     }
     if let Some(recurrence) = &plan.recurrence {
         let rrule = recurrence.to_string();
-        event.add_property("RRULE", rrule.strip_prefix("R:").unwrap_or(&rrule));
+        todo.add_property("RRULE", rrule.strip_prefix("R:").unwrap_or(&rrule));
     }
 
     let mut description = Vec::new();
@@ -392,10 +392,10 @@ fn plan_to_event(plan: &clearhead_core::Plan) -> Event {
         description.push(text.clone());
     }
     if !description.is_empty() {
-        event.description(&description.join("\n"));
+        todo.description(&description.join("\n"));
     }
 
-    event
+    todo
 }
 
 fn parse_local_datetime(value: Option<&str>) -> anyhow::Result<Option<DateTime<Local>>> {

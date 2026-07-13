@@ -168,7 +168,7 @@ fn test_add_command_with_options() {
 }
 
 #[test]
-fn test_add_plan_file_flag_writes_single_event_file_to_explicit_path() {
+fn test_add_plan_file_flag_writes_single_todo_file_to_explicit_path() {
     let env = TestEnv::new();
     let output = env
         .data_dir
@@ -189,7 +189,7 @@ fn test_add_plan_file_flag_writes_single_event_file_to_explicit_path() {
         .success();
     let content = fs::read_to_string(&output).unwrap();
     assert!(content.contains("SUMMARY:Focus Block"));
-    assert!(content.contains("BEGIN:VEVENT"));
+    assert!(content.contains("BEGIN:VTODO"));
 }
 
 #[test]
