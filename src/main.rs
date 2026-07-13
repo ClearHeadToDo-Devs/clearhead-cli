@@ -347,6 +347,9 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             argparser::QueryTarget::Index { name, format } => {
                 commands::query::run_index_query(&ctx, name.as_deref(), *format)
             }
+            argparser::QueryTarget::Chain { query, format } => {
+                commands::query::run_chain_query(&ctx, query, *format)
+            }
             argparser::QueryTarget::Show { name } => {
                 commands::query::show_named_query(&ctx, name)
             }

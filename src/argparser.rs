@@ -351,6 +351,17 @@ pub enum QueryTarget {
         format: Option<QueryFormat>,
     },
 
+    /// Every open action that must be completed before the given action can
+    /// start, walked recursively through its predecessor chain
+    Chain {
+        /// UUID, 8-char prefix, alias, or name of the action
+        query: String,
+
+        /// Output format (default: json)
+        #[arg(short, long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+
     /// Print a query's SPARQL to stdout — inspect a built-in, redirect to
     /// your queries dir, tweak: the override workflow
     Show {

@@ -1,6 +1,7 @@
 use anyhow::Context;
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
+use crate::commands::verb_result::canonical_id;
 use std::io::IsTerminal;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -339,6 +340,49 @@ pub fn run_index_query(
         }
         QueryFormat::Table => {
             // Human view — rendered from raw rows; still contract-checked.
+            clearhead_core::graph::frame_index(&rows)?;
+            if rows.is_empty() {
+                println!("(no results)");
+                return Ok(());
+            }
+            format_as_table(&rows)
+        }
+    }
+}
+
+/// Every open action that must be completed before `query`'s resolved action
+/// can start — `chain.sparql` parameterized by that action's canonical id.
+/// `?TARGET_ACTION` isn't one of inject_params's fixed placeholders (it's
+/// resolved per-invocation from user input, not derived from wall-clock
+/// time), so it's substituted here before the standard injection pass.
+pub fn run_chain_query(
+    ctx: &CommandContext,
+    query: &str,
+    format: Option<QueryFormat>,
+) -> anyhow::Result<()> {
+    let action = super::action::resolve_open_action(ctx, query)?.ok_or_else(|| {
+        anyhow::anyhow!("No open action matching '{}'", query)
+    })?;
+
+    let target = format!("<{}>", canonical_id(action.id));
+    let sparql = include_str!("../queries/index/chain.sparql").replace("?TARGET_ACTION", &target);
+
+    let wc = ctx.workspace_config();
+    let rows = clearhead_cli::run_workspace_raw_query(
+        &ctx.data_dir,
+        &inject_params(&sparql, None),
+        Some(&wc),
+    )
+    .map_err(|e| anyhow::anyhow!(e))?;
+
+    match format.unwrap_or(QueryFormat::Json) {
+        QueryFormat::Json => {
+            let doc = clearhead_core::graph::frame_index(&rows)?;
+            let json = serde_json::to_string_pretty(&doc).context("Failed to serialize")?;
+            println!("{}", json);
+            Ok(())
+        }
+        QueryFormat::Table => {
             clearhead_core::graph::frame_index(&rows)?;
             if rows.is_empty() {
                 println!("(no results)");

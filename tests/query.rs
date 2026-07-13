@@ -345,6 +345,102 @@ fn query_show_prints_built_in_sparql() {
         .stdout(predicates::str::contains("END_OF_TODAY"));
 }
 
+// ── chain: given an action, everything still blocking it ────────────────────
+// Walks cco:ont00001775 (predecessor) transitively from the resolved action.
+// Flat, deduped, open-only — completed predecessors are done, not "still
+// required."
+
+fn run_chain(env: &TestEnv, query: &str) -> Vec<serde_json::Value> {
+    let output = env
+        .command()
+        .args(["query", "chain", query])
+        .output()
+        .expect("failed to run");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    parse_graph(&output.stdout)
+}
+
+#[test]
+fn chain_returns_empty_for_action_with_no_predecessors() {
+    let env = TestEnv::new();
+    env.with_workspace_identity()
+        .write_actions("next.actions", "[ ] standalone task #01900000-0000-7000-8000-000000000071\n");
+    let rows = run_chain(&env, "standalone task");
+    assert!(rows.is_empty(), "expected no rows, got {rows:?}");
+}
+
+#[test]
+fn chain_returns_direct_predecessor() {
+    let env = TestEnv::new();
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] alpha task =alpha #01900000-0000-7000-8000-000000000072\n\
+         [ ] beta task <alpha #01900000-0000-7000-8000-000000000073\n",
+    );
+    let rows = run_chain(&env, "beta task");
+    assert_eq!(rows.len(), 1, "expected one predecessor, got {rows:?}");
+    assert_eq!(rows[0]["name"], "alpha task");
+}
+
+#[test]
+fn chain_walks_transitive_predecessors() {
+    let env = TestEnv::new();
+    // gamma <- beta <- alpha: querying gamma should surface both ancestors.
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] alpha task =alpha #01900000-0000-7000-8000-000000000074\n\
+         [ ] beta task =beta <alpha #01900000-0000-7000-8000-000000000075\n\
+         [ ] gamma task <beta #01900000-0000-7000-8000-000000000076\n",
+    );
+    let rows = run_chain(&env, "gamma task");
+    let names: Vec<&str> = rows.iter().map(|r| r["name"].as_str().unwrap()).collect();
+    assert_eq!(names.len(), 2, "expected both ancestors, got {rows:?}");
+    assert!(names.contains(&"alpha task"), "missing transitive ancestor: {rows:?}");
+    assert!(names.contains(&"beta task"), "missing direct predecessor: {rows:?}");
+}
+
+#[test]
+fn chain_excludes_completed_predecessors() {
+    let env = TestEnv::new();
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[x] alpha task =alpha %2000-01-01T00:00 #01900000-0000-7000-8000-000000000077\n\
+         [ ] beta task <alpha #01900000-0000-7000-8000-000000000078\n",
+    );
+    let rows = run_chain(&env, "beta task");
+    assert!(rows.is_empty(), "completed predecessor no longer blocks anything, got {rows:?}");
+}
+
+#[test]
+fn chain_row_satisfies_index_contract() {
+    let env = TestEnv::new();
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] alpha task =alpha #01900000-0000-7000-8000-000000000079\n\
+         [ ] beta task <alpha #01900000-0000-7000-8000-000000000080\n",
+    );
+    let rows = run_chain(&env, "beta task");
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row["id"], "urn:uuid:01900000-0000-7000-8000-000000000079");
+    assert!(row.get("name").is_some(), "missing: name");
+    assert!(row.get("status").is_some(), "missing: status");
+    assert!(row.get("source_file").is_some(), "missing: source_file");
+    assert!(row["source_line"].is_u64(), "source_line not numeric: {row:?}");
+    assert!(row.get("charter_root").is_some(), "missing: charter_root");
+}
+
+#[test]
+fn chain_errors_on_unresolvable_query() {
+    let env = TestEnv::new();
+    env.with_workspace_identity()
+        .write_actions("next.actions", "[ ] standalone task #01900000-0000-7000-8000-000000000081\n");
+    env.command()
+        .args(["query", "chain", "no such action anywhere"])
+        .assert()
+        .failure();
+}
+
 #[test]
 fn agenda_query_listed_under_index_type() {
     let env = TestEnv::new();
