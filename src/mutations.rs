@@ -32,6 +32,7 @@ pub struct ActionUpdate {
     pub description: Option<String>,
     pub priority: Option<u32>,
     pub context: Option<Vec<String>>,
+    pub is_sequential: Option<bool>,
     pub alias: Option<String>,
     pub state: Option<ActionState>,
     pub scheduled_at: Option<DateTime<Local>>,
@@ -58,6 +59,9 @@ pub fn apply_updates(action: &mut Action, updates: ActionUpdate) {
         } else {
             Some(context)
         };
+    }
+    if let Some(is_sequential) = updates.is_sequential {
+        action.is_sequential = Some(is_sequential);
     }
     if let Some(alias) = updates.alias {
         action.alias = Some(alias);

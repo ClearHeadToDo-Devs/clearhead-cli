@@ -562,6 +562,14 @@ pub enum AddTarget {
         #[arg(long)]
         description: Option<String>,
 
+        /// Context tags (`+tag` in DSL, can be specified multiple times)
+        #[arg(short, long)]
+        context: Vec<String>,
+
+        /// Mark direct children as implicitly sequential (`~` marker in DSL)
+        #[arg(long)]
+        sequential: bool,
+
         /// Scheduled datetime (RFC 3339, e.g. "2026-04-28T09:00:00-07:00")
         #[arg(long)]
         scheduled_at: Option<String>,
@@ -658,6 +666,14 @@ pub enum UpdateTarget {
         /// New description / note (replaces the existing `$ ... $` inline note)
         #[arg(long)]
         description: Option<String>,
+
+        /// Context tags (`+tag` in DSL, can be specified multiple times). Replaces the existing set.
+        #[arg(short, long)]
+        context: Vec<String>,
+
+        /// Mark direct children as implicitly sequential (`~` marker in DSL)
+        #[arg(long)]
+        sequential: bool,
 
         /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
         #[arg(long)]
