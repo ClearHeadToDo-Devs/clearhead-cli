@@ -1,1 +1,1 @@
-
+[ ] add \< predecessor flag to add action / update action $neither add action nor update action can author a < predecessor; the DSL supports < <ref> (parser.rs) but no flag sets it, so every cross-action and cross-charter dependency needs a hand-edit. Found while wiring the identity charter dependencies in the platform workspace; sibling to the --sequential/--context gap.$ !3 #019f6ec5-481d-7b40-b0ec-ed2bbc507997
