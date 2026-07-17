@@ -91,10 +91,11 @@ pub fn workspace_config_from(tag_hierarchies: &std::collections::HashMap<String,
 
 /// Load a single additional workspace into an existing store under its own named graph.
 ///
-/// Reads `<workspace_root>/.clearhead/config.json` to discover the workspace's
-/// stable `workspace_id`.  If the config is absent or has no `workspace_id`, the
-/// workspace is loaded into a derived transient graph so data still participates
-/// in cross-workspace queries — it will just lack a durable graph name.
+/// Identity (`workspace_id`, `workspace_name`) is read by core from the
+/// workspace's own manifest (`workspace.json`) during load. If no durable id is
+/// persisted, the workspace loads into an ephemeral graph so its data still
+/// participates in cross-workspace queries — it just lacks a graph name stable
+/// across sessions.
 ///
 /// Failures are returned as `Err(String)` so callers can decide whether to warn
 /// and continue or propagate.
@@ -109,24 +110,8 @@ fn load_workspace_at_path_into_store(
         ));
     }
 
-    let config_path = workspace_path.join(".clearhead").join("config.json");
-    let (workspace_id, workspace_name): (Option<String>, Option<String>) = if config_path.exists() {
-        let json = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("Failed to read workspace config at {}: {}", config_path.display(), e))?;
-        let v: serde_json::Value = serde_json::from_str(&json)
-            .map_err(|e| format!("Failed to parse workspace config at {}: {}", config_path.display(), e))?;
-        (
-            v.get("workspace_id").and_then(|id| id.as_str()).map(String::from),
-            v.get("workspace_name").and_then(|n| n.as_str()).map(String::from),
-        )
-    } else {
-        (None, None)
-    };
-
-    let mut workspace = clearhead_core::workspace::store::load::Workspace::load(workspace_path)
+    let workspace = clearhead_core::workspace::store::load::Workspace::load(workspace_path)
         .map_err(|e| format!("Failed to load workspace at {}: {}", workspace_path.display(), e))?;
-    workspace.id = workspace_id;
-    workspace.name = workspace_name;
     let graph_name = workspace_graph_name(&workspace);
 
     clearhead_core::graph::insert_workspace_metadata(store, &workspace, graph_name.clone())
@@ -147,12 +132,8 @@ pub fn run_workspace_raw_query(
     let store = clearhead_core::graph::create_store()
         .map_err(|e| format!("Failed to create store: {}", e))?;
 
-    let mut primary = clearhead_core::workspace::store::load::Workspace::load(data_dir)
+    let primary = clearhead_core::workspace::store::load::Workspace::load(data_dir)
         .map_err(|e| format!("Failed to load workspace: {}", e))?;
-    if let Some(cfg) = config {
-        primary.id = cfg.workspace_id.clone();
-        primary.name = cfg.workspace_name.clone();
-    }
     let gn = workspace_graph_name(&primary);
     // Insert workspace metadata first (borrows primary), then convert to model (consumes primary).
     clearhead_core::graph::insert_workspace_metadata(&store, &primary, gn.clone())
@@ -191,18 +172,19 @@ mod multi_workspace_tests {
     use std::fs;
     use tempfile::TempDir;
 
-    /// Write a minimal workspace under `root` with one action and a config.json
-    /// that holds the given `workspace_id`.  Returns the workspace root.
+    /// Write a minimal workspace under `root` with one action and a
+    /// workspace.json manifest holding the given `workspace_id`. Returns the
+    /// workspace root.
     fn make_workspace(root: &TempDir, name: &str, workspace_id: &str, action_name: &str) -> std::path::PathBuf {
         let ws = root.path().join(name);
         let charters = ws.join(".clearhead").join("charters");
         fs::create_dir_all(&charters).unwrap();
 
-        // Write .clearhead/config.json
-        let cfg = serde_json::json!({ "workspace_id": workspace_id });
+        // Write .clearhead/workspace.json (the identity manifest)
+        let manifest = serde_json::json!({ "workspace_id": workspace_id });
         fs::write(
-            ws.join(".clearhead").join("config.json"),
-            serde_json::to_string_pretty(&cfg).unwrap(),
+            ws.join(".clearhead").join("workspace.json"),
+            serde_json::to_string_pretty(&manifest).unwrap(),
         ).unwrap();
 
         // Write a single .actions file with one action
@@ -257,8 +239,9 @@ mod multi_workspace_tests {
         let extra_id = "00000000-0000-7000-8000-000000000003";
         let extra = make_workspace(&tmp, "extra", extra_id, "Extra task");
 
+        // Primary identity is read from the workspace.json that make_workspace
+        // wrote, so it is no longer passed via config.
         let config = WorkspaceConfig {
-            workspace_id: Some(primary_id.to_string()),
             additional_workspaces: vec![extra.to_string_lossy().into_owned()],
             ..WorkspaceConfig::default()
         };
@@ -283,7 +266,6 @@ mod multi_workspace_tests {
         let primary = make_workspace(&tmp, "primary", primary_id, "Primary task");
 
         let config = WorkspaceConfig {
-            workspace_id: Some(primary_id.to_string()),
             // This path does not exist — should warn, not crash.
             additional_workspaces: vec!["/nonexistent/path/that/does/not/exist".to_string()],
             ..WorkspaceConfig::default()

@@ -1,7 +1,8 @@
 use anyhow::Context;
-use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use clearhead_core::workspace::WorkspaceManifest;
 
 use crate::environment_reader::{get_data_dir, load_config, resolve_file_path};
 
@@ -40,17 +41,12 @@ fn nested_in_user_workspace(
     }
 }
 
-/// The published contract for `.clearhead/config.json`. Stamped on every
-/// workspace this command initializes so the file is self-describing and
-/// editors validate on write — see `charter_metadata`'s matching pointer in
-/// clearhead-core for the sidecar half of this convention.
-const CONFIG_SCHEMA_URL: &str = "https://raw.githubusercontent.com/ClearHeadToDo-Devs/specifications/master/schemas/config.schema.json";
-
 /// Initialize a clearhead workspace in the current directory.
 ///
-/// Creates `.clearhead/config.json` with a stable workspace UUID and a name
-/// derived from the current directory. Creates `.clearhead/charters/` if
-/// absent. Idempotent — safe to rerun; does not overwrite an existing config.
+/// Creates `.clearhead/workspace.json` (the identity manifest) with a stable
+/// workspace UUID and a name derived from the current directory. Creates
+/// `.clearhead/charters/` if absent. Idempotent — safe to rerun; does not
+/// overwrite an existing manifest.
 pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()
         .context("Cannot determine current directory")?;
@@ -68,7 +64,6 @@ pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
         );
     }
 
-    let config_path = clearhead_dir.join("config.json");
     let charters_dir = clearhead_dir.join("charters");
 
     fs::create_dir_all(&clearhead_dir)
@@ -79,18 +74,18 @@ pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
     // Keep config.local.json — the git-ignored personal override — out of version
     // control. A scoped .clearhead/.gitignore owns this rule so we don't touch the
     // project root's ignore conventions. Written unconditionally (independent of
-    // the config.json guard below) so existing workspaces pick it up on a rerun.
+    // the identity guard below) so existing workspaces pick it up on a rerun.
     let gitignore_path = clearhead_dir.join(".gitignore");
     if !gitignore_path.exists() {
         fs::write(&gitignore_path, "config.local.json\n")
             .context("Failed to write .clearhead/.gitignore")?;
     }
 
-    if config_path.exists() {
-        println!(
-            "Already initialized — {} exists.",
-            config_path.display()
-        );
+    // Idempotent on an existing identity: init never clobbers or re-mints a
+    // workspace that already has a workspace_id (which would orphan the named
+    // graph).
+    if WorkspaceManifest::read(&cwd).workspace_id.is_some() {
+        println!("Already initialized — workspace already has an identity.");
         return Ok(());
     }
 
@@ -99,23 +94,16 @@ pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
         .and_then(|n| n.to_str())
         .unwrap_or("workspace")
         .to_string();
-
     let workspace_id = uuid::Uuid::now_v7().to_string();
-
     let created_at = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    let config = json!({
-        "$schema": CONFIG_SCHEMA_URL,
-        "workspace_id": workspace_id,
-        "workspace_name": workspace_name,
-        "created_at": created_at,
-    });
-
-    let json_str = serde_json::to_string_pretty(&config)
-        .context("Failed to serialize config")?;
-
-    fs::write(&config_path, json_str)
-        .context("Failed to write config.json")?;
+    WorkspaceManifest {
+        workspace_id: Some(workspace_id.clone()),
+        workspace_name: Some(workspace_name.clone()),
+        created_at: Some(created_at),
+    }
+    .write(&cwd)
+    .context("Failed to write workspace.json")?;
 
     println!(
         "Initialized workspace '{}' ({})",

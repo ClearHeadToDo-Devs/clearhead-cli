@@ -18,15 +18,10 @@ pub struct Config {
     #[serde(default = "default_file")]
     pub default_file: String,
 
-    // Stable UUID identifying this workspace's RDF named graph.
-    // Generated once by `clearhead init` and written to config.json.
-    #[serde(default)]
-    pub workspace_id: Option<String>,
-
-    // Human-readable name for this workspace, derived from the project directory
-    // on `clearhead init`. Used as outer scope in multi-workspace reference syntax.
-    #[serde(default)]
-    pub workspace_name: Option<String>,
+    // Workspace identity (workspace_id, workspace_name, created_at) is NOT config —
+    // it does not layer through the precedence chain. It lives in the workspace
+    // manifest (.clearhead/workspace.json) and is read by core from the workspace
+    // itself. See clearhead_core::workspace::manifest::WorkspaceManifest.
 
     // Additional workspace directories to include in multi-workspace queries.
     // Each entry may be an absolute path, a path starting with `~/` (expanded to
@@ -155,9 +150,10 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
         custom_config_path.unwrap_or_else(|| get_config_dir().join("config.json"));
 
     // Project config lives at <project-root>/.clearhead/config.json and is
-    // written by `clearhead init`.  It overrides the global config for workspace-
-    // specific settings (workspace_id, workspace_name, additional_workspaces, …)
-    // and is committed so the whole team shares it.
+    // written when a team wants shared behavior. It overrides the global config
+    // for workspace-specific settings (additional_workspaces, tag_hierarchies, …)
+    // and is committed so the whole team shares it. Workspace identity is not
+    // here — it lives in the sibling workspace.json manifest.
     //
     // Project-local config sits beside it at config.local.json: a git-ignored
     // personal override (e.g. one developer's own plan_path) that wins over the

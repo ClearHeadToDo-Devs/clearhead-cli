@@ -149,7 +149,7 @@ fn action_verbs_resolve_across_additional_workspaces() {
     fs::create_dir_all(project_ch.join("charters")).expect("create project charters");
     fs::write(
         project_ch.join("config.json"),
-        r#"{"workspace_name":"primary","additional_workspaces":["../../other"]}"#,
+        r#"{"additional_workspaces":["../../other"]}"#,
     )
     .expect("write project config");
 
@@ -158,10 +158,10 @@ fn action_verbs_resolve_across_additional_workspaces() {
     let other_ch = other_root.join(".clearhead/charters");
     fs::create_dir_all(&other_ch).expect("create sibling charters");
     fs::write(
-        other_root.join(".clearhead/config.json"),
+        other_root.join(".clearhead/workspace.json"),
         r#"{"workspace_name":"sibling-space"}"#,
     )
-    .expect("write sibling config");
+    .expect("write sibling manifest");
     fs::write(
         other_ch.join("lsp.actions"),
         "[ ] sibling task #019e0000-0000-7000-0000-000000000003\n",
@@ -187,9 +187,14 @@ fn workspace_filter_honors_additional_workspace_config_name() {
     fs::create_dir_all(&project_ch).expect("create project charters");
     fs::write(
         env.work_dir.join(".clearhead/config.json"),
-        r#"{"workspace_name":"primary-home","additional_workspaces":["../../other"]}"#,
+        r#"{"additional_workspaces":["../../other"]}"#,
     )
     .expect("write project config");
+    fs::write(
+        env.work_dir.join(".clearhead/workspace.json"),
+        r#"{"workspace_name":"primary-home"}"#,
+    )
+    .expect("write project manifest");
     fs::write(
         project_ch.join("next.actions"),
         "[ ] primary task #019e0000-0000-7000-0000-000000000010\n",
@@ -200,10 +205,10 @@ fn workspace_filter_honors_additional_workspace_config_name() {
     let other_ch = other_root.join(".clearhead/charters");
     fs::create_dir_all(&other_ch).expect("create sibling charters");
     fs::write(
-        other_root.join(".clearhead/config.json"),
+        other_root.join(".clearhead/workspace.json"),
         r#"{"workspace_name":"sibling-space"}"#,
     )
-    .expect("write sibling config");
+    .expect("write sibling manifest");
     fs::write(
         other_ch.join("lsp.actions"),
         "[ ] sibling task #019e0000-0000-7000-0000-000000000011\n",

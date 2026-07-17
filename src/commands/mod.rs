@@ -120,8 +120,9 @@ impl CommandContext {
     }
 
     pub fn workspace_dirs(&self) -> Vec<(String, PathBuf)> {
-        let primary_name = self.config.workspace_name.clone()
-            .unwrap_or_else(|| "primary".to_string());
+        // Identity (including the display name) is a property of the workspace,
+        // read from its manifest — not the layered config.
+        let primary_name = workspace_name_for_root(&self.data_dir);
         let mut dirs = vec![(primary_name, self.data_dir.clone())];
 
         let wc = self.workspace_config();
@@ -194,8 +195,6 @@ impl CommandContext {
 
         clearhead_core::WorkspaceConfig {
             tag_hierarchies: self.config.tag_hierarchies.clone(),
-            workspace_id: self.config.workspace_id.clone(),
-            workspace_name: self.config.workspace_name.clone(),
             expansion_total_instances: self.config.expansion_total_instances,
             expansion_primary_instances: self.config.expansion_primary_instances,
             plan_path: resolved_plan_path,
@@ -265,33 +264,13 @@ pub fn workspace_name_from_path(path: &Path) -> String {
 /// identity instead of silently keying additional workspaces by their folder
 /// names only.
 pub fn workspace_name_for_root(path: &Path) -> String {
-    let config_path = path.join(".clearhead").join("config.json");
-    if config_path.exists() {
-        match fs::read_to_string(&config_path) {
-            Ok(json) => match serde_json::from_str::<serde_json::Value>(&json) {
-                Ok(v) => {
-                    if let Some(name) = v.get("workspace_name").and_then(|n| n.as_str()) {
-                        let trimmed = name.trim();
-                        if !trimmed.is_empty() {
-                            return trimmed.to_string();
-                        }
-                    }
-                }
-                Err(e) => warn!(
-                    "Failed to parse workspace config '{}': {}; falling back to directory name",
-                    config_path.display(),
-                    e
-                ),
-            },
-            Err(e) => warn!(
-                "Failed to read workspace config '{}': {}; falling back to directory name",
-                config_path.display(),
-                e
-            ),
-        }
-    }
-
-    workspace_name_from_path(path)
+    // The manifest (workspace.json) carries the workspace's declared name; fall
+    // back to the directory name.
+    clearhead_core::workspace::WorkspaceManifest::read(path)
+        .workspace_name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| workspace_name_from_path(path))
 }
 
 /// Load actions for read-only operations using recoverable parse mode.
