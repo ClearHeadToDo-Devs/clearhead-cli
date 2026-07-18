@@ -8,9 +8,6 @@ mod argparser;
 mod display;
 use argparser::{Verb, parse_cli};
 
-#[cfg(feature = "lsp")]
-mod lsp;
-
 pub mod environment_reader;
 
 mod commands;
@@ -316,14 +313,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             } => commands::plan::import_plans(&ctx, source, charter, *overwrite, *dry_run),
         },
         Verb::Start { target } => match target {
-            argparser::StartTarget::Lsp => {
-                #[cfg(feature = "lsp")]
-                return commands::service::start_lsp();
-                #[cfg(not(feature = "lsp"))]
-                anyhow::bail!(
-                    "This binary was compiled without LSP support. Install with the `lsp` feature or use the `clearhead-lsp` binary."
-                )
-            }
+            argparser::StartTarget::Lsp => commands::service::start_lsp(),
         },
         Verb::Sync { target } => match target {
             argparser::SyncTarget::Events { file, dry_run } => {

@@ -1,4 +1,3 @@
-#[cfg(feature = "lsp")]
 use anyhow::Context;
 use tracing::{debug, info, warn};
 
@@ -6,16 +5,32 @@ use crate::commands::{CommandContext, load_file_for_read};
 use clearhead_cli::telemetry::{TelemetryEvent, TelemetryRecord, Tool, emit};
 use clearhead_core::{Reconcile, SyncEntry};
 
-#[cfg(feature = "lsp")]
+/// Compatibility shim for the standalone `clearhead-lsp` process.
+///
+/// stdin/stdout/stderr are inherited so the child speaks LSP directly to the
+/// editor. On Unix `exec` replaces the CLI process entirely; other platforms
+/// wait for the external server and return its exit status.
 pub fn start_lsp() -> anyhow::Result<()> {
-    info!("Starting Language Server");
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .context("Failed to start async runtime")?;
+    let executable = std::env::var_os("CLEARHEAD_LSP").unwrap_or_else(|| "clearhead-lsp".into());
+    info!(server = ?executable, "Delegating to standalone Language Server");
 
-    rt.block_on(crate::lsp::start_lsp());
-    Ok(())
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let error = std::process::Command::new(&executable).exec();
+        Err(error).with_context(|| format!("Failed to exec {:?}", executable))
+    }
+
+    #[cfg(not(unix))]
+    {
+        let status = std::process::Command::new(&executable)
+            .status()
+            .with_context(|| format!("Failed to start {:?}", executable))?;
+        if !status.success() {
+            anyhow::bail!("clearhead-lsp exited with {status}");
+        }
+        Ok(())
+    }
 }
 
 pub fn sync_events(
