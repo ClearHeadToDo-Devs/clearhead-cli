@@ -76,7 +76,7 @@ pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
     // the identity guard below) so existing workspaces pick it up on a rerun.
     let gitignore_path = clearhead_dir.join(".gitignore");
     if !gitignore_path.exists() {
-        fs::write(&gitignore_path, "config.local.json\n")
+        fs::write(&gitignore_path, "config.local.json\n.clearhead.lock\n")
             .context("Failed to write .clearhead/.gitignore")?;
     }
 

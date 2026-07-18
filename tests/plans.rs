@@ -222,28 +222,14 @@ fn test_complete_plan_explains_state_lives_on_acts() {
 }
 
 #[test]
-fn test_archive_plans_no_plans_found() {
+fn test_archive_plans_explains_externally_owned_schedule_lifecycle() {
     let env = TestEnv::new();
-    // With no plan files in the workspace, archive plans succeeds and reports nothing to do.
     env.command()
         .arg("archive")
         .arg("plans")
         .assert()
-        .success()
-        .stdout(predicate::str::contains("No plan files found"));
-}
-
-#[test]
-fn test_archive_plans_dry_run() {
-    let env = TestEnv::new();
-    env.write_plan_ics("inbox", "test-uid-0.ics", &["Scheduled Plan"]);
-    env.command()
-        .arg("archive")
-        .arg("plans")
-        .arg("--dry-run")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Would retire plan"));
+        .failure()
+        .stderr(predicate::str::contains("use `delete plan`"));
 }
 
 #[test]

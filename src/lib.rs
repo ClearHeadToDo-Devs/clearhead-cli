@@ -32,8 +32,6 @@ pub use display::{render_charter_tree, render_domain_tree};
 pub mod export;
 pub use export::format_as_icalendar;
 
-pub mod archive;
-
 pub mod mutations;
 pub use mutations::{ActionUpdate, apply_updates};
 

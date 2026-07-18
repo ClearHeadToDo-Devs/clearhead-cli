@@ -336,9 +336,9 @@ pub fn complete_action(
     )
 }
 
-/// Shared body of `complete`/`cancel`: resolve the action, close its subtree via
-/// core's `close_subtree`, save the open list, and append the closed subtree to
-/// `.completed.actions`. Only the target state and message wording differ.
+/// Shared body of `complete`/`cancel`: resolve the target identity, then hand
+/// the locked read-plan-apply mutation to core. Only the target state and
+/// message wording differ.
 fn close_action_subtree(
     ctx: &CommandContext,
     query: &str,
@@ -354,8 +354,11 @@ fn close_action_subtree(
         return Err(verb_target_error(ctx, query).into());
     };
 
-    let action_id = match find_action_mut(&mut open_actions, query) {
-        Some(action) => action.id,
+    let (action_id, selector) = match find_action_mut(&mut open_actions, query) {
+        Some(action) => (
+            action.id,
+            clearhead_core::CloseActionSelector::from(&*action),
+        ),
         None => return Err(verb_target_error(ctx, query).into()),
     };
 
@@ -371,18 +374,20 @@ fn close_action_subtree(
         return Ok(());
     }
 
-    let now = Local::now();
-    let mut to_close = clearhead_core::close_subtree(&open_actions, action_id, closing_state, now);
+    let workspace_root = ctx.workspace_for_file(&actions_path);
+    let result = clearhead_core::close_action_subtree(
+        &workspace_root,
+        &actions_path,
+        &selector,
+        closing_state,
+        Local::now(),
+    )?;
 
-    open_actions.retain(|a| !subtree_ids.contains(&a.id));
-    super::save_file(&actions_path, &open_actions)?;
-
-    let completed_path = action_files::completed_actions_path(&actions_path);
-    let mut closed = action_files::read_actions(&completed_path)?;
-    closed.append(&mut to_close);
-    action_files::write_actions(&closed, &completed_path)?;
-
-    let children = subtree_ids.len() - 1;
+    let children = if result.already_closed {
+        subtree_ids.len().saturating_sub(1)
+    } else {
+        result.closed_count.saturating_sub(1)
+    };
     let outcome = match closing_state {
         ActionState::Cancelled => VerbOutcome::Cancelled {
             id: canonical_id(action_id),

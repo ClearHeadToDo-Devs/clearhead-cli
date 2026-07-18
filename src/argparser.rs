@@ -860,10 +860,10 @@ pub enum PatchTarget {
 
 #[derive(Subcommand)]
 pub enum ArchiveTarget {
-    /// Retire ICS schedule(s) and cascade to their generated actions.
+    /// Explain that externally-owned schedules are not archived.
     ///
-    /// For each plan: overdue NotStarted actions are completed (plan is king),
-    /// future projected NotStarted actions are dropped, and the VEVENT file is deleted.
+    /// Use `delete plan` for an explicit schedule deletion and manage generated
+    /// actions through their own lifecycle verbs.
     Plans {
         /// Domain path to scope: "health", "health/exercise", etc.
         scope: Option<String>,
