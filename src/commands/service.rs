@@ -98,8 +98,7 @@ pub fn sync_calendar(
 ) -> anyhow::Result<()> {
     let plans_root = ctx.plans_root();
     let model = ctx.load_model()?;
-    let sync_store =
-        clearhead_core::read_sync_store(&ctx.data_dir, clearhead_core::DEFAULT_SYNC_PAIR)?;
+    let sync_store = clearhead_core::read_plans_sync_store(&ctx.data_dir, &plans_root)?;
     let base_map = sync_store.scheduled_at_bases()?;
     let ics_dates = clearhead_core::read_ics_dates(&plans_root)?;
     let report = clearhead_core::plan_sync(&model, &base_map, &ics_dates);
@@ -110,7 +109,6 @@ pub fn sync_calendar(
             clearhead_core::apply_sync(
                 &ctx.data_dir,
                 ctx.plan_override().as_deref(),
-                clearhead_core::DEFAULT_SYNC_PAIR,
                 &report,
             )?;
         }
@@ -139,7 +137,6 @@ pub fn sync_calendar(
     let applied = clearhead_core::apply_sync(
         &ctx.data_dir,
         ctx.plan_override().as_deref(),
-        clearhead_core::DEFAULT_SYNC_PAIR,
         &report,
     )?;
     info!(?applied, "Calendar sync complete");

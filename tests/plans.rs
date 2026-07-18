@@ -4,6 +4,19 @@ use common::TestEnv;
 use predicates::prelude::*;
 use std::fs;
 
+fn write_plans_sync_store(env: &TestEnv, action_id: &str, scheduled_at: &str) {
+    let content = serde_json::json!({
+        "version": 1,
+        "plans_root": env.data_dir.join("plans"),
+        "actions": {
+            (action_id): {
+                "scheduled_at": scheduled_at
+            }
+        }
+    });
+    env.write_text("sync/plans.json", &serde_json::to_string_pretty(&content).unwrap());
+}
+
 #[test]
 fn test_read_plans_shows_ics_vevent() {
     let env = TestEnv::new();
@@ -287,7 +300,7 @@ fn test_sync_calendar_creates_action_mirror_and_stamps_sync_store() {
     assert!(ics.contains(&format!("UID:{}", uuid)));
     assert!(ics.contains("SUMMARY:Sync me"));
 
-    let sync_store = fs::read_to_string(env.data_dir.join("sync").join("caldav.json")).unwrap();
+    let sync_store = fs::read_to_string(env.data_dir.join("sync").join("plans.json")).unwrap();
     assert!(sync_store.contains("scheduled_at"));
     assert!(sync_store.contains(uuid));
 }
@@ -305,13 +318,7 @@ fn test_sync_calendar_pulls_calendar_edit_into_action_file() {
         .with_ymd_and_hms(2026, 4, 28, 10, 0, 0)
         .unwrap()
         .to_rfc3339();
-    env.write_text(
-        "charters/.inbox.json",
-        &format!(
-            "{{\n  \"acts\": {{\n    \"{}\": {{\n      \"scheduled_at_sync\": \"{}\"\n    }}\n  }}\n}}",
-            uuid, base
-        ),
-    );
+    write_plans_sync_store(&env, uuid, &base);
     env.write_text(
         &format!("plans/inbox/{}.ics", uuid),
         &format!(
@@ -333,48 +340,9 @@ fn test_sync_calendar_pulls_calendar_edit_into_action_file() {
     let actions = fs::read_to_string(env.data_dir.join("charters").join("inbox.actions")).unwrap();
     assert!(actions.contains("@2026-04-29T10:00"));
 
-    let sync_store = fs::read_to_string(env.data_dir.join("sync").join("caldav.json")).unwrap();
+    let sync_store = fs::read_to_string(env.data_dir.join("sync").join("plans.json")).unwrap();
     assert!(sync_store.contains("scheduled_at"));
     assert!(sync_store.contains("2026-04-29T10:00:00"));
-}
-
-#[test]
-fn test_sync_calendar_persists_legacy_seed_when_already_in_sync() {
-    let env = TestEnv::new();
-    let uuid = "019baaec-00b6-7991-be34-94b68212619a";
-    env.write_actions(
-        "inbox.actions",
-        &format!("[ ] Migrated @2026-04-28T10:00 #{}", uuid),
-    );
-    let base = Local
-        .with_ymd_and_hms(2026, 4, 28, 10, 0, 0)
-        .unwrap()
-        .to_rfc3339();
-    env.write_text(
-        "charters/.inbox.json",
-        &format!(
-            "{{\n  \"actions\": {{\n    \"{}\": {{\n      \"scheduled_at_sync\": \"{}\"\n    }}\n  }}\n}}",
-            uuid, base
-        ),
-    );
-    env.write_text(
-        &format!("plans/inbox/{}.ics", uuid),
-        &format!(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nSUMMARY:Migrated\r\nDTSTART:20260428T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
-            uuid
-        ),
-    );
-
-    env.command()
-        .arg("sync")
-        .arg("calendar")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Already in sync."));
-
-    let sync_store = fs::read_to_string(env.data_dir.join("sync").join("caldav.json")).unwrap();
-    assert!(sync_store.contains(uuid));
-    assert!(sync_store.contains("2026-04-28T10:00:00"));
 }
 
 #[test]
@@ -390,13 +358,7 @@ fn test_sync_calendar_conflict_can_be_resolved_toward_action() {
         .with_ymd_and_hms(2026, 4, 28, 10, 0, 0)
         .unwrap()
         .to_rfc3339();
-    env.write_text(
-        "charters/.inbox.json",
-        &format!(
-            "{{\n  \"acts\": {{\n    \"{}\": {{\n      \"scheduled_at_sync\": \"{}\"\n    }}\n  }}\n}}",
-            uuid, base
-        ),
-    );
+    write_plans_sync_store(&env, uuid, &base);
     env.write_text(
         &format!("plans/inbox/{}.ics", uuid),
         &format!(
@@ -442,13 +404,7 @@ fn test_sync_calendar_conflict_can_be_resolved_toward_calendar() {
         .with_ymd_and_hms(2026, 4, 28, 10, 0, 0)
         .unwrap()
         .to_rfc3339();
-    env.write_text(
-        "charters/.inbox.json",
-        &format!(
-            "{{\n  \"acts\": {{\n    \"{}\": {{\n      \"scheduled_at_sync\": \"{}\"\n    }}\n  }}\n}}",
-            uuid, base
-        ),
-    );
+    write_plans_sync_store(&env, uuid, &base);
     env.write_text(
         &format!("plans/inbox/{}.ics", uuid),
         &format!(

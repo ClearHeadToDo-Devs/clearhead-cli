@@ -51,9 +51,9 @@ pub struct Config {
     #[serde(default = "default_expansion_primary_instances")]
     pub expansion_primary_instances: u32,
 
-    // Directory where plan .ics files are written, flat as
-    // <plan_path>/<charter>/<uid>.ics. A CalDAV server can point at the same
-    // directory to share plans. When None, plans live under <data_root>/plans.
+    // Configured plans vdir, laid out as <plan_path>/<charter>/<uid>.ics.
+    // Transport and sharing are external. When None, plans live under
+    // <data_root>/plans.
     #[serde(default)]
     pub plan_path: Option<String>,
 
