@@ -108,7 +108,7 @@ pub fn read_charters(
         Some(argparser::OutputMode::JsonLd) => {
             for (_, model) in &models {
                 let jsonld = clearhead_cli::serialize_domain_to_jsonld(model)
-                    .context("Failed to serialize JSON-LD")?;
+                    .map_err(|e| anyhow::anyhow!("Failed to serialize JSON-LD: {e}"))?;
                 println!("{}", jsonld);
             }
         }

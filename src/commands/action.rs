@@ -629,7 +629,7 @@ pub fn read_actions_cmd(
             // must narrow JSON-LD output just as they narrow the table and tree.
             let model = filtered_primary_model(ctx, charter_filter, &action_filter)?;
             let jsonld = clearhead_cli::serialize_domain_to_jsonld(&model)
-                .context("Failed to serialize JSON-LD")?;
+                .map_err(|e| anyhow::anyhow!("Failed to serialize JSON-LD: {e}"))?;
             println!("{}", jsonld);
         }
         Some(crate::argparser::OutputMode::Ids) => {

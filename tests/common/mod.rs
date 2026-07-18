@@ -105,6 +105,13 @@ impl TestEnv {
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
         cmd.env("XDG_STATE_HOME", &self.state_dir);
+        let graphd = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("clearhead-cli parent")
+            .join("clearhead-graphd/target/debug/clearhead-graphd");
+        if graphd.exists() {
+            cmd.env("CLEARHEAD_GRAPHD", graphd);
+        }
         cmd.current_dir(&self.work_dir);
         cmd
     }

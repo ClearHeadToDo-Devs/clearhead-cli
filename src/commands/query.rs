@@ -128,8 +128,8 @@ struct NamedQuery {
 }
 
 // Built-in index queries (checked before user/project dirs).
-// The index shape contract (required terms, JSON-LD framing) lives in
-// clearhead_core::graph::shape — the engine validates, the CLI just prints.
+// The index shape contract and JSON-LD framing are owned by graphd; the CLI
+// embeds only the saved SPARQL text and prints or table-renders its response.
 const BUILT_IN_INDEX_QUERIES: &[(&str, &str)] = &[
     ("agenda", include_str!("../queries/index/agenda.sparql")),
     ("default", include_str!("../queries/index/default.sparql")),
@@ -246,10 +246,10 @@ pub fn run_named_query(
     })?;
 
     let wc = ctx.workspace_config();
-    let rows = clearhead_cli::run_workspace_raw_query(
+    let rows = clearhead_cli::run_graphd_raw_query(
         &ctx.data_dir,
         &inject_params(&named.sparql, status),
-        Some(&wc),
+        &wc,
     )
     .map_err(|e| anyhow::anyhow!(e))?;
 
@@ -344,23 +344,18 @@ pub fn run_index_query(
         })?;
 
     let wc = ctx.workspace_config();
-    let rows = clearhead_cli::run_workspace_raw_query(
-        &ctx.data_dir,
-        &inject_params(&sparql, None),
-        Some(&wc),
-    )
-    .map_err(|e| anyhow::anyhow!(e))?;
+    let doc =
+        clearhead_cli::run_graphd_index_query(&ctx.data_dir, &inject_params(&sparql, None), &wc)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
     match format.unwrap_or(QueryFormat::Json) {
         QueryFormat::Json => {
-            let doc = clearhead_cli::frame_index(&rows)?;
             let json = serde_json::to_string_pretty(&doc).context("Failed to serialize")?;
             println!("{}", json);
             Ok(())
         }
         QueryFormat::Table => {
-            // Human view — rendered from raw rows; still contract-checked.
-            clearhead_cli::frame_index(&rows)?;
+            let rows = index_document_rows(&doc)?;
             if rows.is_empty() {
                 println!("(no results)");
                 return Ok(());
@@ -387,22 +382,18 @@ pub fn run_chain_query(
     let sparql = include_str!("../queries/index/chain.sparql").replace("?TARGET_ACTION", &target);
 
     let wc = ctx.workspace_config();
-    let rows = clearhead_cli::run_workspace_raw_query(
-        &ctx.data_dir,
-        &inject_params(&sparql, None),
-        Some(&wc),
-    )
-    .map_err(|e| anyhow::anyhow!(e))?;
+    let doc =
+        clearhead_cli::run_graphd_index_query(&ctx.data_dir, &inject_params(&sparql, None), &wc)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
     match format.unwrap_or(QueryFormat::Json) {
         QueryFormat::Json => {
-            let doc = clearhead_cli::frame_index(&rows)?;
             let json = serde_json::to_string_pretty(&doc).context("Failed to serialize")?;
             println!("{}", json);
             Ok(())
         }
         QueryFormat::Table => {
-            clearhead_cli::frame_index(&rows)?;
+            let rows = index_document_rows(&doc)?;
             if rows.is_empty() {
                 println!("(no results)");
                 return Ok(());
@@ -559,6 +550,33 @@ mod tests {
             "placeholder not replaced: {result}"
         );
     }
+}
+
+fn index_document_rows(
+    document: &serde_json::Value,
+) -> anyhow::Result<Vec<HashMap<String, String>>> {
+    let graph = document
+        .get("@graph")
+        .and_then(serde_json::Value::as_array)
+        .context("graphd index response is missing an @graph array")?;
+    graph
+        .iter()
+        .map(|node| {
+            let object = node
+                .as_object()
+                .context("graphd index response contains a non-object node")?;
+            Ok(object
+                .iter()
+                .map(|(key, value)| {
+                    let rendered = value
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| value.to_string());
+                    (key.clone(), rendered)
+                })
+                .collect())
+        })
+        .collect()
 }
 
 fn format_as_json(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
