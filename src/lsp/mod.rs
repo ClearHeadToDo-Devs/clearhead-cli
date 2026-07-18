@@ -175,7 +175,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_did_save_emits_events() {
+    async fn test_initialize_does_not_advertise_archive_commands() {
         use tower_lsp_server::LanguageServer;
 
         let (service, _) = LspService::new(|client| Backend {
@@ -183,10 +183,36 @@ mod tests {
             documents: DashMap::new(),
             workspace_roots: OnceCell::new(),
         });
-        let backend = service.inner();
-        let uri = Uri::from_file_path("/test.actions").unwrap();
+        let result = service
+            .inner()
+            .initialize(InitializeParams::default())
+            .await
+            .unwrap();
 
-        // 1. Load initial state
+        assert!(result.capabilities.execute_command_provider.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_did_save_updates_snapshot_without_archiving_open_buffer() {
+        use tower_lsp_server::LanguageServer;
+
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("charters/test.actions");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(
+            &source,
+            "[x] Task 1 #019baaec-00b6-7991-be34-94b68212619a\n",
+        )
+        .unwrap();
+
+        let (service, _) = LspService::new(|client| Backend {
+            client,
+            documents: DashMap::new(),
+            workspace_roots: OnceCell::new(),
+        });
+        let backend = service.inner();
+        let uri = Uri::from_file_path(&source).unwrap();
+
         backend
             .update_document(
                 uri.clone(),
@@ -194,8 +220,6 @@ mod tests {
                 true,
             )
             .await;
-
-        // 2. Change state to completed
         backend
             .update_document(
                 uri.clone(),
@@ -204,20 +228,23 @@ mod tests {
             )
             .await;
 
-        // 3. Trigger save
-        let params = DidSaveTextDocumentParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            text: None,
-        };
-        backend.did_save(params).await;
+        backend
+            .did_save(DidSaveTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                text: None,
+            })
+            .await;
 
-        // 4. Verify last_saved was updated
-        {
-            let doc = backend.documents.get(&uri).unwrap();
-            assert_eq!(
-                doc.last_saved_parsed.as_ref().unwrap().actions[0].state,
-                clearhead_cli::ActionState::Completed
-            );
-        }
+        let doc = backend.documents.get(&uri).unwrap();
+        assert_eq!(
+            doc.last_saved_parsed.as_ref().unwrap().actions[0].state,
+            clearhead_cli::ActionState::Completed
+        );
+        drop(doc);
+        assert!(
+            !clearhead_core::completed_actions_path(&source).exists(),
+            "didSave must not split archival between disk and an editor-owned buffer"
+        );
+        assert!(std::fs::read_to_string(source).unwrap().contains("Task 1"));
     }
 }
