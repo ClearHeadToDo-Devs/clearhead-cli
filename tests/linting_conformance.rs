@@ -41,9 +41,9 @@ fn get_linting_examples() -> Vec<(String, String, String)> {
 
         if error_path.exists() && fixed_path.exists() {
             let error_content = fs::read_to_string(&error_path)
-                .expect(&format!("Failed to read {}/error.actions", rule_name));
+                .unwrap_or_else(|_| panic!("Failed to read {}/error.actions", rule_name));
             let fixed_content = fs::read_to_string(&fixed_path)
-                .expect(&format!("Failed to read {}/fixed.actions", rule_name));
+                .unwrap_or_else(|_| panic!("Failed to read {}/fixed.actions", rule_name));
 
             examples.push((rule_name, error_content, fixed_content));
         }
@@ -70,7 +70,7 @@ fn test_linting_error_detection() {
 
         // Parse the error.actions file
         let parsed = get_parsed_document(error_content)
-            .expect(&format!("Failed to parse {}/error.actions", rule_name));
+            .unwrap_or_else(|_| panic!("Failed to parse {}/error.actions", rule_name));
 
         // Lint the document and collect results
         let diagnostics: Vec<_> = lint_document(&parsed).into_iter().collect();
@@ -116,7 +116,7 @@ fn test_linting_fixed_version_passes() {
 
         // Parse the fixed.actions file
         let parsed = get_parsed_document(fixed_content)
-            .expect(&format!("Failed to parse {}/fixed.actions", rule_name));
+            .unwrap_or_else(|_| panic!("Failed to parse {}/fixed.actions", rule_name));
 
         // Lint the document and collect results
         let diagnostics: Vec<_> = lint_document(&parsed).into_iter().collect();

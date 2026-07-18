@@ -7,7 +7,7 @@ fn test_snapshots_from_grammar_examples() {
     for (example_name, content) in get_examples() {
         // Parse the content into our ActionList struct
         let actions = get_action_list_struct(&content)
-            .expect(&format!("Failed to parse example: {}", example_name));
+            .unwrap_or_else(|_| panic!("Failed to parse example: {}", example_name));
 
         // Use insta to assert against a RON snapshot
         insta::with_settings!({

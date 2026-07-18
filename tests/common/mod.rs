@@ -121,7 +121,7 @@ impl TestEnv {
 pub fn read_example(filename: &str) -> String {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let example_path = manifest_dir.join("examples").join(filename);
-    fs::read_to_string(&example_path).expect(&format!("Failed to read example file: {}", filename))
+    fs::read_to_string(&example_path).unwrap_or_else(|_| panic!("Failed to read example file: {}", filename))
 }
 
 pub fn get_examples() -> HashMap<String, String> {
@@ -149,9 +149,9 @@ pub fn get_examples() -> HashMap<String, String> {
 
         // Read the file content
         let content = fs::read_to_string(&path)
-            .expect(&format!("Failed to read example file: {}", example_name));
+            .unwrap_or_else(|_| panic!("Failed to read example file: {}", example_name));
 
         examples.insert(example_name.to_string(), content);
     }
-    return examples;
+    examples
 }

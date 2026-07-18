@@ -85,7 +85,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 stdio,
                 table_options,
             } => commands::plan::read_plans(
-                &ctx,
+                ctx,
                 format,
                 charter,
                 *recursive,
@@ -96,7 +96,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             argparser::ReadTarget::Charters {
                 format,
                 explicit_only,
-            } => commands::charter::read_charters(&ctx, format, *explicit_only),
+            } => commands::charter::read_charters(ctx, format, *explicit_only),
             argparser::ReadTarget::Actions {
                 format,
                 plan,
@@ -106,7 +106,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 states,
                 file,
             } => commands::action::read_actions_cmd(
-                &ctx,
+                ctx,
                 *format,
                 plan.as_deref(),
                 charter.as_deref(),
@@ -122,12 +122,12 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 file,
                 format,
                 table_options,
-            } => commands::plan::show_plan(&ctx, query, file, format, table_options),
+            } => commands::plan::show_plan(ctx, query, file, format, table_options),
             argparser::ShowTarget::Action { query, file } => {
-                commands::action::show_action(&ctx, query, file)
+                commands::action::show_action(ctx, query, file)
             }
             argparser::ShowTarget::Charter { query } => {
-                commands::charter::show_charter(&ctx, query)
+                commands::charter::show_charter(ctx, query)
             }
         },
         Verb::Add { target } => match target {
@@ -140,7 +140,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 schedule,
                 dry_run,
             } => commands::plan::add_plan(
-                &ctx, name, file, charter, parent, fields, schedule, *dry_run,
+                ctx, name, file, charter, parent, fields, schedule, *dry_run,
             ),
             argparser::AddTarget::Action {
                 name,
@@ -152,12 +152,13 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 alias,
                 description,
                 context,
+                predecessor,
                 sequential,
                 scheduled_at,
                 duration,
                 dry_run,
             } => commands::action::add_action(
-                &ctx,
+                ctx,
                 name,
                 charter,
                 file,
@@ -167,6 +168,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 alias,
                 description,
                 context,
+                predecessor,
                 *sequential,
                 scheduled_at,
                 *duration,
@@ -178,7 +180,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 parent,
                 template,
                 dry_run,
-            } => commands::charter::add_charter(&ctx, title, alias, parent, template, *dry_run),
+            } => commands::charter::add_charter(ctx, title, alias, parent, template, *dry_run),
         },
         Verb::Update { target } => match target {
             argparser::UpdateTarget::Plan {
@@ -188,7 +190,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 fields,
                 schedule,
                 dry_run,
-            } => commands::plan::update_plan(&ctx, query, file, name, fields, schedule, *dry_run),
+            } => commands::plan::update_plan(ctx, query, file, name, fields, schedule, *dry_run),
             argparser::UpdateTarget::Action {
                 query,
                 name,
@@ -198,12 +200,13 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 duration,
                 description,
                 context,
+                predecessor,
                 sequential,
                 charter,
                 file,
                 dry_run,
             } => commands::action::update_action(
-                &ctx,
+                ctx,
                 query,
                 name,
                 *priority,
@@ -212,6 +215,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 duration,
                 description,
                 context,
+                predecessor,
                 *sequential,
                 charter,
                 file,
@@ -223,33 +227,33 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 title,
                 alias,
                 dry_run,
-            } => commands::charter::update_charter(&ctx, query, state, title, alias, *dry_run),
+            } => commands::charter::update_charter(ctx, query, state, title, alias, *dry_run),
         },
         Verb::Complete { target } => match target {
             argparser::CompleteTarget::Plan {
                 query,
                 file,
                 dry_run,
-            } => commands::plan::complete_plan(&ctx, query, file, *dry_run),
+            } => commands::plan::complete_plan(ctx, query, file, *dry_run),
             argparser::CompleteTarget::Action {
                 query,
                 charter,
                 file,
                 dry_run,
-            } => commands::action::complete_action(&ctx, query, charter, file, *dry_run),
+            } => commands::action::complete_action(ctx, query, charter, file, *dry_run),
         },
         Verb::Delete { target } => match target {
             argparser::DeleteTarget::Plan {
                 query,
                 file,
                 dry_run,
-            } => commands::plan::delete_plan(&ctx, query, file, *dry_run),
+            } => commands::plan::delete_plan(ctx, query, file, *dry_run),
             argparser::DeleteTarget::Action {
                 query,
                 charter,
                 file,
                 dry_run,
-            } => commands::action::delete_action(&ctx, query, charter, file, *dry_run),
+            } => commands::action::delete_action(ctx, query, charter, file, *dry_run),
         },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {
@@ -258,7 +262,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 style,
                 indent_style,
                 indent_width,
-            } => commands::file::format_file(&ctx, path, *write, style, indent_style, indent_width),
+            } => commands::file::format_file(ctx, path, *write, style, indent_style, indent_width),
         },
         Verb::Lint { target } => match target {
             argparser::LintTarget::File { path } => commands::file::lint_file(path),
@@ -268,7 +272,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 path,
                 write,
                 no_format,
-            } => commands::file::normalize_file(&ctx, path, *write, *no_format),
+            } => commands::file::normalize_file(ctx, path, *write, *no_format),
         },
         Verb::Patch { target } => match target {
             argparser::PatchTarget::File {
@@ -282,19 +286,19 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 scope,
                 file,
                 dry_run,
-            } => commands::plan::archive_plans(&ctx, scope, file, *dry_run),
+            } => commands::plan::archive_plans(ctx, scope, file, *dry_run),
             argparser::ArchiveTarget::Actions {
                 scope,
                 file,
                 dry_run,
-            } => commands::action::archive_actions(&ctx, scope, file, *dry_run),
+            } => commands::action::archive_actions(ctx, scope, file, *dry_run),
             argparser::ArchiveTarget::Charter {
                 query,
                 file,
                 closed,
                 force,
                 dry_run,
-            } => commands::charter::archive_charter(&ctx, query, file, *closed, *force, *dry_run),
+            } => commands::charter::archive_charter(ctx, query, file, *closed, *force, *dry_run),
         },
         Verb::Export { target } => match target {
             argparser::ExportTarget::Plans {
@@ -302,7 +306,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 output,
                 open_only,
                 recursive,
-            } => commands::plan::export_plans(&ctx, reference, output, *open_only, *recursive),
+            } => commands::plan::export_plans(ctx, reference, output, *open_only, *recursive),
         },
         Verb::Import { target } => match target {
             argparser::ImportTarget::Plans {
@@ -310,17 +314,17 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 charter,
                 overwrite,
                 dry_run,
-            } => commands::plan::import_plans(&ctx, source, charter, *overwrite, *dry_run),
+            } => commands::plan::import_plans(ctx, source, charter, *overwrite, *dry_run),
         },
         Verb::Start { target } => match target {
             argparser::StartTarget::Lsp => commands::service::start_lsp(),
         },
         Verb::Sync { target } => match target {
             argparser::SyncTarget::Events { file, dry_run } => {
-                commands::service::sync_events(&ctx, file, *dry_run)
+                commands::service::sync_events(ctx, file, *dry_run)
             }
             argparser::SyncTarget::Calendar { dry_run, conflict } => {
-                commands::service::sync_calendar(&ctx, *dry_run, *conflict)
+                commands::service::sync_calendar(ctx, *dry_run, *conflict)
             }
         },
         Verb::Query { target } => match target {
@@ -329,7 +333,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 where_clause,
                 format,
             } => commands::query::query_workspace(
-                &ctx,
+                ctx,
                 sparql.as_deref(),
                 where_clause.as_deref(),
                 *format,
@@ -339,22 +343,22 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 status,
                 format,
             } => commands::query::run_named_query(
-                &ctx,
+                ctx,
                 name,
                 status.map(|s| s.to_sparql_iri()),
                 *format,
             ),
             argparser::QueryTarget::Index { name, format } => {
-                commands::query::run_index_query(&ctx, name.as_deref(), *format)
+                commands::query::run_index_query(ctx, name.as_deref(), *format)
             }
             argparser::QueryTarget::Chain { query, format } => {
-                commands::query::run_chain_query(&ctx, query, *format)
+                commands::query::run_chain_query(ctx, query, *format)
             }
-            argparser::QueryTarget::Show { name } => commands::query::show_named_query(&ctx, name),
-            argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
+            argparser::QueryTarget::Show { name } => commands::query::show_named_query(ctx, name),
+            argparser::QueryTarget::List => commands::query::list_named_queries(ctx),
         },
-        Verb::Debug => commands::debug::run(&ctx),
-        Verb::Doctor { json } => commands::doctor::run(&ctx, *json),
+        Verb::Debug => commands::debug::run(ctx),
+        Verb::Doctor { json } => commands::doctor::run(ctx, *json),
         Verb::Completion { shell } => {
             use clap::CommandFactory;
             use clap_complete::generate;
@@ -368,7 +372,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
         }
         Verb::Expand { target } => match target {
             argparser::ExpandTarget::Actions { file, dry_run } => {
-                commands::action::expand_actions(&ctx, file, *dry_run)
+                commands::action::expand_actions(ctx, file, *dry_run)
             }
         },
         Verb::Cancel { target } => match target {
@@ -377,7 +381,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 charter,
                 file,
                 dry_run,
-            } => commands::action::cancel_action(&ctx, query, charter, file, *dry_run),
+            } => commands::action::cancel_action(ctx, query, charter, file, *dry_run),
         },
         Verb::Apply { target } => match target {
             argparser::ApplyTarget::Template {
@@ -385,7 +389,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 charter,
                 file,
                 dry_run,
-            } => commands::template::apply_template(&ctx, name, charter, file, *dry_run),
+            } => commands::template::apply_template(ctx, name, charter, file, *dry_run),
         },
         Verb::Close { target } => match target {
             argparser::CloseTarget::Charter {
@@ -393,10 +397,10 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 file,
                 dry_run,
             } => {
-                commands::charter::close_charter(&ctx, query.as_deref(), file.as_deref(), *dry_run)
+                commands::charter::close_charter(ctx, query.as_deref(), file.as_deref(), *dry_run)
             }
         },
-        Verb::CompleteValues { kind } => commands::complete_values(&ctx, *kind),
+        Verb::CompleteValues { kind } => commands::complete_values(ctx, *kind),
         Verb::Init => unreachable!("handled before CommandContext construction"),
     }
 }

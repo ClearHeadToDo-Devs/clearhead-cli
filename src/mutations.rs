@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local};
-use clearhead_core::{Action, ActionState, Charter, CharterState};
+use clearhead_core::{Action, ActionState, Charter, CharterState, PredecessorRef};
 
 /// Updates to apply to a charter's metadata fields.
 ///
@@ -32,6 +32,7 @@ pub struct ActionUpdate {
     pub description: Option<String>,
     pub priority: Option<u32>,
     pub context: Option<Vec<String>>,
+    pub predecessors: Option<Vec<PredecessorRef>>,
     pub is_sequential: Option<bool>,
     pub alias: Option<String>,
     pub state: Option<ActionState>,
@@ -58,6 +59,13 @@ pub fn apply_updates(action: &mut Action, updates: ActionUpdate) {
             None
         } else {
             Some(context)
+        };
+    }
+    if let Some(predecessors) = updates.predecessors {
+        action.predecessors = if predecessors.is_empty() {
+            None
+        } else {
+            Some(predecessors)
         };
     }
     if let Some(is_sequential) = updates.is_sequential {

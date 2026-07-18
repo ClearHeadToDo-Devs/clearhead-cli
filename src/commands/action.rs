@@ -9,7 +9,7 @@ use chrono::Local;
 use tracing::{info, warn};
 
 use clearhead_core::workspace::{action_files, read_actions, templates};
-use clearhead_core::{Action, ActionList, ActionState};
+use clearhead_core::{Action, ActionList, ActionState, PredecessorRef};
 
 use super::CommandContext;
 use super::verb_result::{VerbError, VerbOutcome, canonical_id};
@@ -19,6 +19,10 @@ use super::verb_result::{VerbError, VerbOutcome, canonical_id};
 // ============================================================================
 
 /// Add a new standalone action to a charter's `.actions` file.
+///
+/// This is the CLI adapter boundary: each argument corresponds directly to a
+/// clap flag before the values are assembled into the domain `Action`.
+#[allow(clippy::too_many_arguments)]
 pub fn add_action(
     ctx: &CommandContext,
     name: &str,
@@ -30,20 +34,21 @@ pub fn add_action(
     alias: &Option<String>,
     description: &Option<String>,
     context: &[String],
+    predecessor: &[String],
     sequential: bool,
     scheduled_at: &Option<String>,
     duration: Option<u32>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let actions_path = resolve_acts_file(ctx, charter, file)?;
+    let mut list = action_files::read_actions(&actions_path)?;
 
     let parent_id = parent
         .as_deref()
-        .map(|q| -> anyhow::Result<_> {
-            let mut list = action_files::read_actions(&actions_path)?;
-            find_action_mut(&mut list, q)
-                .map(|a| a.id)
-                .ok_or_else(|| anyhow::anyhow!("No action found matching parent '{}'", q))
+        .map(|query| {
+            find_best_match(&list, query, is_open_action)
+                .map(|action| action.id)
+                .ok_or_else(|| anyhow::anyhow!("No action found matching parent '{}'", query))
         })
         .transpose()?;
 
@@ -68,9 +73,14 @@ pub fn add_action(
         } else {
             Some(context.to_vec())
         },
+        predecessors: if predecessor.is_empty() {
+            None
+        } else {
+            Some(predecessor_refs(predecessor))
+        },
         is_sequential: if sequential { Some(true) } else { None },
         scheduled_at: new_scheduled,
-        duration: duration,
+        duration,
         created_at: Some(Local::now()),
         ..Default::default()
     };
@@ -80,13 +90,37 @@ pub fn add_action(
         return Ok(());
     }
 
-    let mut list = action_files::read_actions(&actions_path)?;
-    list.push(action.clone());
+    let insertion_index = parent_id
+        .map(|id| index_after_subtree(&list, id))
+        .unwrap_or(list.len());
+    list.insert(insertion_index, action.clone());
     super::save_file(&actions_path, &list)?;
 
     info!(id = %action.id, name = %name, "Action added");
     println!("Added action {} ({})", &action.id.to_string()[..8], name);
     Ok(())
+}
+
+fn predecessor_refs(references: &[String]) -> Vec<PredecessorRef> {
+    references
+        .iter()
+        .map(|raw_ref| PredecessorRef {
+            raw_ref: raw_ref.clone(),
+            resolved_uuid: None,
+        })
+        .collect()
+}
+
+/// Return the insertion point immediately after `parent_id`'s full subtree.
+fn index_after_subtree(actions: &[Action], parent_id: uuid::Uuid) -> usize {
+    let subtree = clearhead_core::collect_subtree_ids(actions, parent_id);
+    actions
+        .iter()
+        .enumerate()
+        .filter(|(_, action)| subtree.contains(&action.id))
+        .map(|(index, _)| index + 1)
+        .max()
+        .unwrap_or(actions.len())
 }
 
 /// Resolve the `.actions` file path from a charter query or explicit file path.
@@ -404,6 +438,10 @@ fn close_action_subtree(
 }
 
 /// Update an open action's fields.
+///
+/// Kept explicit at the CLI adapter boundary so flag-to-field wiring remains
+/// visible; core receives the assembled `ActionUpdate` value below.
+#[allow(clippy::too_many_arguments)]
 pub fn update_action(
     ctx: &CommandContext,
     query: &str,
@@ -414,6 +452,7 @@ pub fn update_action(
     duration: &Option<u32>,
     description: &Option<String>,
     context: &[String],
+    predecessor: &[String],
     sequential: bool,
     charter: &Option<String>,
     file: &Option<PathBuf>,
@@ -451,6 +490,11 @@ pub fn update_action(
                         None
                     } else {
                         Some(context.to_vec())
+                    },
+                    predecessors: if predecessor.is_empty() {
+                        None
+                    } else {
+                        Some(predecessor_refs(predecessor))
                     },
                     is_sequential: if sequential { Some(true) } else { None },
                     scheduled_at: new_scheduled,
@@ -570,6 +614,7 @@ pub fn cancel_action(
 // ============================================================================
 
 /// List actions, optionally filtered by charter, plan name, and/or context tags.
+#[allow(clippy::too_many_arguments)]
 pub fn read_actions_cmd(
     ctx: &CommandContext,
     format: Option<crate::argparser::OutputMode>,
@@ -756,14 +801,12 @@ fn collect_workspace_actions(
             for action in open {
                 result.push((label.clone(), action));
             }
-            if !open_only {
-                if let Some(actions_file) = &mc.actions_file {
-                    let completed_path =
-                        action_files::completed_actions_path(&charter_root.join(actions_file));
-                    if let Ok(completed) = action_files::read_actions(&completed_path) {
-                        for action in completed {
-                            result.push((label.clone(), action));
-                        }
+            if !open_only && let Some(actions_file) = &mc.actions_file {
+                let completed_path =
+                    action_files::completed_actions_path(&charter_root.join(actions_file));
+                if let Ok(completed) = action_files::read_actions(&completed_path) {
+                    for action in completed {
+                        result.push((label.clone(), action));
                     }
                 }
             }
@@ -1159,18 +1202,18 @@ pub(super) fn resolve_markdown_charter<'a>(
     query: &str,
 ) -> Option<&'a clearhead_core::MarkdownCharter> {
     let query_lower = query.to_lowercase();
-    if query.len() == 8 && query.chars().all(|c| c.is_ascii_hexdigit()) {
-        if let Some(c) = charters
+    if query.len() == 8
+        && query.chars().all(|c| c.is_ascii_hexdigit())
+        && let Some(c) = charters
             .iter()
             .find(|c| c.id.to_string().starts_with(query))
-        {
-            return Some(c);
-        }
+    {
+        return Some(c);
     }
-    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
-        if let Some(c) = charters.iter().find(|c| c.id == uuid) {
-            return Some(c);
-        }
+    if let Ok(uuid) = uuid::Uuid::parse_str(query)
+        && let Some(c) = charters.iter().find(|c| c.id == uuid)
+    {
+        return Some(c);
     }
     if let Some(c) = charters.iter().find(|c| {
         c.alias

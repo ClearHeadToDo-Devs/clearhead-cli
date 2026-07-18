@@ -30,10 +30,10 @@ pub fn render_action_detail(action: &Action) -> String {
     if let Some(p) = action.priority {
         rows.push(("priority", p.to_string()));
     }
-    if let Some(ctxs) = &action.contexts {
-        if !ctxs.is_empty() {
-            rows.push(("contexts", ctxs.join(", ")));
-        }
+    if let Some(ctxs) = &action.contexts
+        && !ctxs.is_empty()
+    {
+        rows.push(("contexts", ctxs.join(", ")));
     }
     if action.is_sequential == Some(true) {
         rows.push(("sequential", "yes".to_string()));
@@ -86,10 +86,10 @@ pub fn render_charter_detail(charter: &Charter) -> String {
     if let Some(state) = charter.state {
         rows.push(("state", state.to_string().to_lowercase()));
     }
-    if let Some(objs) = &charter.objectives {
-        if !objs.is_empty() {
-            rows.push(("objectives", objs.join(", ")));
-        }
+    if let Some(objs) = &charter.objectives
+        && !objs.is_empty()
+    {
+        rows.push(("objectives", objs.join(", ")));
     }
 
     let mut out = title_block(&charter.title);

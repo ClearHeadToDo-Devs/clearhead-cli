@@ -250,21 +250,19 @@ pub fn resolve_charter<'a>(charters: &'a [Charter], query: &str) -> Option<&'a C
     let query_lower = query.to_lowercase();
 
     // 1. Full UUID match
-    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
-        if let Some(c) = charters.iter().find(|c| c.id == uuid) {
+    if let Ok(uuid) = uuid::Uuid::parse_str(query)
+        && let Some(c) = charters.iter().find(|c| c.id == uuid) {
             return Some(c);
         }
-    }
 
     // 2. Short UUID prefix (8 hex chars)
-    if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        if let Some(c) = charters
+    if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+        && let Some(c) = charters
             .iter()
             .find(|c| c.id.to_string().starts_with(query))
         {
             return Some(c);
         }
-    }
 
     // 3. Alias match (case-insensitive, exact)
     if let Some(c) = charters.iter().find(|c| {

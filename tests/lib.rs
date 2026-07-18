@@ -162,7 +162,7 @@ fn roundtrip_minimal_action() {
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(formatted.trim()).unwrap();
 
     // Verify equivalence
     assert_eq!(actions1.len(), actions2.len());
@@ -184,7 +184,7 @@ fn roundtrip_action_with_children() {
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(formatted.trim()).unwrap();
 
     // Verify equivalence - should have same number of actions
     assert_eq!(actions1.len(), actions2.len());
@@ -211,7 +211,7 @@ fn roundtrip_action_with_metadata() {
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(formatted.trim()).unwrap();
 
     // Verify equivalence
     assert_eq!(actions1.len(), actions2.len());
@@ -247,7 +247,7 @@ fn roundtrip_action_with_everything() {
         clearhead_cli::format(&actions1, clearhead_cli::OutputFormat::Actions, None, None).unwrap();
 
     // Parse the formatted string
-    let actions2 = get_action_list_struct(&formatted.trim()).unwrap();
+    let actions2 = get_action_list_struct(formatted.trim()).unwrap();
 
     // Verify equivalence - all 6 actions
     assert_eq!(actions1.len(), actions2.len());

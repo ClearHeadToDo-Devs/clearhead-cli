@@ -221,13 +221,11 @@ fn scan_query_dir(
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("sparql") {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                if let Ok(sparql) = std::fs::read_to_string(&path) {
+        if path.extension().and_then(|e| e.to_str()) == Some("sparql")
+            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                && let Ok(sparql) = std::fs::read_to_string(&path) {
                     out.insert(stem.to_string(), NamedQuery { sparql, source });
                 }
-            }
-        }
     }
 }
 
@@ -483,6 +481,74 @@ pub fn show_named_query(ctx: &CommandContext, name: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
+fn index_document_rows(
+    document: &serde_json::Value,
+) -> anyhow::Result<Vec<HashMap<String, String>>> {
+    let graph = document
+        .get("@graph")
+        .and_then(serde_json::Value::as_array)
+        .context("graphd index response is missing an @graph array")?;
+    graph
+        .iter()
+        .map(|node| {
+            let object = node
+                .as_object()
+                .context("graphd index response contains a non-object node")?;
+            Ok(object
+                .iter()
+                .map(|(key, value)| {
+                    let rendered = value
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| value.to_string());
+                    (key.clone(), rendered)
+                })
+                .collect())
+        })
+        .collect()
+}
+
+fn format_as_json(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
+    let json = serde_json::to_string_pretty(rows).context("Failed to serialize")?;
+    println!("{}", json);
+    Ok(())
+}
+
+fn format_as_table(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
+    use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
+    use std::collections::BTreeSet;
+
+    // BTreeSet for stable alphabetical column order (HashMap order is undefined)
+    let columns: Vec<String> = rows
+        .iter()
+        .flat_map(|r| r.keys().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic);
+    table.set_header(
+        columns
+            .iter()
+            .map(|c| Cell::new(c).fg(Color::Cyan))
+            .collect::<Vec<_>>(),
+    );
+
+    for row in rows {
+        table.add_row(
+            columns
+                .iter()
+                .map(|col| Cell::new(row.get(col).map(|s| s.as_str()).unwrap_or("")))
+                .collect::<Vec<_>>(),
+        );
+    }
+    println!("{}", table);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,72 +616,4 @@ mod tests {
             "placeholder not replaced: {result}"
         );
     }
-}
-
-fn index_document_rows(
-    document: &serde_json::Value,
-) -> anyhow::Result<Vec<HashMap<String, String>>> {
-    let graph = document
-        .get("@graph")
-        .and_then(serde_json::Value::as_array)
-        .context("graphd index response is missing an @graph array")?;
-    graph
-        .iter()
-        .map(|node| {
-            let object = node
-                .as_object()
-                .context("graphd index response contains a non-object node")?;
-            Ok(object
-                .iter()
-                .map(|(key, value)| {
-                    let rendered = value
-                        .as_str()
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| value.to_string());
-                    (key.clone(), rendered)
-                })
-                .collect())
-        })
-        .collect()
-}
-
-fn format_as_json(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
-    let json = serde_json::to_string_pretty(rows).context("Failed to serialize")?;
-    println!("{}", json);
-    Ok(())
-}
-
-fn format_as_table(rows: &[HashMap<String, String>]) -> anyhow::Result<()> {
-    use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
-    use std::collections::BTreeSet;
-
-    // BTreeSet for stable alphabetical column order (HashMap order is undefined)
-    let columns: Vec<String> = rows
-        .iter()
-        .flat_map(|r| r.keys().cloned())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(
-        columns
-            .iter()
-            .map(|c| Cell::new(c).fg(Color::Cyan))
-            .collect::<Vec<_>>(),
-    );
-
-    for row in rows {
-        table.add_row(
-            columns
-                .iter()
-                .map(|col| Cell::new(row.get(col).map(|s| s.as_str()).unwrap_or("")))
-                .collect::<Vec<_>>(),
-        );
-    }
-    println!("{}", table);
-    Ok(())
 }

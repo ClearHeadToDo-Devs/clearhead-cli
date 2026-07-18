@@ -132,10 +132,10 @@ pub fn find_project_data_dir() -> Option<PathBuf> {
 
 /// Expand shell variables in a path string
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
-        }
+    if let Some(relative) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(relative);
     }
 
     // Handle environment variables like $HOME

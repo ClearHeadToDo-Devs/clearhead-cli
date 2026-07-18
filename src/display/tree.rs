@@ -156,7 +156,7 @@ fn unique_short_id(id: Uuid, all_ids: &[Uuid]) -> String {
 /// any loaded charter. This surfaces both true roots (no parent) and orphans
 /// (a parent handle that resolves to nothing loaded), so the view never
 /// silently drops a charter. Parent resolution follows [`Charter::is_child_of`].
-fn find_root_charters<'a>(model: &'a DomainModel) -> Vec<&'a Charter> {
+fn find_root_charters(model: &DomainModel) -> Vec<&Charter> {
     model
         .charters
         .iter()

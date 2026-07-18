@@ -134,13 +134,11 @@ pub fn normalize_file(
     };
 
     write_or_print(&output, write, input_file)?;
-    if write {
-        if let Some(file_path) = input_file {
-            if let Err(e) = super::update_sidecar(file_path, &actions) {
+    if write
+        && let Some(file_path) = input_file
+            && let Err(e) = super::update_sidecar(file_path, &actions) {
                 tracing::warn!(path = %file_path.display(), error = %e, "Failed to update sidecar");
             }
-        }
-    }
     Ok(())
 }
 

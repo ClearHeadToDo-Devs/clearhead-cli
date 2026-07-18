@@ -223,6 +223,96 @@ fn test_add_action_defaults_to_existing_default_file() {
 }
 
 #[test]
+fn test_add_child_inserts_after_parent_descendants_before_next_root() {
+    let env = TestEnv::new();
+    let path = env.data_dir.join("charters/work.actions");
+    env.write_actions(
+        "work.actions",
+        "[ ] First root #019f733d-45b2-7f21-bcad-5610887b7230\n> [ ] Existing child #019f733d-45c2-7dd2-91dc-8631f33c6b77\n[ ] Second root #019f733d-45d2-7dd2-91dc-8631f33c6b77\n",
+    );
+
+    env.command()
+        .arg("add")
+        .arg("action")
+        .arg("New child")
+        .arg("--parent")
+        .arg("First root")
+        .arg("--file")
+        .arg(&path)
+        .assert()
+        .success();
+
+    let actions = clearhead_core::read_actions(&path).unwrap();
+    let names: Vec<_> = actions.iter().map(|action| action.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["First root", "Existing child", "New child", "Second root"]
+    );
+    assert_eq!(actions[2].parent_id, Some(actions[0].id));
+    assert!(actions[3].parent_id.is_none());
+}
+
+#[test]
+fn test_add_and_update_action_predecessors() {
+    let env = TestEnv::new();
+    let path = env.data_dir.join("charters/work.actions");
+    env.write_actions(
+        "work.actions",
+        "[ ] Foundation #019f733d-45b2-7f21-bcad-5610887b7230\n",
+    );
+
+    env.command()
+        .arg("add")
+        .arg("action")
+        .arg("Dependent")
+        .arg("--predecessor")
+        .arg("Foundation")
+        .arg("--predecessor")
+        .arg("external gate")
+        .arg("--file")
+        .arg(&path)
+        .assert()
+        .success();
+
+    let actions = clearhead_core::read_actions(&path).unwrap();
+    let dependent = actions
+        .iter()
+        .find(|action| action.name == "Dependent")
+        .unwrap();
+    let refs: Vec<_> = dependent
+        .predecessors
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|predecessor| predecessor.raw_ref.as_str())
+        .collect();
+    assert_eq!(refs, ["Foundation", "external gate"]);
+
+    env.command()
+        .arg("update")
+        .arg("action")
+        .arg("Dependent")
+        .arg("--predecessor")
+        .arg("019f733d-45b2-7f21-bcad-5610887b7230")
+        .arg("--file")
+        .arg(&path)
+        .assert()
+        .success();
+
+    let actions = clearhead_core::read_actions(&path).unwrap();
+    let dependent = actions
+        .iter()
+        .find(|action| action.name == "Dependent")
+        .unwrap();
+    let predecessors = dependent.predecessors.as_ref().unwrap();
+    assert_eq!(predecessors.len(), 1);
+    assert_eq!(
+        predecessors[0].raw_ref,
+        "019f733d-45b2-7f21-bcad-5610887b7230"
+    );
+}
+
+#[test]
 fn test_add_action_without_target_errors_when_ambiguous() {
     let env = TestEnv::new();
     env.write_actions("one.actions", "[ ] One\n");

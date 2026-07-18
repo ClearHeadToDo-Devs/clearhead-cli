@@ -34,7 +34,7 @@ fn insert_index_after_descendants(
     for (offset, action) in actions[parent_idx + 1..].iter().enumerate() {
         if action
             .parent_id
-            .map_or(false, |pid| descendant_ids.contains(&pid))
+            .is_some_and(|pid| descendant_ids.contains(&pid))
         {
             descendant_ids.insert(action.id);
             last = parent_idx + 1 + offset;
@@ -147,10 +147,10 @@ pub fn read_plans(
 
         let mut result = Vec::new();
         for entry in entries {
-            if let Some(ref allowed) = allowed {
-                if !allowed.contains(&entry.charter_name.to_lowercase()) {
-                    continue;
-                }
+            if let Some(ref allowed) = allowed
+                && !allowed.contains(&entry.charter_name.to_lowercase())
+            {
+                continue;
             }
             match parse_ics_file(&entry.path) {
                 Ok(ps) => result.extend(
@@ -493,18 +493,18 @@ fn resolve_markdown_charter<'a>(
     query: &str,
 ) -> Option<&'a clearhead_core::MarkdownCharter> {
     let query_lower = query.to_lowercase();
-    if let Ok(uuid) = uuid::Uuid::parse_str(query) {
-        if let Some(c) = charters.iter().find(|c| c.id == uuid) {
-            return Some(c);
-        }
+    if let Ok(uuid) = uuid::Uuid::parse_str(query)
+        && let Some(c) = charters.iter().find(|c| c.id == uuid)
+    {
+        return Some(c);
     }
-    if query.len() >= 4 && query.chars().all(|c| c.is_ascii_hexdigit()) {
-        if let Some(c) = charters
+    if query.len() >= 4
+        && query.chars().all(|c| c.is_ascii_hexdigit())
+        && let Some(c) = charters
             .iter()
             .find(|c| c.id.to_string().starts_with(query))
-        {
-            return Some(c);
-        }
+    {
+        return Some(c);
     }
     if let Some(c) = charters.iter().find(|c| {
         c.alias
@@ -523,6 +523,9 @@ fn slug(value: &str) -> String {
     value.to_lowercase().replace(' ', "-").replace('&', "and")
 }
 
+// CLI adapter: the grouped clap field structs are intentionally passed
+// explicitly before being assembled into one Plan.
+#[allow(clippy::too_many_arguments)]
 pub fn add_plan(
     ctx: &CommandContext,
     name: &str,
@@ -674,7 +677,7 @@ pub fn archive_plans(
 
 pub fn import_plans(
     ctx: &CommandContext,
-    source: &PathBuf,
+    source: &Path,
     charter: &Option<String>,
     overwrite: bool,
     dry_run: bool,
@@ -768,12 +771,11 @@ pub fn export_plans(
                 &actions,
                 charter_name,
             );
-            let model = clearhead_core::DomainModel {
+
+            clearhead_core::DomainModel {
                 objectives: vec![],
                 charters: vec![charter],
-            };
-
-            model
+            }
         } else {
             let model = ctx.load_model()?;
             let target = resolve_reference(&model, reference, &ReferenceOptions::default())?;

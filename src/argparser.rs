@@ -566,6 +566,10 @@ pub enum AddTarget {
         #[arg(short, long)]
         context: Vec<String>,
 
+        /// Predecessor reference (`< ref` in DSL, can be specified multiple times)
+        #[arg(long)]
+        predecessor: Vec<String>,
+
         /// Mark direct children as implicitly sequential (`~` marker in DSL)
         #[arg(long)]
         sequential: bool,
@@ -670,6 +674,10 @@ pub enum UpdateTarget {
         /// Context tags (`+tag` in DSL, can be specified multiple times). Replaces the existing set.
         #[arg(short, long)]
         context: Vec<String>,
+
+        /// Predecessor references (`< ref` in DSL, can be specified multiple times). Replaces the existing set.
+        #[arg(long)]
+        predecessor: Vec<String>,
 
         /// Mark direct children as implicitly sequential (`~` marker in DSL)
         #[arg(long)]
