@@ -49,7 +49,10 @@ impl VerbOutcome {
         if std::io::stdout().is_terminal() {
             println!("{}", self.prose());
         } else {
-            println!("{}", serde_json::to_string(self).expect("verb outcome serializes"));
+            println!(
+                "{}",
+                serde_json::to_string(self).expect("verb outcome serializes")
+            );
         }
     }
 }
@@ -63,7 +66,11 @@ pub enum VerbError {
     NotFound { query: String },
     /// The query resolves, but to an action already in a completed archive —
     /// an idempotent loop can branch on this as effectively-done.
-    AlreadyClosed { id: String, state: String, query: String },
+    AlreadyClosed {
+        id: String,
+        state: String,
+        query: String,
+    },
 }
 
 impl std::fmt::Display for VerbError {
@@ -110,6 +117,9 @@ mod tests {
             query: "x".into(),
         })
         .unwrap();
-        assert!(closed.starts_with(r#"{"kind":"already-closed""#), "got: {closed}");
+        assert!(
+            closed.starts_with(r#"{"kind":"already-closed""#),
+            "got: {closed}"
+        );
     }
 }

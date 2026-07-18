@@ -152,10 +152,9 @@ pub fn patch_file(
     use std::fs;
 
     debug!(primary = %primary.display(), secondary = %secondary.display(), write = write, "Executing Patch File");
-    let primary_content =
-        fs::read_to_string(primary).context("Failed to read primary file")?;
-    let secondary_content = fs::read_to_string(secondary)
-        .context("Failed to read secondary file")?;
+    let primary_content = fs::read_to_string(primary).context("Failed to read primary file")?;
+    let secondary_content =
+        fs::read_to_string(secondary).context("Failed to read secondary file")?;
 
     let mut primary_actions = if write {
         parse_content_for_mutation(

@@ -19,10 +19,14 @@ fn close_charter_by_query_updates_state() {
 
     env.command()
         .args(["close", "charter", "my-charter"])
-        .assert().success();
+        .assert()
+        .success();
 
     let content = fs::read_to_string(env.data_dir.join("charters/my-charter.md")).unwrap();
-    assert!(content.contains("state: Closed"), "Expected state: Closed in:\n{content}");
+    assert!(
+        content.contains("state: Closed"),
+        "Expected state: Closed in:\n{content}"
+    );
 }
 
 #[test]
@@ -32,10 +36,14 @@ fn close_charter_creates_md_for_implicit_charter() {
 
     env.command()
         .args(["close", "charter", "my-charter"])
-        .assert().success();
+        .assert()
+        .success();
 
     let md_path = env.data_dir.join("charters/my-charter.md");
-    assert!(md_path.exists(), ".md file should be created for implicit charter");
+    assert!(
+        md_path.exists(),
+        ".md file should be created for implicit charter"
+    );
     let content = fs::read_to_string(&md_path).unwrap();
     assert!(content.contains("state: Closed"));
 }
@@ -51,7 +59,8 @@ fn close_charter_by_file_resolves_from_actions_path() {
     env.command()
         .args(["close", "charter", "--file"])
         .arg(&actions_path)
-        .assert().success();
+        .assert()
+        .success();
 
     let content = fs::read_to_string(env.data_dir.join("charters/my-charter.md")).unwrap();
     assert!(content.contains("state: Closed"));
@@ -68,7 +77,8 @@ fn close_charter_dry_run_does_not_write() {
 
     env.command()
         .args(["close", "charter", "my-charter", "--dry-run"])
-        .assert().success()
+        .assert()
+        .success()
         .stdout(predicate::str::contains("Would"));
 
     let after = fs::read_to_string(&md_path).unwrap();
@@ -80,7 +90,8 @@ fn close_charter_no_args_fails() {
     let env = TestEnv::new();
     env.command()
         .args(["close", "charter"])
-        .assert().failure()
+        .assert()
+        .failure()
         .stderr(predicate::str::contains("Provide"));
 }
 
@@ -88,7 +99,13 @@ fn close_charter_no_args_fails() {
 fn close_charter_unknown_file_fails() {
     let env = TestEnv::new();
     env.command()
-        .args(["close", "charter", "--file", "/nonexistent/path/foo.actions"])
-        .assert().failure()
+        .args([
+            "close",
+            "charter",
+            "--file",
+            "/nonexistent/path/foo.actions",
+        ])
+        .assert()
+        .failure()
         .stderr(predicate::str::contains("No charter found"));
 }

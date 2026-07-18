@@ -11,7 +11,10 @@ pub fn partition_actions_for_archive(all_actions: &ActionList) -> (ActionList, A
 
     for action in all_actions {
         if action.parent_id.is_none() {
-            let mut tree_done = matches!(action.state, ActionState::Completed | ActionState::Cancelled);
+            let mut tree_done = matches!(
+                action.state,
+                ActionState::Completed | ActionState::Cancelled
+            );
 
             if tree_done {
                 let mut stack = vec![action.id];

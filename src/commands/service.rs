@@ -1,3 +1,4 @@
+#[cfg(feature = "lsp")]
 use anyhow::Context;
 use tracing::{debug, info, warn};
 
@@ -110,8 +111,7 @@ pub fn sync_calendar(
     }
 
     let applied =
-        clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)
-            ?;
+        clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)?;
     info!(?applied, "Calendar sync complete");
     println!(
         "Sync complete. {} push, {} pull, {} converged, {} conflict.",

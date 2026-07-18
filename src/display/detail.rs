@@ -112,7 +112,11 @@ pub fn render_charter_detail(charter: &Charter) -> String {
         out.push('\n');
         let mut parts = Vec::new();
         if plans > 0 {
-            parts.push(format!("{} plan{}", plans, if plans == 1 { "" } else { "s" }));
+            parts.push(format!(
+                "{} plan{}",
+                plans,
+                if plans == 1 { "" } else { "s" }
+            ));
         }
         if open > 0 {
             parts.push(format!(

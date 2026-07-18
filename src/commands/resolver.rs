@@ -20,15 +20,16 @@ pub enum ResolvedScope {
 pub fn resolve_domain_ref(ctx: &CommandContext, ref_str: &str) -> anyhow::Result<ResolvedScope> {
     let models = ctx.all_domain_models()?;
 
-    let workspace_refs: Vec<(&str, &clearhead_core::DomainModel)> =
-        models.iter().map(|(name, model)| (name.as_str(), model)).collect();
+    let workspace_refs: Vec<(&str, &clearhead_core::DomainModel)> = models
+        .iter()
+        .map(|(name, model)| (name.as_str(), model))
+        .collect();
 
     let (ws_name, target) = clearhead_core::resolve_reference_in_workspaces(
         &workspace_refs,
         ref_str,
         &clearhead_core::ReferenceOptions::default(),
-    )
-    ?;
+    )?;
 
     let ws_dir = ctx
         .workspace_dirs()

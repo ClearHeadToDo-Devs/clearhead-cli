@@ -174,8 +174,14 @@ pub fn load_config(custom_config_path: Option<PathBuf>) -> Result<Config, Config
         .set_default("cli_format", default_format())?
         .set_default("cli_indent_style", default_indent_style())?
         .set_default("cli_indent_width", default_indent_width() as i64)?
-        .set_default("expansion_total_instances", default_expansion_total_instances() as i64)?
-        .set_default("expansion_primary_instances", default_expansion_primary_instances() as i64)?
+        .set_default(
+            "expansion_total_instances",
+            default_expansion_total_instances() as i64,
+        )?
+        .set_default(
+            "expansion_primary_instances",
+            default_expansion_primary_instances() as i64,
+        )?
         // 2. Load global config (JSON format)
         .add_source(
             File::from(global_config_path)

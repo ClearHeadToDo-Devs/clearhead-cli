@@ -124,7 +124,6 @@ pub fn compute_code_actions(
                         "Set Completion Date (Today)".to_string(),
                     ));
                 }
-
             }
         }
     }

@@ -14,11 +14,7 @@ use std::path::Path;
 const EXEMPT: &[(&str, &str)] = &[
     ("init.rs", "fs::write(&gitignore_path"),
     ("init.rs", "fs::write(&config_path, json_str)"),
-    (
-        "init.rs",
-        "fs::write(&config_path, format!",
-    ), // test fixture: temp config.json for init-guard unit tests, not source-of-truth data
-    ("mod.rs", "fs::write(path, content)"),           // write_or_print: user-directed output
+    ("mod.rs", "fs::write(path, content)"), // write_or_print: user-directed output
     ("plan.rs", "fs::write(output_path, icalendar)"), // export --output: user-directed output
 ];
 

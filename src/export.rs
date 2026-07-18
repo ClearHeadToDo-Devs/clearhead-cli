@@ -74,7 +74,10 @@ mod tests {
 
     #[test]
     fn format_as_icalendar_empty_model() {
-        let model = DomainModel { objectives: vec![], charters: vec![] };
+        let model = DomainModel {
+            objectives: vec![],
+            charters: vec![],
+        };
         let ics = format_as_icalendar(&model, false).unwrap();
         assert!(ics.contains("BEGIN:VCALENDAR"));
         assert!(!ics.contains("BEGIN:VEVENT"));

@@ -1,10 +1,10 @@
-use anyhow::Context;
 use crate::argparser::QueryFormat;
 use crate::commands::CommandContext;
 use crate::commands::verb_result::canonical_id;
-use std::io::IsTerminal;
+use anyhow::Context;
 use chrono::Utc;
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use tracing::debug;
 
 /// Prepend standard PREFIX declarations for any prefix not already declared.
@@ -66,19 +66,21 @@ pub fn query_workspace(
         (Some(q), None) => q.to_string(),
         (None, Some(w)) => {
             debug!(where_clause = %w, "Building raw WHERE query");
-            clearhead_core::graph::build_raw_where_query(w)
+            clearhead_cli::build_raw_where_query(w)
         }
         (None, None) => {
-            anyhow::bail!("Provide a SPARQL query or --where clause.\n\
+            anyhow::bail!(
+                "Provide a SPARQL query or --where clause.\n\
              Usage: clearhead query \"SELECT ?name WHERE {{ ... }}\"\n\
-             Usage: clearhead query --where \"?s rdfs:label ?name\"");
+             Usage: clearhead query --where \"?s rdfs:label ?name\""
+            );
         }
         (Some(_), Some(_)) => anyhow::bail!("Cannot combine positional query and --where"),
     };
 
     let wc = ctx.workspace_config();
     let rows =
-        clearhead_cli::run_workspace_raw_query(&ctx.data_dir, &inject_params(&full_query, None), Some(&wc))
+        clearhead_cli::run_graphd_raw_query(&ctx.data_dir, &inject_params(&full_query, None), &wc)
             .map_err(|e| anyhow::anyhow!(e))?;
 
     if rows.is_empty() {
@@ -131,7 +133,10 @@ struct NamedQuery {
 const BUILT_IN_INDEX_QUERIES: &[(&str, &str)] = &[
     ("agenda", include_str!("../queries/index/agenda.sparql")),
     ("default", include_str!("../queries/index/default.sparql")),
-    ("unscheduled", include_str!("../queries/index/unscheduled.sparql")),
+    (
+        "unscheduled",
+        include_str!("../queries/index/unscheduled.sparql"),
+    ),
     ("weekly", include_str!("../queries/index/weekly.sparql")),
 ];
 
@@ -193,7 +198,11 @@ fn resolve_named_queries(ctx: &CommandContext) -> HashMap<String, NamedQuery> {
     }
 
     // User-global: <config_dir>/queries/ (XDG: ~/.config/clearhead/queries/)
-    scan_query_dir(&ctx.config_dir.join("queries"), QuerySource::User, &mut queries);
+    scan_query_dir(
+        &ctx.config_dir.join("queries"),
+        QuerySource::User,
+        &mut queries,
+    );
 
     // Project-local: <data_dir>/.clearhead/queries/ (highest priority)
     let project_dir = ctx.data_dir.join(".clearhead").join("queries");
@@ -266,7 +275,11 @@ fn resolve_typed_queries(ctx: &CommandContext, type_name: &str) -> HashMap<Strin
     let mut queries = HashMap::new();
     let user_dir = ctx.config_dir.join("queries").join(type_name);
     scan_query_dir(&user_dir, QuerySource::User, &mut queries);
-    let dir = ctx.data_dir.join(".clearhead").join("queries").join(type_name);
+    let dir = ctx
+        .data_dir
+        .join(".clearhead")
+        .join("queries")
+        .join(type_name);
     scan_query_dir(&dir, QuerySource::Project, &mut queries);
     queries
 }
@@ -275,16 +288,24 @@ fn resolve_typed_queries(ctx: &CommandContext, type_name: &str) -> HashMap<Strin
 fn scan_all_typed_queries(ctx: &CommandContext) -> Vec<(String, String, NamedQuery)> {
     let dirs: Vec<(std::path::PathBuf, QuerySource)> = vec![
         (ctx.config_dir.join("queries"), QuerySource::User),
-        (ctx.data_dir.join(".clearhead").join("queries"), QuerySource::Project),
+        (
+            ctx.data_dir.join(".clearhead").join("queries"),
+            QuerySource::Project,
+        ),
     ];
 
     let mut result = Vec::new();
     for (base, source) in dirs {
-        let Ok(entries) = std::fs::read_dir(&base) else { continue };
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                let Some(type_name) = path.file_name().and_then(|n| n.to_str()).map(String::from) else { continue };
+                let Some(type_name) = path.file_name().and_then(|n| n.to_str()).map(String::from)
+                else {
+                    continue;
+                };
                 let mut typed = HashMap::new();
                 scan_query_dir(&path, source, &mut typed);
                 for (name, query) in typed {
@@ -332,15 +353,14 @@ pub fn run_index_query(
 
     match format.unwrap_or(QueryFormat::Json) {
         QueryFormat::Json => {
-            let doc = clearhead_core::graph::frame_index(&rows)?;
-            let json = serde_json::to_string_pretty(&doc)
-                .context("Failed to serialize")?;
+            let doc = clearhead_cli::frame_index(&rows)?;
+            let json = serde_json::to_string_pretty(&doc).context("Failed to serialize")?;
             println!("{}", json);
             Ok(())
         }
         QueryFormat::Table => {
             // Human view — rendered from raw rows; still contract-checked.
-            clearhead_core::graph::frame_index(&rows)?;
+            clearhead_cli::frame_index(&rows)?;
             if rows.is_empty() {
                 println!("(no results)");
                 return Ok(());
@@ -360,9 +380,8 @@ pub fn run_chain_query(
     query: &str,
     format: Option<QueryFormat>,
 ) -> anyhow::Result<()> {
-    let action = super::action::resolve_open_action(ctx, query)?.ok_or_else(|| {
-        anyhow::anyhow!("No open action matching '{}'", query)
-    })?;
+    let action = super::action::resolve_open_action(ctx, query)?
+        .ok_or_else(|| anyhow::anyhow!("No open action matching '{}'", query))?;
 
     let target = format!("<{}>", canonical_id(action.id));
     let sparql = include_str!("../queries/index/chain.sparql").replace("?TARGET_ACTION", &target);
@@ -377,13 +396,13 @@ pub fn run_chain_query(
 
     match format.unwrap_or(QueryFormat::Json) {
         QueryFormat::Json => {
-            let doc = clearhead_core::graph::frame_index(&rows)?;
+            let doc = clearhead_cli::frame_index(&rows)?;
             let json = serde_json::to_string_pretty(&doc).context("Failed to serialize")?;
             println!("{}", json);
             Ok(())
         }
         QueryFormat::Table => {
-            clearhead_core::graph::frame_index(&rows)?;
+            clearhead_cli::frame_index(&rows)?;
             if rows.is_empty() {
                 println!("(no results)");
                 return Ok(());
@@ -411,19 +430,31 @@ pub fn list_named_queries(ctx: &CommandContext) -> anyhow::Result<()> {
     root_names.sort();
     for name in root_names {
         let q = &queries[name];
-        table.add_row(vec![Cell::new(name), Cell::new("—"), Cell::new(q.source.to_string())]);
+        table.add_row(vec![
+            Cell::new(name),
+            Cell::new("—"),
+            Cell::new(q.source.to_string()),
+        ]);
     }
 
     // Built-in index queries
     for (name, _) in BUILT_IN_INDEX_QUERIES {
-        table.add_row(vec![Cell::new(name), Cell::new("index"), Cell::new("built-in")]);
+        table.add_row(vec![
+            Cell::new(name),
+            Cell::new("index"),
+            Cell::new("built-in"),
+        ]);
     }
 
     // Typed queries from subdirectories (user/project)
     let mut typed = scan_all_typed_queries(ctx);
     typed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
     for (type_name, name, q) in &typed {
-        table.add_row(vec![Cell::new(name), Cell::new(type_name), Cell::new(q.source.to_string())]);
+        table.add_row(vec![
+            Cell::new(name),
+            Cell::new(type_name),
+            Cell::new(q.source.to_string()),
+        ]);
     }
 
     println!("{}", table);
@@ -452,7 +483,10 @@ pub fn show_named_query(ctx: &CommandContext, name: &str) -> anyhow::Result<()> 
         })
         .or_else(|| resolve_named_queries(ctx).remove(name).map(|q| q.sparql))
         .ok_or_else(|| {
-            anyhow::anyhow!("No query named '{}'. Use `clearhead query list` to see available.", name)
+            anyhow::anyhow!(
+                "No query named '{}'. Use `clearhead query list` to see available.",
+                name
+            )
         })?;
     print!("{}", sparql);
     Ok(())
@@ -484,7 +518,9 @@ mod tests {
     #[test]
     fn end_of_week_is_seven_days_out_at_end_of_day() {
         let result = inject_params("?END_OF_WEEK", None);
-        let expected = (Utc::now() + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
+        let expected = (Utc::now() + chrono::Duration::days(7))
+            .format("%Y-%m-%d")
+            .to_string();
         assert!(
             result.contains(&format!("\"{}T23:59:59Z\"^^xsd:dateTime", expected)),
             "unexpected output: {result}"
@@ -502,14 +538,26 @@ mod tests {
             result.contains(&before) || result.contains(&after),
             "unexpected output: {result}"
         );
-        assert!(result.contains("^^xsd:dateTime"), "unexpected output: {result}");
+        assert!(
+            result.contains("^^xsd:dateTime"),
+            "unexpected output: {result}"
+        );
     }
 
     #[test]
     fn status_filter_replaced_when_provided() {
-        let result = inject_params("FILTER(?state = ?STATUS_FILTER)", Some("<actions:InProgress>"));
-        assert!(result.contains("<actions:InProgress>"), "unexpected output: {result}");
-        assert!(!result.contains("?STATUS_FILTER"), "placeholder not replaced: {result}");
+        let result = inject_params(
+            "FILTER(?state = ?STATUS_FILTER)",
+            Some("<actions:InProgress>"),
+        );
+        assert!(
+            result.contains("<actions:InProgress>"),
+            "unexpected output: {result}"
+        );
+        assert!(
+            !result.contains("?STATUS_FILTER"),
+            "placeholder not replaced: {result}"
+        );
     }
 }
 

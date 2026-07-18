@@ -1,5 +1,5 @@
-use anyhow::Context;
 use crate::commands::CommandContext;
+use anyhow::Context;
 use clearhead_core::workspace::{MarkdownCharter, diagnose_read, read_workspace_with_plans};
 
 pub fn run(ctx: &CommandContext) -> anyhow::Result<()> {
@@ -13,7 +13,11 @@ fn print_config_section(ctx: &CommandContext) {
     println!(
         "  global_config_file: {}{}",
         ctx.config_path.display(),
-        if ctx.config_path.exists() { "" } else { " (not found)" },
+        if ctx.config_path.exists() {
+            ""
+        } else {
+            " (not found)"
+        },
     );
 
     // Project config — written by `clearhead init`, layered on top of the global
@@ -25,13 +29,21 @@ fn print_config_section(ctx: &CommandContext) {
         println!(
             "  project_config_file: {}{}",
             project_cfg.display(),
-            if project_cfg.exists() { " (active)" } else { " (not found — run `clearhead init`)" },
+            if project_cfg.exists() {
+                " (active)"
+            } else {
+                " (not found — run `clearhead init`)"
+            },
         );
         let local_cfg = root.join(".clearhead").join("config.local.json");
         println!(
             "  project_local_config_file: {}{}",
             local_cfg.display(),
-            if local_cfg.exists() { " (active)" } else { " (not present — optional personal override)" },
+            if local_cfg.exists() {
+                " (active)"
+            } else {
+                " (not present — optional personal override)"
+            },
         );
     } else {
         println!("  project_config_file: none (not inside a clearhead workspace)");
@@ -62,9 +74,9 @@ fn print_config_section(ctx: &CommandContext) {
             id,
             manifest.workspace_name.as_deref().unwrap_or("<unnamed>")
         ),
-        None => println!(
-            "  workspace_id: <unset> — run `clearhead init` to assign a stable graph URI"
-        ),
+        None => {
+            println!("  workspace_id: <unset> — run `clearhead init` to assign a stable graph URI")
+        }
     }
 
     if !ctx.config.additional_workspaces.is_empty() {
@@ -79,7 +91,10 @@ fn print_config_section(ctx: &CommandContext) {
         ctx.config
             .plan_path
             .as_deref()
-            .map(|p| format!("{}  [override: CLEARHEAD_PLAN_PATH | project config.local.json]", p))
+            .map(|p| format!(
+                "{}  [override: CLEARHEAD_PLAN_PATH | project config.local.json]",
+                p
+            ))
             .unwrap_or_else(|| "<unset> — plans live under the workspace's own plans/".to_string()),
     );
 }
@@ -186,4 +201,3 @@ fn format_source_type(source_type: &clearhead_core::ManifestSourceType) -> &'sta
         clearhead_core::ManifestSourceType::ActionsPlusMarkdownPlusIcs => "actions+markdown+ics",
     }
 }
-

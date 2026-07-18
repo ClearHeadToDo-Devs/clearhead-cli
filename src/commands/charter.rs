@@ -15,10 +15,17 @@ use super::action::resolve_charter_across_workspaces;
 /// - Root charter (`next.actions`): children go flat in charter_root
 /// - Named flat charter (`lsp.actions`): children go in `charter_root/lsp/`
 /// - Nested charter (`lsp/diag.actions`): children go in `charter_root/lsp/diag/`
-fn sub_charter_dir(ws_root: &Path, parent: &clearhead_core::MarkdownCharter) -> anyhow::Result<PathBuf> {
+fn sub_charter_dir(
+    ws_root: &Path,
+    parent: &clearhead_core::MarkdownCharter,
+) -> anyhow::Result<PathBuf> {
     let charter_root = clearhead_core::charter_root(ws_root);
-    let acts_rel = parent.actions_file.as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Parent charter '{}' has no associated actions file; cannot determine placement", parent.title))?;
+    let acts_rel = parent.actions_file.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Parent charter '{}' has no associated actions file; cannot determine placement",
+            parent.title
+        )
+    })?;
     let without_ext = acts_rel
         .to_str()
         .and_then(|s| s.strip_suffix(".actions"))
@@ -39,11 +46,11 @@ fn resolve_charter_by_file<'a>(
 ) -> Option<&'a clearhead_core::MarkdownCharter> {
     let abs_file = std::fs::canonicalize(file)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(file));
-    let abs_root = std::fs::canonicalize(charter_root).unwrap_or_else(|_| charter_root.to_path_buf());
+    let abs_root =
+        std::fs::canonicalize(charter_root).unwrap_or_else(|_| charter_root.to_path_buf());
     let rel = abs_file.strip_prefix(&abs_root).unwrap_or(&abs_file);
-    mcs.iter().find(|mc| {
-        mc.actions_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel)
-    })
+    mcs.iter()
+        .find(|mc| mc.actions_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel))
 }
 
 /// Resolve a MarkdownCharter from either a query string or a file path.
@@ -61,7 +68,8 @@ fn find_target_charter<'a>(
         let charters: Vec<Charter> = mcs.iter().cloned().map(Charter::from).collect();
         let mc = resolve_charter(&charters, q)
             .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", q))?;
-        return mcs.iter()
+        return mcs
+            .iter()
             .find(|c| c.id == mc.id)
             .ok_or_else(|| anyhow::anyhow!("Internal: MarkdownCharter for '{}' missing", q));
     }
@@ -83,7 +91,8 @@ pub fn read_charters(
         .into_iter()
         .map(|(name, mut m)| {
             if explicit_only {
-                m.charters.retain(|c| c.alias.is_some() || c.description.is_some());
+                m.charters
+                    .retain(|c| c.alias.is_some() || c.description.is_some());
             }
             (name, m)
         })
@@ -98,7 +107,7 @@ pub fn read_charters(
     match format {
         Some(argparser::OutputMode::JsonLd) => {
             for (_, model) in &models {
-                let jsonld = clearhead_core::graph::serialize_domain_to_jsonld(model)
+                let jsonld = clearhead_cli::serialize_domain_to_jsonld(model)
                     .context("Failed to serialize JSON-LD")?;
                 println!("{}", jsonld);
             }
@@ -111,10 +120,8 @@ pub fn read_charters(
             }
         }
         Some(argparser::OutputMode::Table) => {
-            let workspaces: Vec<(String, Vec<Charter>)> = models
-                .into_iter()
-                .map(|(n, m)| (n, m.charters))
-                .collect();
+            let workspaces: Vec<(String, Vec<Charter>)> =
+                models.into_iter().map(|(n, m)| (n, m.charters)).collect();
             print_charter_table(&workspaces, multi_ws);
         }
         None => {
@@ -149,7 +156,9 @@ fn print_charter_table(workspaces: &[(String, Vec<Charter>)], multi_ws: bool) {
         Cell::new("Parent").fg(Color::Cyan),
         Cell::new("Open Actions").fg(Color::Cyan),
     ];
-    if multi_ws { headers.insert(0, Cell::new("Workspace").fg(Color::Cyan)); }
+    if multi_ws {
+        headers.insert(0, Cell::new("Workspace").fg(Color::Cyan));
+    }
     table.load_preset(UTF8_FULL).set_header(headers);
 
     for (ws_name, charters) in workspaces {
@@ -161,9 +170,15 @@ fn print_charter_table(workspaces: &[(String, Vec<Charter>)], multi_ws: bool) {
                 Cell::new(&charter.title),
                 Cell::new(charter.alias.as_deref().unwrap_or("-")),
                 Cell::new(charter.parent.as_deref().unwrap_or("-")),
-                Cell::new(if open > 0 { open.to_string() } else { "-".to_string() }),
+                Cell::new(if open > 0 {
+                    open.to_string()
+                } else {
+                    "-".to_string()
+                }),
             ];
-            if multi_ws { row.insert(0, Cell::new(ws_name)); }
+            if multi_ws {
+                row.insert(0, Cell::new(ws_name));
+            }
             table.add_row(row);
         }
     }
@@ -390,15 +405,16 @@ pub fn archive_charter(
     force: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    use clearhead_core::{ArchiveCharterOptions, archive_charter as do_archive, archive_terminal_charters};
+    use clearhead_core::{
+        ArchiveCharterOptions, archive_charter as do_archive, archive_terminal_charters,
+    };
 
     let opts = ArchiveCharterOptions { force, dry_run };
 
     if closed {
         let mut any = false;
         for (_, ws_dir) in ctx.workspace_dirs() {
-            let results = archive_terminal_charters(&ws_dir, &opts)
-                ?;
+            let results = archive_terminal_charters(&ws_dir, &opts)?;
             for r in &results {
                 print_archive_result(r);
                 any = true;
@@ -417,16 +433,23 @@ pub fn archive_charter(
         let charter_root = clearhead_core::charter_root(&ws_dir);
         let mc_full = resolve_charter_by_file(&mcs, file_path, &charter_root)
             .ok_or_else(|| anyhow::anyhow!("No charter found for file: {}", file_path.display()))?;
-        mc_full.alias.clone().unwrap_or_else(|| mc_full.title.clone())
+        mc_full
+            .alias
+            .clone()
+            .unwrap_or_else(|| mc_full.title.clone())
     } else {
-        query.as_deref()
+        query
+            .as_deref()
             .context("Provide a charter name/alias/UUID, --file <path>, or --closed")?
             .to_string()
     };
 
     for (_, ws_dir) in ctx.workspace_dirs() {
         match do_archive(&ws_dir, &q, &opts) {
-            Ok(result) => { print_archive_result(&result); return Ok(()); }
+            Ok(result) => {
+                print_archive_result(&result);
+                return Ok(());
+            }
             Err(clearhead_core::ArchiveCharterError::NotFound(_)) => continue,
             Err(e) => return Err(e.into()),
         }
@@ -435,7 +458,11 @@ pub fn archive_charter(
 }
 
 fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {
-    let prefix = if r.was_dry_run { "[dry-run] Would archive" } else { "Archived" };
+    let prefix = if r.was_dry_run {
+        "[dry-run] Would archive"
+    } else {
+        "Archived"
+    };
     println!(
         "{} charter '{}': {} primary action(s), {} completed action(s) → {}",
         prefix,
@@ -469,17 +496,22 @@ pub fn update_charter(
     let mc_full = find_target_charter(&mcs, Some(query), None, &charter_root)?;
     let mut updated = Charter::from(mc_full.clone());
 
-    let md_path_rel = mc_full
-        .md_file
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Charter '{}' has no .md file; use 'close charter' to create one", updated.title))?;
+    let md_path_rel = mc_full.md_file.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Charter '{}' has no .md file; use 'close charter' to create one",
+            updated.title
+        )
+    })?;
     let md_path = charter_root.join(md_path_rel);
 
-    apply_charter_update(&mut updated, CharterUpdate {
-        state: state.map(|s| s.into()),
-        title: title.clone(),
-        alias: alias.clone(),
-    });
+    apply_charter_update(
+        &mut updated,
+        CharterUpdate {
+            state: state.map(|s| s.into()),
+            title: title.clone(),
+            alias: alias.clone(),
+        },
+    );
 
     let formatted = clearhead_core::format_charter(&updated);
 
@@ -540,21 +572,32 @@ pub fn close_charter(
                 Some(charter_root.join(dir).join(format!("{}.md", stem)))
             })
             .unwrap_or_else(|| {
-                let slug = updated.title.to_lowercase().replace(' ', "-").replace('&', "and");
+                let slug = updated
+                    .title
+                    .to_lowercase()
+                    .replace(' ', "-")
+                    .replace('&', "and");
                 charter_root.join(format!("{}.md", slug))
             });
         (path, true)
     };
 
-    apply_charter_update(&mut updated, CharterUpdate {
-        state: Some(CharterState::Closed),
-        ..Default::default()
-    });
+    apply_charter_update(
+        &mut updated,
+        CharterUpdate {
+            state: Some(CharterState::Closed),
+            ..Default::default()
+        },
+    );
 
     let formatted = clearhead_core::format_charter(&updated);
 
     if dry_run {
-        let verb = if is_new { "Would create" } else { "Would update" };
+        let verb = if is_new {
+            "Would create"
+        } else {
+            "Would update"
+        };
         println!("{} {}:\n{}", verb, md_path.display(), formatted);
         return Ok(());
     }
@@ -565,7 +608,12 @@ pub fn close_charter(
     info!(charter = %updated.title, path = %md_path.display(), created = is_new, "Charter closed");
 
     let verb = if is_new { "created" } else { "updated" };
-    println!("Charter '{}' closed: {} {}", updated.title, verb, md_path.display());
+    println!(
+        "Charter '{}' closed: {} {}",
+        updated.title,
+        verb,
+        md_path.display()
+    );
 
     Ok(())
 }

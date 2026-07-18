@@ -320,7 +320,9 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 #[cfg(feature = "lsp")]
                 return commands::service::start_lsp();
                 #[cfg(not(feature = "lsp"))]
-                anyhow::bail!("This binary was compiled without LSP support. Install with the `lsp` feature or use the `clearhead-lsp` binary.")
+                anyhow::bail!(
+                    "This binary was compiled without LSP support. Install with the `lsp` feature or use the `clearhead-lsp` binary."
+                )
             }
         },
         Verb::Sync { target } => match target {
@@ -358,9 +360,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             argparser::QueryTarget::Chain { query, format } => {
                 commands::query::run_chain_query(&ctx, query, *format)
             }
-            argparser::QueryTarget::Show { name } => {
-                commands::query::show_named_query(&ctx, name)
-            }
+            argparser::QueryTarget::Show { name } => commands::query::show_named_query(&ctx, name),
             argparser::QueryTarget::List => commands::query::list_named_queries(&ctx),
         },
         Verb::Debug => commands::debug::run(&ctx),

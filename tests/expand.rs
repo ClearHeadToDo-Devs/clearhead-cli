@@ -11,12 +11,26 @@ fn test_expand_acts_writes_primary_and_upcoming_files() {
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:work-standup@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/work.actions", "");
-    env.command().arg("expand").arg("actions").assert().success();
+    env.command()
+        .arg("expand")
+        .arg("actions")
+        .assert()
+        .success();
     let primary = fs::read_to_string(env.data_dir.join("charters").join("work.actions")).unwrap();
-    let upcoming = fs::read_to_string(env.data_dir.join("charters").join("work.upcoming.actions")).unwrap();
-    assert!(primary.contains("Weekly Standup"), "primary should have one instance");
-    assert!(upcoming.contains("Weekly Standup"), "upcoming should have one instance");
-    assert_ne!(primary, upcoming, "primary and upcoming should be different occurrences");
+    let upcoming =
+        fs::read_to_string(env.data_dir.join("charters").join("work.upcoming.actions")).unwrap();
+    assert!(
+        primary.contains("Weekly Standup"),
+        "primary should have one instance"
+    );
+    assert!(
+        upcoming.contains("Weekly Standup"),
+        "upcoming should have one instance"
+    );
+    assert_ne!(
+        primary, upcoming,
+        "primary and upcoming should be different occurrences"
+    );
 }
 
 #[test]
@@ -27,12 +41,29 @@ fn test_expand_acts_idempotent_across_runs() {
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:work-standup-idem@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/work.actions", "");
-    env.command().arg("expand").arg("actions").assert().success();
-    env.command().arg("expand").arg("actions").assert().success();
+    env.command()
+        .arg("expand")
+        .arg("actions")
+        .assert()
+        .success();
+    env.command()
+        .arg("expand")
+        .arg("actions")
+        .assert()
+        .success();
     let primary = fs::read_to_string(env.data_dir.join("charters").join("work.actions")).unwrap();
-    let upcoming = fs::read_to_string(env.data_dir.join("charters").join("work.upcoming.actions")).unwrap();
-    assert_eq!(primary.matches("Weekly Standup").count(), 1, "primary must not duplicate");
-    assert_eq!(upcoming.matches("Weekly Standup").count(), 1, "upcoming must not duplicate");
+    let upcoming =
+        fs::read_to_string(env.data_dir.join("charters").join("work.upcoming.actions")).unwrap();
+    assert_eq!(
+        primary.matches("Weekly Standup").count(),
+        1,
+        "primary must not duplicate"
+    );
+    assert_eq!(
+        upcoming.matches("Weekly Standup").count(),
+        1,
+        "upcoming must not duplicate"
+    );
 }
 
 #[test]
@@ -45,8 +76,10 @@ fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
     let malformed = "not valid actions syntax !!!\n[ ] existing stable action\n";
     env.write_text("charters/focus.actions", malformed);
     env.command()
-        .arg("expand").arg("actions")
-        .assert().failure()
+        .arg("expand")
+        .arg("actions")
+        .assert()
+        .failure()
         .stderr(predicate::str::contains("skipped due to parse issues"));
     let after = fs::read_to_string(env.data_dir.join("charters").join("focus.actions")).unwrap();
     assert_eq!(after, malformed, "malformed file should be byte-stable");
@@ -67,12 +100,17 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
     );
     env.write_text("charters/good.actions", "[ ] already here\n");
     env.command()
-        .arg("expand").arg("actions")
-        .assert().failure()
-        .stderr(predicate::str::contains("expand actions failed for 1 charter file"));
+        .arg("expand")
+        .arg("actions")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "expand actions failed for 1 charter file",
+        ));
     let bad_after = fs::read_to_string(env.data_dir.join("charters").join("bad.actions")).unwrap();
     assert_eq!(bad_after, bad_content, "bad file must remain unchanged");
-    let good_after = fs::read_to_string(env.data_dir.join("charters").join("good.actions")).unwrap();
+    let good_after =
+        fs::read_to_string(env.data_dir.join("charters").join("good.actions")).unwrap();
     assert!(good_after.contains("already here"));
     assert!(good_after.contains("Good schedule"));
 }
@@ -96,15 +134,31 @@ fn test_expand_acts_applies_global_template_to_recurring_event() {
 
     env.write_text("charters/review.actions", "");
 
-    env.command().arg("expand").arg("actions").assert().success();
+    env.command()
+        .arg("expand")
+        .arg("actions")
+        .assert()
+        .success();
 
     let primary = fs::read_to_string(env.data_dir.join("charters").join("review.actions")).unwrap();
 
     // Template content must be present
-    assert!(primary.contains("Review Root"), "template root must be present");
-    assert!(primary.contains("Get Clear"), "template child must be present");
-    assert!(primary.contains("Collect loose papers"), "nested template child must be present");
+    assert!(
+        primary.contains("Review Root"),
+        "template root must be present"
+    );
+    assert!(
+        primary.contains("Get Clear"),
+        "template child must be present"
+    );
+    assert!(
+        primary.contains("Collect loose papers"),
+        "nested template child must be present"
+    );
 
     // The VEVENT SUMMARY must NOT appear as a separate wrapper action
-    assert!(!primary.contains("Weekly Review"), "VEVENT flat wrapper must not be written when template is applied");
+    assert!(
+        !primary.contains("Weekly Review"),
+        "VEVENT flat wrapper must not be written when template is applied"
+    );
 }

@@ -1,20 +1,21 @@
 mod common;
 use common::TestEnv;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 // A past-dated action — always <= END_OF_TODAY regardless of when tests run.
 const DATED_ACTION: &str =
     "[ ] past scheduled action @2000-01-01T00:00 #01900000-0000-7000-8000-000000000001\n";
 
 // An undated action — should never appear in agenda results.
-const UNDATED_ACTION: &str =
-    "[ ] undated action #01900000-0000-7000-8000-000000000002\n";
+const UNDATED_ACTION: &str = "[ ] undated action #01900000-0000-7000-8000-000000000002\n";
 
 /// Parse the index JSON-LD document and return its @graph nodes.
 /// One payload shape always — even empty results are a document, per
 /// specifications/query_output.md.
 fn parse_graph(output: &[u8]) -> Vec<serde_json::Value> {
-    let doc: serde_json::Value =
-        serde_json::from_slice(output).expect("output is not valid JSON");
+    let doc: serde_json::Value = serde_json::from_slice(output).expect("output is not valid JSON");
     assert!(doc.get("@context").is_some(), "missing @context: {doc}");
     doc.get("@graph")
         .and_then(|g| g.as_array())
@@ -22,10 +23,81 @@ fn parse_graph(output: &[u8]) -> Vec<serde_json::Value> {
         .clone()
 }
 
+#[cfg(unix)]
+#[test]
+fn raw_query_uses_graphd_contract_and_preserves_cli_json_output() {
+    let env = TestEnv::new();
+    let graphd = env.work_dir.join("fake-graphd");
+    let capture = env.work_dir.join("request.json");
+    std::fs::write(
+        &graphd,
+        "#!/bin/sh\ncat > \"$CLEARHEAD_GRAPHD_REQUEST_CAPTURE\"\nprintf '[{\"name\":\"from graphd\"}]\\n'\n",
+    )
+    .expect("write fake graphd");
+    let mut permissions = std::fs::metadata(&graphd).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&graphd, permissions).unwrap();
+
+    let output = env
+        .command()
+        .env("CLEARHEAD_GRAPHD", &graphd)
+        .env("CLEARHEAD_GRAPHD_REQUEST_CAPTURE", &capture)
+        .args([
+            "query",
+            "run",
+            "SELECT ?name WHERE { ?s rdfs:label ?name }",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("failed to run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(rows, serde_json::json!([{"name": "from graphd"}]));
+
+    let request: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(capture).unwrap()).unwrap();
+    assert_eq!(request["version"], 1);
+    assert!(request["sparql"].as_str().unwrap().contains("SELECT ?name"));
+    assert!(request["config"]["tag_hierarchies"].is_object());
+    assert!(request["config"]["additional_workspaces"].is_array());
+}
+
+#[test]
+fn named_query_returns_json_rows_through_the_backend_seam() {
+    let env = TestEnv::new();
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] urgent task !1 #01900000-0000-7000-8000-000000000099\n",
+    );
+
+    let output = env
+        .command()
+        .args(["query", "named", "high-priority", "--format", "json"])
+        .output()
+        .expect("failed to run");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        rows.as_array().is_some_and(|rows| !rows.is_empty()),
+        "expected named query row, got {rows}"
+    );
+}
+
 #[test]
 fn agenda_returns_empty_when_no_dated_actions() {
     let env = TestEnv::new();
-    env.with_workspace_identity().write_actions("next.actions", UNDATED_ACTION);
+    env.with_workspace_identity()
+        .write_actions("next.actions", UNDATED_ACTION);
 
     let output = env
         .command()
@@ -33,7 +105,11 @@ fn agenda_returns_empty_when_no_dated_actions() {
         .output()
         .expect("failed to run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let rows = parse_graph(&output.stdout);
     assert!(rows.is_empty(), "expected no rows, got {rows:?}");
 }
@@ -41,7 +117,8 @@ fn agenda_returns_empty_when_no_dated_actions() {
 #[test]
 fn agenda_returns_past_dated_action() {
     let env = TestEnv::new();
-    env.with_workspace_identity().write_actions("next.actions", DATED_ACTION);
+    env.with_workspace_identity()
+        .write_actions("next.actions", DATED_ACTION);
 
     let output = env
         .command()
@@ -49,7 +126,11 @@ fn agenda_returns_past_dated_action() {
         .output()
         .expect("failed to run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let rows = parse_graph(&output.stdout);
     assert_eq!(rows.len(), 1, "expected 1 row, got {rows:?}");
     assert_eq!(rows[0]["name"], "past scheduled action");
@@ -61,7 +142,8 @@ fn agenda_excludes_undated_actions() {
     let env = TestEnv::new();
     // Both actions present — only the dated one should appear.
     let content = format!("{DATED_ACTION}{UNDATED_ACTION}");
-    env.with_workspace_identity().write_actions("next.actions", &content);
+    env.with_workspace_identity()
+        .write_actions("next.actions", &content);
 
     let output = env
         .command()
@@ -69,7 +151,11 @@ fn agenda_excludes_undated_actions() {
         .output()
         .expect("failed to run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let rows = parse_graph(&output.stdout);
     assert_eq!(rows.len(), 1, "expected only dated action, got {rows:?}");
     assert_eq!(rows[0]["name"], "past scheduled action");
@@ -78,7 +164,8 @@ fn agenda_excludes_undated_actions() {
 #[test]
 fn agenda_row_satisfies_index_contract() {
     let env = TestEnv::new();
-    env.with_workspace_identity().write_actions("next.actions", DATED_ACTION);
+    env.with_workspace_identity()
+        .write_actions("next.actions", DATED_ACTION);
 
     let output = env
         .command()
@@ -86,7 +173,11 @@ fn agenda_row_satisfies_index_contract() {
         .output()
         .expect("failed to run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let rows = parse_graph(&output.stdout);
     assert_eq!(rows.len(), 1);
 
@@ -97,10 +188,16 @@ fn agenda_row_satisfies_index_contract() {
     assert!(row.get("status").is_some(), "missing: status");
     assert!(row.get("source_file").is_some(), "missing: source_file");
     // Locator line is a number, not a stringified literal — clients jump with it.
-    assert!(row["source_line"].is_u64(), "source_line not numeric: {row:?}");
+    assert!(
+        row["source_line"].is_u64(),
+        "source_line not numeric: {row:?}"
+    );
     assert!(row.get("charter_root").is_some(), "missing: charter_root");
     // Sort keys travel as properties so order survives an RDF round-trip.
-    assert!(row.get("scheduled_at").is_some(), "missing sort key: scheduled_at");
+    assert!(
+        row.get("scheduled_at").is_some(),
+        "missing sort key: scheduled_at"
+    );
 }
 
 // ── agenda wisdom: the charter's daily definition ────────────────────────────
@@ -113,7 +210,11 @@ fn run_index(env: &TestEnv, name: &str) -> Vec<serde_json::Value> {
         .args(["query", "index", name])
         .output()
         .expect("failed to run");
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     parse_graph(&output.stdout)
 }
 
@@ -200,9 +301,15 @@ fn agenda_sorts_by_priority_before_date() {
     );
     let rows = run_agenda(&env);
     assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0]["name"], "later but urgent", "priority outranks date: {rows:?}");
+    assert_eq!(
+        rows[0]["name"], "later but urgent",
+        "priority outranks date: {rows:?}"
+    );
     // Sort keys travel as properties; priority is numeric like source_line.
-    assert!(rows[0]["priority"].is_u64(), "priority not numeric: {rows:?}");
+    assert!(
+        rows[0]["priority"].is_u64(),
+        "priority not numeric: {rows:?}"
+    );
 }
 
 // ── weekly: the horizon view ─────────────────────────────────────────────────
@@ -212,9 +319,14 @@ fn agenda_sorts_by_priority_before_date() {
 #[test]
 fn weekly_includes_undated_actions() {
     let env = TestEnv::new();
-    env.with_workspace_identity().write_actions("next.actions", UNDATED_ACTION);
+    env.with_workspace_identity()
+        .write_actions("next.actions", UNDATED_ACTION);
     let rows = run_index(&env, "weekly");
-    assert_eq!(rows.len(), 1, "undated open work belongs on the horizon: {rows:?}");
+    assert_eq!(
+        rows.len(),
+        1,
+        "undated open work belongs on the horizon: {rows:?}"
+    );
     assert_eq!(rows[0]["name"], "undated action");
 }
 
@@ -227,7 +339,11 @@ fn weekly_excludes_actions_beyond_the_horizon() {
          [ ] far future @2999-01-01T00:00 #01900000-0000-7000-8000-000000000052\n",
     );
     let rows = run_index(&env, "weekly");
-    assert_eq!(rows.len(), 1, "expected only the within-horizon action: {rows:?}");
+    assert_eq!(
+        rows.len(),
+        1,
+        "expected only the within-horizon action: {rows:?}"
+    );
     assert_eq!(rows[0]["name"], "within week");
 }
 
@@ -251,9 +367,14 @@ fn weekly_includes_blocked_actions() {
 fn unscheduled_includes_undated_and_excludes_dated() {
     let env = TestEnv::new();
     let content = format!("{DATED_ACTION}{UNDATED_ACTION}");
-    env.with_workspace_identity().write_actions("next.actions", &content);
+    env.with_workspace_identity()
+        .write_actions("next.actions", &content);
     let rows = run_index(&env, "unscheduled");
-    assert_eq!(rows.len(), 1, "expected only the undated action, got {rows:?}");
+    assert_eq!(
+        rows.len(),
+        1,
+        "expected only the undated action, got {rows:?}"
+    );
     assert_eq!(rows[0]["name"], "undated action");
 }
 
@@ -268,7 +389,10 @@ fn unscheduled_excludes_children_of_dated_parents() {
          >[ ] undated child #01900000-0000-7000-8000-000000000062\n",
     );
     let rows = run_index(&env, "unscheduled");
-    assert!(rows.is_empty(), "planned work must not appear, got {rows:?}");
+    assert!(
+        rows.is_empty(),
+        "planned work must not appear, got {rows:?}"
+    );
 }
 
 #[test]
@@ -312,7 +436,10 @@ fn unscheduled_shows_lowest_open_child_and_sorts_by_priority() {
     );
     let rows = run_index(&env, "unscheduled");
     assert_eq!(rows.len(), 2, "parent is a container, got {rows:?}");
-    assert_eq!(rows[0]["name"], "urgent leaf", "priority orders the list: {rows:?}");
+    assert_eq!(
+        rows[0]["name"], "urgent leaf",
+        "priority orders the list: {rows:?}"
+    );
     assert_eq!(rows[1]["name"], "loose end");
 }
 
@@ -326,8 +453,11 @@ fn project_index_query_shadows_built_in() {
     env.with_workspace_identity();
     let project_data = env.work_dir.join(".clearhead");
     std::fs::create_dir_all(project_data.join("charters")).expect("create project charters");
-    std::fs::write(project_data.join("charters").join("next.actions"), UNDATED_ACTION)
-        .expect("write project actions");
+    std::fs::write(
+        project_data.join("charters").join("next.actions"),
+        UNDATED_ACTION,
+    )
+    .expect("write project actions");
 
     // Built-in agenda excludes undated actions; the override below includes
     // them. If the undated action appears, the override won.
@@ -360,9 +490,17 @@ ORDER BY ?name"##,
         .output()
         .expect("failed to run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let rows = parse_graph(&output.stdout);
-    assert_eq!(rows.len(), 1, "override should include undated action, got {rows:?}");
+    assert_eq!(
+        rows.len(),
+        1,
+        "override should include undated action, got {rows:?}"
+    );
     assert_eq!(rows[0]["name"], "undated action");
 }
 
@@ -388,15 +526,21 @@ fn run_chain(env: &TestEnv, query: &str) -> Vec<serde_json::Value> {
         .args(["query", "chain", query])
         .output()
         .expect("failed to run");
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     parse_graph(&output.stdout)
 }
 
 #[test]
 fn chain_returns_empty_for_action_with_no_predecessors() {
     let env = TestEnv::new();
-    env.with_workspace_identity()
-        .write_actions("next.actions", "[ ] standalone task #01900000-0000-7000-8000-000000000071\n");
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] standalone task #01900000-0000-7000-8000-000000000071\n",
+    );
     let rows = run_chain(&env, "standalone task");
     assert!(rows.is_empty(), "expected no rows, got {rows:?}");
 }
@@ -427,8 +571,14 @@ fn chain_walks_transitive_predecessors() {
     let rows = run_chain(&env, "gamma task");
     let names: Vec<&str> = rows.iter().map(|r| r["name"].as_str().unwrap()).collect();
     assert_eq!(names.len(), 2, "expected both ancestors, got {rows:?}");
-    assert!(names.contains(&"alpha task"), "missing transitive ancestor: {rows:?}");
-    assert!(names.contains(&"beta task"), "missing direct predecessor: {rows:?}");
+    assert!(
+        names.contains(&"alpha task"),
+        "missing transitive ancestor: {rows:?}"
+    );
+    assert!(
+        names.contains(&"beta task"),
+        "missing direct predecessor: {rows:?}"
+    );
 }
 
 #[test]
@@ -440,7 +590,10 @@ fn chain_excludes_completed_predecessors() {
          [ ] beta task <alpha #01900000-0000-7000-8000-000000000078\n",
     );
     let rows = run_chain(&env, "beta task");
-    assert!(rows.is_empty(), "completed predecessor no longer blocks anything, got {rows:?}");
+    assert!(
+        rows.is_empty(),
+        "completed predecessor no longer blocks anything, got {rows:?}"
+    );
 }
 
 #[test]
@@ -458,15 +611,20 @@ fn chain_row_satisfies_index_contract() {
     assert!(row.get("name").is_some(), "missing: name");
     assert!(row.get("status").is_some(), "missing: status");
     assert!(row.get("source_file").is_some(), "missing: source_file");
-    assert!(row["source_line"].is_u64(), "source_line not numeric: {row:?}");
+    assert!(
+        row["source_line"].is_u64(),
+        "source_line not numeric: {row:?}"
+    );
     assert!(row.get("charter_root").is_some(), "missing: charter_root");
 }
 
 #[test]
 fn chain_errors_on_unresolvable_query() {
     let env = TestEnv::new();
-    env.with_workspace_identity()
-        .write_actions("next.actions", "[ ] standalone task #01900000-0000-7000-8000-000000000081\n");
+    env.with_workspace_identity().write_actions(
+        "next.actions",
+        "[ ] standalone task #01900000-0000-7000-8000-000000000081\n",
+    );
     env.command()
         .args(["query", "chain", "no such action anywhere"])
         .assert()

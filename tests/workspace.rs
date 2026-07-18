@@ -13,9 +13,12 @@ fn test_workspace_read_succeeds_when_empty() {
 fn test_helpful_error_on_missing_specific_file() {
     let env = TestEnv::new();
     env.command()
-        .arg("read").arg("plans")
-        .arg("--file").arg("nonexistent.ics")
-        .assert().failure();
+        .arg("read")
+        .arg("plans")
+        .arg("--file")
+        .arg("nonexistent.ics")
+        .assert()
+        .failure();
 }
 
 #[test]
@@ -98,8 +101,10 @@ fn test_error_on_malformed_config() {
     fs::write(config_path, "{this is not valid json}").expect("Failed to write config");
     env.write_actions("inbox.actions", "[ ] Task");
     env.command()
-        .arg("read").arg("plans")
-        .assert().failure()
+        .arg("read")
+        .arg("plans")
+        .assert()
+        .failure()
         .stderr(predicate::str::contains("Failed to load config"));
 }
 
@@ -117,9 +122,12 @@ fn test_invalid_cli_format_argument() {
     let env = TestEnv::new();
     env.write_actions("inbox.actions", "[ ] Task");
     env.command()
-        .arg("read").arg("plans")
-        .arg("--format").arg("invalid")
-        .assert().failure()
+        .arg("read")
+        .arg("plans")
+        .arg("--format")
+        .arg("invalid")
+        .assert()
+        .failure()
         .stderr(predicate::str::contains("invalid value 'invalid'"));
 }
 
@@ -127,10 +135,13 @@ fn test_invalid_cli_format_argument() {
 fn test_query_sparql_and_where_conflict() {
     let env = TestEnv::new();
     env.command()
-        .arg("query").arg("run")
+        .arg("query")
+        .arg("run")
         .arg("SELECT ?s WHERE { ?s a <urn:x> }")
-        .arg("--where").arg("?s a <urn:x>")
-        .assert().failure()
+        .arg("--where")
+        .arg("?s a <urn:x>")
+        .assert()
+        .failure()
         .stderr(predicate::str::contains("cannot be used with"));
 }
 
@@ -176,7 +187,10 @@ fn action_verbs_resolve_across_additional_workspaces() {
         .stdout(predicate::str::contains("updated"));
 
     let updated = fs::read_to_string(other_ch.join("lsp.actions")).expect("read back");
-    assert!(updated.contains("!1"), "priority written to sibling file: {updated}");
+    assert!(
+        updated.contains("!1"),
+        "priority written to sibling file: {updated}"
+    );
 }
 
 #[test]
@@ -216,7 +230,14 @@ fn workspace_filter_honors_additional_workspace_config_name() {
     .expect("write sibling actions");
 
     env.command()
-        .args(["--workspace", "sibling-space", "read", "actions", "--format", "table"])
+        .args([
+            "--workspace",
+            "sibling-space",
+            "read",
+            "actions",
+            "--format",
+            "table",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("sibling task"))

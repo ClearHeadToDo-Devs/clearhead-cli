@@ -120,8 +120,7 @@ pub fn read_plans(
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
-        parse_ics_file(path)
-            ?
+        parse_ics_file(path)?
             .into_iter()
             .map(|ip| (charter_name.clone(), ip.plan))
             .collect()
@@ -154,7 +153,10 @@ pub fn read_plans(
                 }
             }
             match parse_ics_file(&entry.path) {
-                Ok(ps) => result.extend(ps.into_iter().map(|ip| (entry.charter_name.clone(), ip.plan))),
+                Ok(ps) => result.extend(
+                    ps.into_iter()
+                        .map(|ip| (entry.charter_name.clone(), ip.plan)),
+                ),
                 Err(e) => eprintln!("Warning: skipping {}: {}", entry.path.display(), e),
             }
         }
@@ -212,8 +214,7 @@ pub fn show_plan(
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
-        parse_ics_file(path)
-            ?
+        parse_ics_file(path)?
             .into_iter()
             .map(|ip| (charter_name.clone(), ip.plan))
             .collect()
@@ -222,7 +223,10 @@ pub fn show_plan(
         let mut result = Vec::new();
         for entry in entries {
             match parse_ics_file(&entry.path) {
-                Ok(ps) => result.extend(ps.into_iter().map(|ip| (entry.charter_name.clone(), ip.plan))),
+                Ok(ps) => result.extend(
+                    ps.into_iter()
+                        .map(|ip| (entry.charter_name.clone(), ip.plan)),
+                ),
                 Err(e) => eprintln!("Warning: skipping {}: {}", entry.path.display(), e),
             }
         }
@@ -241,7 +245,10 @@ pub fn show_plan(
         })
         .ok_or_else(|| anyhow::anyhow!("No plan found matching '{}'", query))?;
 
-    println!("{}", crate::display::render_plan_detail(&plan, &charter_name));
+    println!(
+        "{}",
+        crate::display::render_plan_detail(&plan, &charter_name)
+    );
     Ok(())
 }
 
@@ -293,8 +300,12 @@ fn resolve_plans_dir(
     let relative = default_actions
         .strip_prefix(&charter_root)
         .unwrap_or(default_actions.as_path());
-    let charter_name = clearhead_core::infer_charter_name(relative)
-        .ok_or_else(|| anyhow::anyhow!("Cannot infer charter name from '{}'", default_actions.display()))?;
+    let charter_name = clearhead_core::infer_charter_name(relative).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Cannot infer charter name from '{}'",
+            default_actions.display()
+        )
+    })?;
     Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(
         &synthetic_charter(charter_name, None, Some(relative.to_path_buf())),
     )))
@@ -319,10 +330,18 @@ fn resolve_add_plan_output_path(
     if let Some(query) = charter {
         let charters = ctx.load_charters()?;
         if let Some(charter) = resolve_markdown_charter(&charters, query) {
-            return Ok(clearhead_core::plan_output_path(&ctx.plans_root(), charter, plan));
+            return Ok(clearhead_core::plan_output_path(
+                &ctx.plans_root(),
+                charter,
+                plan,
+            ));
         }
         let synthetic = synthetic_charter(query.clone(), None, None);
-        return Ok(clearhead_core::plan_output_path(&ctx.plans_root(), &synthetic, plan));
+        return Ok(clearhead_core::plan_output_path(
+            &ctx.plans_root(),
+            &synthetic,
+            plan,
+        ));
     }
 
     let plans_dir = resolve_plans_dir(ctx, &None, charter)?;
@@ -331,8 +350,10 @@ fn resolve_add_plan_output_path(
 
 fn load_plan_file(path: &Path) -> anyhow::Result<Vec<clearhead_core::Plan>> {
     if path.exists() {
-        Ok(clearhead_core::workspace::calendar::ics::parse_ics_file(path)
-            .map(|plans| plans.into_iter().map(|ip| ip.plan).collect())?)
+        Ok(
+            clearhead_core::workspace::calendar::ics::parse_ics_file(path)
+                .map(|plans| plans.into_iter().map(|ip| ip.plan).collect())?,
+        )
     } else {
         Ok(Vec::new())
     }
@@ -423,7 +444,9 @@ fn parse_rrule(value: Option<&str>) -> anyhow::Result<Option<clearhead_core::Rec
 
 fn reject_act_only_plan_fields(fields: &argparser::PlanFields) -> anyhow::Result<()> {
     if fields.state.is_some() {
-        anyhow::bail!("Plan state is stored on actions; use `update action --state` to edit action state");
+        anyhow::bail!(
+            "Plan state is stored on actions; use `update action --state` to edit action state"
+        );
     }
     Ok(())
 }
@@ -517,7 +540,9 @@ pub fn add_plan(
 
     let rrule = parse_rrule(schedule.rrule.as_deref())?;
     if rrule.is_none() {
-        anyhow::bail!("Plans are for recurring work and require a recurrence rule (--rrule). For one-off scheduled tasks, use `add action --scheduled-at` instead.");
+        anyhow::bail!(
+            "Plans are for recurring work and require a recurrence rule (--rrule). For one-off scheduled tasks, use `add action --scheduled-at` instead."
+        );
     }
 
     let uid = uuid::Uuid::now_v7().to_string();
@@ -604,7 +629,9 @@ pub fn complete_plan(
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let _ = (ctx, query, file, dry_run);
-    anyhow::bail!("Plans are schedules and do not have completion state; use `complete action` for actions")
+    anyhow::bail!(
+        "Plans are schedules and do not have completion state; use `complete action` for actions"
+    )
 }
 
 pub fn delete_plan(
@@ -640,9 +667,9 @@ pub fn archive_plans(
     _file: &Option<PathBuf>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
+    use chrono::Local;
     use clearhead_core::workspace::calendar::ics::parse_ics_file;
     use clearhead_core::{ActionState, charter_root, read_actions};
-    use chrono::Local;
     use std::collections::HashSet;
 
     let plan_entries = ctx.collect_plan_files()?;
@@ -877,8 +904,7 @@ pub fn export_plans(
             model
         } else {
             let model = ctx.load_model()?;
-            let target = resolve_reference(&model, reference, &ReferenceOptions::default())
-                ?;
+            let target = resolve_reference(&model, reference, &ReferenceOptions::default())?;
             match target {
                 ReferenceTarget::Charter(id) => filter_model_for_charter(&model, id, recursive),
                 ReferenceTarget::Plan(id) => filter_model_for_plan(&model, id),
@@ -889,8 +915,8 @@ pub fn export_plans(
         ctx.load_model()?
     };
 
-    let icalendar = clearhead_cli::format_as_icalendar(&model, open_only)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let icalendar =
+        clearhead_cli::format_as_icalendar(&model, open_only).map_err(|e| anyhow::anyhow!(e))?;
 
     if let Some(output_path) = output {
         info!(output_path = %output_path.display(), "Writing iCalendar export to file");

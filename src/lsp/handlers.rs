@@ -44,10 +44,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![
-                        "@".to_string(),
-                        "%".to_string(),
-                    ]),
+                    trigger_characters: Some(vec!["@".to_string(), "%".to_string()]),
                     ..Default::default()
                 }),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
@@ -128,13 +125,15 @@ impl LanguageServer for Backend {
                 emit_diff_telemetry(&diff, current, &file_path);
                 // Check if any state transition to Completed occurred
                 diff.modified.iter().any(|m| {
-                    m.changes.iter().any(|c| matches!(
-                        c,
-                        clearhead_core::workspace::actions::FieldChange::State {
-                            new: clearhead_core::workspace::actions::ActionState::Completed,
-                            ..
-                        }
-                    ))
+                    m.changes.iter().any(|c| {
+                        matches!(
+                            c,
+                            clearhead_core::workspace::actions::FieldChange::State {
+                                new: clearhead_core::workspace::actions::ActionState::Completed,
+                                ..
+                            }
+                        )
+                    })
                 })
             } else {
                 false
@@ -181,7 +180,10 @@ impl LanguageServer for Backend {
                         {
                             warn!(error = %e, "Auto-archive: failed to apply workspace edit");
                         } else {
-                            info!(count = res.archived_count, "Auto-archived completed actions on save");
+                            info!(
+                                count = res.archived_count,
+                                "Auto-archived completed actions on save"
+                            );
                             self.client
                                 .show_message(
                                     MessageType::INFO,
@@ -312,8 +314,11 @@ impl LanguageServer for Backend {
         // Cross-file path: predecessor references, alias lookups, short UUIDs
         let needs_workspace_lookup = matches!(
             node_kind.as_str(),
-            "uuid_value" | "short_uuid_value" | "predecessor_reference"
-                | "predecessor_name" | "alias_name"
+            "uuid_value"
+                | "short_uuid_value"
+                | "predecessor_reference"
+                | "predecessor_name"
+                | "alias_name"
         );
 
         if needs_workspace_lookup {
@@ -325,8 +330,7 @@ impl LanguageServer for Backend {
                 find_definition_in_workspace(&workspace_root, &ref_text)
             })
             .await
-            .map_err(|e| internal_error(format!("Definition lookup panicked: {e}")))?
-            ;
+            .map_err(|e| internal_error(format!("Definition lookup panicked: {e}")))?;
 
             if let Some((file_path, range)) = result {
                 let target_uri = Uri::from_file_path(&file_path)
@@ -395,8 +399,7 @@ impl LanguageServer for Backend {
                 find_references_in_workspace(&workspace_root, &ref_text)
             })
             .await
-            .map_err(|e| internal_error(format!("References lookup panicked: {e}")))?
-            ;
+            .map_err(|e| internal_error(format!("References lookup panicked: {e}")))?;
 
             if let Some(locations) = result {
                 return Ok(Some(locations));
@@ -567,11 +570,18 @@ impl Backend {
                     let mcs = clearhead_core::load_workspace(&workspace_root)
                         .map_err(|e| e.to_string())?;
                     let charter_root = clearhead_core::charter_root(&workspace_root);
-                    let rel = source_path.strip_prefix(&charter_root).unwrap_or(&source_path);
+                    let rel = source_path
+                        .strip_prefix(&charter_root)
+                        .unwrap_or(&source_path);
                     mcs.iter()
-                        .find(|mc| mc.actions_file.as_deref() == Some(rel) || mc.md_file.as_deref() == Some(rel))
+                        .find(|mc| {
+                            mc.actions_file.as_deref() == Some(rel)
+                                || mc.md_file.as_deref() == Some(rel)
+                        })
                         .map(|mc| mc.alias.clone().unwrap_or_else(|| mc.title.clone()))
-                        .ok_or_else(|| format!("No charter found for file: {}", source_path.display()))?
+                        .ok_or_else(|| {
+                            format!("No charter found for file: {}", source_path.display())
+                        })?
                 }
             };
 
@@ -586,9 +596,7 @@ impl Backend {
                 let msg = if res.was_dry_run {
                     format!(
                         "Dry run: would archive '{}' ({} primary + {} completed actions)",
-                        res.charter_name,
-                        res.primary_actions_swept,
-                        res.completed_actions_swept,
+                        res.charter_name, res.primary_actions_swept, res.completed_actions_swept,
                     )
                 } else {
                     format!(
@@ -733,7 +741,9 @@ fn find_definition_in_workspace(
     let target = resolve_reference(&model, ref_text, &opts).ok()?;
 
     let target_uuid = match target {
-        ReferenceTarget::Action(id) | ReferenceTarget::Charter(id) | ReferenceTarget::Plan(id) => id,
+        ReferenceTarget::Action(id) | ReferenceTarget::Charter(id) | ReferenceTarget::Plan(id) => {
+            id
+        }
     };
 
     parsed_action_files(workspace_root).find_map(|(file_path, parsed)| {
@@ -778,5 +788,9 @@ fn find_references_in_workspace(
         }
     }
 
-    if locations.is_empty() { None } else { Some(locations) }
+    if locations.is_empty() {
+        None
+    } else {
+        Some(locations)
+    }
 }

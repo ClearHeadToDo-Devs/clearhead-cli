@@ -164,7 +164,11 @@ fn find_root_charters<'a>(model: &'a DomainModel) -> Vec<&'a Charter> {
         .collect()
 }
 
-fn build_charter_tree(charter: &Charter, model: &DomainModel, ids: &HashMap<Uuid, String>) -> Tree<String> {
+fn build_charter_tree(
+    charter: &Charter,
+    model: &DomainModel,
+    ids: &HashMap<Uuid, String>,
+) -> Tree<String> {
     let mut node = Tree::new(charter_label(charter));
 
     for sub in find_charter_children(charter, model) {
@@ -217,7 +221,11 @@ fn plan_root_actions<'a>(plan: &Plan, charter: &'a Charter) -> Vec<&'a Action> {
 // Action subtree
 // ---------------------------------------------------------------------------
 
-fn build_action_tree(action: &Action, all_actions: &[Action], ids: &HashMap<Uuid, String>) -> Tree<String> {
+fn build_action_tree(
+    action: &Action,
+    all_actions: &[Action],
+    ids: &HashMap<Uuid, String>,
+) -> Tree<String> {
     let mut node = Tree::new(action_label(action, ids));
 
     for child in action_children(action, all_actions) {
@@ -282,7 +290,10 @@ fn action_label(action: &Action, ids: &HashMap<Uuid, String>) -> String {
         .map(|a| format!("  /{}", a))
         .unwrap_or_else(|| {
             let fallback = action.id.to_string();
-            let short = ids.get(&action.id).map(String::as_str).unwrap_or(&fallback[..8]);
+            let short = ids
+                .get(&action.id)
+                .map(String::as_str)
+                .unwrap_or(&fallback[..8]);
             format!("  /{}", short)
         });
     format!("{} {}{}{}", icon, action.name, state_tag, ref_tag)
@@ -349,8 +360,16 @@ mod tests {
         let model = DomainModel {
             objectives: vec![],
             charters: vec![
-                Charter { id: Uuid::now_v7(), title: "Alpha".to_string(), ..Default::default() },
-                Charter { id: Uuid::now_v7(), title: "Beta".to_string(), ..Default::default() },
+                Charter {
+                    id: Uuid::now_v7(),
+                    title: "Alpha".to_string(),
+                    ..Default::default()
+                },
+                Charter {
+                    id: Uuid::now_v7(),
+                    title: "Beta".to_string(),
+                    ..Default::default()
+                },
             ],
         };
         let out = render_domain_tree(&model);
@@ -364,7 +383,11 @@ mod tests {
         let model = DomainModel {
             objectives: vec![],
             charters: vec![
-                Charter { id: Uuid::now_v7(), title: "Root".to_string(), ..Default::default() },
+                Charter {
+                    id: Uuid::now_v7(),
+                    title: "Root".to_string(),
+                    ..Default::default()
+                },
                 Charter {
                     id: Uuid::now_v7(),
                     title: "Child".to_string(),
@@ -435,7 +458,11 @@ mod tests {
         let mut action = make_action("Do work", ActionState::InProgress);
         action.plan_id = Some(plan_id);
 
-        let plan = Plan { id: plan_id, name: "Some plan".to_string(), ..Default::default() };
+        let plan = Plan {
+            id: plan_id,
+            name: "Some plan".to_string(),
+            ..Default::default()
+        };
         let model = DomainModel {
             objectives: vec![],
             charters: vec![Charter {
@@ -453,7 +480,11 @@ mod tests {
     #[test]
     fn child_actions_nest_under_parent() {
         let parent_id = Uuid::now_v7();
-        let parent = Action { id: parent_id, name: "Parent".to_string(), ..Default::default() };
+        let parent = Action {
+            id: parent_id,
+            name: "Parent".to_string(),
+            ..Default::default()
+        };
         let child = Action {
             id: Uuid::now_v7(),
             name: "Child".to_string(),
@@ -525,14 +556,37 @@ mod visual_tests {
                     plans: vec![Plan {
                         id: plan_id,
                         name: "Write graph tests".to_string(),
-                        recurrence: Some(Recurrence { frequency: "weekly".to_string(), ..Default::default() }),
+                        recurrence: Some(Recurrence {
+                            frequency: "weekly".to_string(),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     }],
                     actions: vec![
-                        Action { id: Uuid::now_v7(), name: "Write graph tests".to_string(), state: ActionState::InProgress, plan_id: Some(plan_id), ..Default::default() },
-                        Action { id: act2_id, name: "Review workspace structure".to_string(), ..Default::default() },
-                        Action { id: Uuid::now_v7(), name: "Decouple Actions".to_string(), parent_id: Some(act2_id), ..Default::default() },
-                        Action { id: Uuid::now_v7(), name: "Ditto for charters".to_string(), parent_id: Some(act2_id), ..Default::default() },
+                        Action {
+                            id: Uuid::now_v7(),
+                            name: "Write graph tests".to_string(),
+                            state: ActionState::InProgress,
+                            plan_id: Some(plan_id),
+                            ..Default::default()
+                        },
+                        Action {
+                            id: act2_id,
+                            name: "Review workspace structure".to_string(),
+                            ..Default::default()
+                        },
+                        Action {
+                            id: Uuid::now_v7(),
+                            name: "Decouple Actions".to_string(),
+                            parent_id: Some(act2_id),
+                            ..Default::default()
+                        },
+                        Action {
+                            id: Uuid::now_v7(),
+                            name: "Ditto for charters".to_string(),
+                            parent_id: Some(act2_id),
+                            ..Default::default()
+                        },
                     ],
                     ..Default::default()
                 },
@@ -540,7 +594,12 @@ mod visual_tests {
                     id: Uuid::now_v7(),
                     title: "Core Work".to_string(),
                     parent: Some("Platform".to_string()),
-                    actions: vec![Action { id: Uuid::now_v7(), name: "Ship semantic export".to_string(), state: ActionState::Completed, ..Default::default() }],
+                    actions: vec![Action {
+                        id: Uuid::now_v7(),
+                        name: "Ship semantic export".to_string(),
+                        state: ActionState::Completed,
+                        ..Default::default()
+                    }],
                     ..Default::default()
                 },
             ],

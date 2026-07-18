@@ -27,7 +27,13 @@ impl TestEnv {
         fs::create_dir_all(&state_dir).expect("Failed to create state dir");
         fs::create_dir_all(&work_dir).expect("Failed to create work dir");
 
-        TestEnv { _temp_dir: temp_dir, config_dir, data_dir, state_dir, work_dir }
+        TestEnv {
+            _temp_dir: temp_dir,
+            config_dir,
+            data_dir,
+            state_dir,
+            work_dir,
+        }
     }
 
     pub fn write_config(&self, content: &str) {
@@ -61,7 +67,11 @@ impl TestEnv {
 
     pub fn write_plan_ics(&self, charter_slug: &str, filename: &str, summaries: &[&str]) {
         let content = Self::ics_content(summaries);
-        let path = self.data_dir.join("plans").join(charter_slug).join(filename);
+        let path = self
+            .data_dir
+            .join("plans")
+            .join(charter_slug)
+            .join(filename);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("Failed to create plan ics parent dir");
         }

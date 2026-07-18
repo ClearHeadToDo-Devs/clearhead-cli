@@ -260,10 +260,7 @@ fn roundtrip_action_with_everything() {
         assert_eq!(a1.name, a2.name, "Names should match");
         assert_eq!(a1.description, a2.description, "Descriptions should match");
         assert_eq!(a1.priority, a2.priority, "Priorities should match");
-        assert_eq!(
-            a1.contexts, a2.contexts,
-            "Context lists should match"
-        );
+        assert_eq!(a1.contexts, a2.contexts, "Context lists should match");
         assert_eq!(a1.charter, a2.charter, "Charters should match");
     }
 }

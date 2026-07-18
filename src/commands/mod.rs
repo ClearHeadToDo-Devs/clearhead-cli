@@ -11,10 +11,10 @@ pub mod service;
 pub mod template;
 pub mod verb_result;
 
+use anyhow::Context;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use anyhow::Context;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -169,17 +169,17 @@ impl CommandContext {
         // global config path even when a project config is active, so we
         // prefer project_root/.clearhead/ when a project workspace exists.
         // Fall back to config_path's parent (global config dir) otherwise.
-        let config_base = self.project_root
+        let config_base = self
+            .project_root
             .as_ref()
             .map(|r| r.join(".clearhead"))
             .or_else(|| self.config_path.parent().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-        let resolved_additional =
-            clearhead_cli::environment_reader::resolve_workspace_paths(
-                &self.config.additional_workspaces,
-                &config_base,
-            );
+        let resolved_additional = clearhead_cli::environment_reader::resolve_workspace_paths(
+            &self.config.additional_workspaces,
+            &config_base,
+        );
 
         // Resolve plan_path the same way (~, $VAR, relative-to-.clearhead) so core
         // receives a ready-to-use absolute path, never a raw config string.
@@ -218,17 +218,28 @@ impl CommandContext {
 
     /// Load the primary workspace's domain model, honoring `plan_path`.
     pub fn load_model(&self) -> anyhow::Result<clearhead_core::DomainModel> {
-        Ok(clearhead_core::load_domain_model_with_plans(&self.data_dir, self.plan_override().as_deref())?)
+        Ok(clearhead_core::load_domain_model_with_plans(
+            &self.data_dir,
+            self.plan_override().as_deref(),
+        )?)
     }
 
     /// Load the primary workspace's charters, honoring `plan_path`.
     pub fn load_charters(&self) -> anyhow::Result<Vec<clearhead_core::MarkdownCharter>> {
-        Ok(clearhead_core::load_workspace_with_plans(&self.data_dir, self.plan_override().as_deref())?)
+        Ok(clearhead_core::load_workspace_with_plans(
+            &self.data_dir,
+            self.plan_override().as_deref(),
+        )?)
     }
 
     /// Discover the primary workspace's plan `.ics` entries, honoring `plan_path`.
-    pub fn collect_plan_files(&self) -> anyhow::Result<Vec<clearhead_core::workspace::PlanFileEntry>> {
-        Ok(clearhead_core::collect_plan_files_with_plans(&self.data_dir, self.plan_override().as_deref())?)
+    pub fn collect_plan_files(
+        &self,
+    ) -> anyhow::Result<Vec<clearhead_core::workspace::PlanFileEntry>> {
+        Ok(clearhead_core::collect_plan_files_with_plans(
+            &self.data_dir,
+            self.plan_override().as_deref(),
+        )?)
     }
 
     /// The primary workspace's `plans_root`, honoring `plan_path`.
@@ -379,7 +390,10 @@ pub fn write_or_print(content: &str, write: bool, file: Option<&PathBuf>) -> any
 /// Intended for use with `clearhead _complete <kind>`. Shell completions can
 /// call this and feed the output to their completion engine, e.g. in fish:
 ///   complete -c clearhead -l charter -a "(clearhead _complete charters 2>/dev/null)"
-pub fn complete_values(ctx: &CommandContext, kind: crate::argparser::CompleteKind) -> anyhow::Result<()> {
+pub fn complete_values(
+    ctx: &CommandContext,
+    kind: crate::argparser::CompleteKind,
+) -> anyhow::Result<()> {
     use crate::argparser::CompleteKind;
     match kind {
         CompleteKind::Charters => {
@@ -410,7 +424,6 @@ pub fn try_emit(action_id: &Uuid, event: TelemetryEvent) {
     }
 }
 
-
 /// Read input from a file or stdin
 pub fn read_input(file: Option<&PathBuf>) -> anyhow::Result<String> {
     match file {
@@ -432,8 +445,8 @@ pub fn read_input(file: Option<&PathBuf>) -> anyhow::Result<String> {
 /// the query (by UUID prefix, alias, or inferred file stem / directory name).
 pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> anyhow::Result<PathBuf> {
     let data_root = clearhead_core::charter_root(data_dir);
-    let action_files = clearhead_core::list_action_files(data_dir)
-        .context("Failed to list workspace")?;
+    let action_files =
+        clearhead_core::list_action_files(data_dir).context("Failed to list workspace")?;
 
     let query_lower = charter_query.to_lowercase();
 
