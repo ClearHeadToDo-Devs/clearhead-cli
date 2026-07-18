@@ -24,7 +24,7 @@ lsp = ["dep:tower-lsp-server", "dep:tokio", "dep:dashmap"]
 
 [dependencies]
 # Core library with pure business logic
-clearhead_core = { path = "../clearhead-core", version = "0.2.0", default-features = false }
+clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
 
 # CLI-specific dependencies
 clap = { version = "4.0", features = ["derive"] }
