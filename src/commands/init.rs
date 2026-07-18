@@ -75,10 +75,17 @@ pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
     // project root's ignore conventions. Written unconditionally (independent of
     // the identity guard below) so existing workspaces pick it up on a rerun.
     let gitignore_path = clearhead_dir.join(".gitignore");
-    if !gitignore_path.exists() {
-        fs::write(&gitignore_path, "config.local.json\n.clearhead.lock\n")
-            .context("Failed to write .clearhead/.gitignore")?;
+    let mut gitignore = fs::read_to_string(&gitignore_path).unwrap_or_default();
+    for rule in ["config.local.json", ".clearhead.lock", "sync/"] {
+        if !gitignore.lines().any(|line| line.trim() == rule) {
+            if !gitignore.is_empty() && !gitignore.ends_with('\n') {
+                gitignore.push('\n');
+            }
+            gitignore.push_str(rule);
+            gitignore.push('\n');
+        }
     }
+    fs::write(&gitignore_path, gitignore).context("Failed to write .clearhead/.gitignore")?;
 
     // Idempotent on an existing identity: init never clobbers or re-mints a
     // workspace that already has a workspace_id (which would orphan the named
