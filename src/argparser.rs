@@ -891,7 +891,7 @@ pub enum ArchiveTarget {
         dry_run: bool,
     },
 
-    /// Sweep a closed or cancelled charter's artifacts into `archive.ttl` and remove its source files.
+    /// Move a closed or cancelled charter's subtree (as plaintext) into the `archive/` region.
     ///
     /// The charter must have `state: Closed` or `state: Cancelled` in its frontmatter. If the
     /// primary `.actions` file still contains open actions the command refuses unless --force

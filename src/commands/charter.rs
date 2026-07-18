@@ -377,7 +377,7 @@ pub fn add_charter(
 // archive charter
 // ============================================================================
 
-/// Archive a charter (or all closed/cancelled charters) into `archive.ttl`.
+/// Archive a charter (or all closed/cancelled charters) into the `archive/` region.
 ///
 /// Requires `state: Closed` or `state: Cancelled` in the charter frontmatter.
 /// Open actions in the primary `.actions` file are a hard stop unless `force`
@@ -442,7 +442,7 @@ fn print_archive_result(r: &clearhead_core::ArchiveCharterResult) {
         r.charter_name,
         r.primary_actions_swept,
         r.completed_actions_swept,
-        r.archive_ttl_path.display(),
+        r.archive_dir.display(),
     );
 }
 

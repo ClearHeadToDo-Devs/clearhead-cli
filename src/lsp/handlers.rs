@@ -527,7 +527,7 @@ impl Backend {
         Ok(None)
     }
 
-    /// `clearhead/archiveCharter` — sweep a closed charter's artifacts into `archive.ttl`.
+    /// `clearhead/archiveCharter` — move a closed charter's subtree into the `archive/` region.
     ///
     /// Arguments: `[uri, charter_name, force?, dry_run?]`
     /// - `uri`          — any file URI inside the workspace (used to locate `.clearhead/`)
@@ -594,7 +594,7 @@ impl Backend {
                     format!(
                         "Archived charter '{}' → {}",
                         res.charter_name,
-                        res.archive_ttl_path.display()
+                        res.archive_dir.display()
                     )
                 };
                 self.client.show_message(MessageType::INFO, msg).await;
