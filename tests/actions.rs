@@ -342,6 +342,55 @@ fn test_archive_actions_project_root_next_actions_uses_project_name() {
 }
 
 #[test]
+fn test_archive_actions_keeps_a_terminal_parent_with_an_open_child() {
+    let env = TestEnv::new();
+    env.write_actions(
+        "inbox.actions",
+        "[x] Terminal parent #019f733d-45b2-7f21-bcad-5610887b7230\n> [ ] Open child #019f733d-45c2-7dd2-91dc-8631f33c6b77\n",
+    );
+
+    env.command()
+        .arg("archive")
+        .arg("actions")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Nothing to archive."));
+
+    let active = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(active.contains("Terminal parent"));
+    assert!(active.contains("Open child"));
+    assert!(
+        !env.data_dir
+            .join("charters/inbox.completed.actions")
+            .exists()
+    );
+}
+
+#[test]
+fn test_archive_actions_refuses_to_race_an_existing_writer() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "[x] Done\n");
+    let _lock = clearhead_core::workspace::durability::WorkspaceLock::try_acquire(&env.data_dir)
+        .unwrap()
+        .unwrap();
+
+    env.command()
+        .arg("archive")
+        .arg("actions")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Workspace is locked"));
+
+    let active = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(active.contains("Done"));
+    assert!(
+        !env.data_dir
+            .join("charters/inbox.completed.actions")
+            .exists()
+    );
+}
+
+#[test]
 fn test_complete_command_already_closed_is_typed_data() {
     // Verb errors are data (query_output.md): with stdout piped, an
     // already-completed target comes back as a branchable JSON result,

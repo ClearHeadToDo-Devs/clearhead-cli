@@ -819,42 +819,35 @@ pub fn archive_actions(
     let mut charters_touched = 0usize;
 
     for actions_path in &charter_paths {
-        let open_actions = action_files::read_actions(actions_path)?;
+        let archived_count = if dry_run {
+            let active = action_files::read_actions(actions_path)?;
+            let completed_path = action_files::completed_actions_path(actions_path);
+            let completed = action_files::read_actions(&completed_path)?;
+            clearhead_core::plan_action_archive(&active, &completed).archived_count
+        } else {
+            let workspace_root = ctx.workspace_for_file(actions_path);
+            clearhead_core::archive_actions(&workspace_root, actions_path)?.archived_count
+        };
 
-        let (to_close, to_keep): (Vec<Action>, Vec<Action>) = open_actions
-            .into_iter()
-            .partition(|a| matches!(a.state, ActionState::Completed | ActionState::Cancelled));
-
-        if to_close.is_empty() {
+        if archived_count == 0 {
             continue;
         }
 
         if dry_run {
             println!(
                 "Would archive {} action(s) from {}",
-                to_close.len(),
+                archived_count,
                 actions_path.display()
             );
         } else {
-            super::save_file(actions_path, &to_keep)?;
-
-            let completed_path = action_files::completed_actions_path(actions_path);
-            let mut existing_closed = action_files::read_actions(&completed_path)?;
-            // Clear parent_id — the completed file is a flat list with no parent context.
-            existing_closed.extend(to_close.iter().cloned().map(|mut a| {
-                a.parent_id = None;
-                a
-            }));
-            action_files::write_actions(&existing_closed, &completed_path)?;
-
             info!(
-                count = to_close.len(),
+                count = archived_count,
                 charter = %actions_path.display(),
                 "Actions archived"
             );
         }
 
-        total_archived += to_close.len();
+        total_archived += archived_count;
         charters_touched += 1;
     }
 
