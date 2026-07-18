@@ -92,11 +92,13 @@ or even add a list of objectives using a directory of markdown files:
 ```
 ### Start LSP Server
 
-To start the LSP server, you can use the following command:
+The editor runtime is a separate process. Start it with the canonical command:
 
 ```
-clearhead_cli start lsp
+clearhead-lsp
 ```
+
+`clearhead start lsp` is a temporary external compatibility shim.
 
 ### Deleting and Updting Items
 

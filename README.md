@@ -1,12 +1,13 @@
 # clearhead
 
-**CLI and LSP server for the ClearHead action management framework.**
+**Command-line client for the ClearHead action management framework.**
 
 Work items live in plain-text `.actions` files that any editor can read and
-write. Recurring schedules live in `.ics` (vdir) files. Completed history
-accumulates in a single `archive.ttl` file. `clearhead` provides the
-command-line interface, a built-in LSP server, and the Rust core library that
-backs both.
+write. Recurring schedules live in `.ics` vdir files, and archived charter
+files remain plaintext under the workspace `archive/` directory. `clearhead`
+provides synchronous command and mutation workflows over `clearhead-core`.
+The editor runtime is the separate
+[`clearhead-lsp`](https://github.com/ClearHeadToDo-Devs/clearhead-lsp) process.
 
 ## Installation
 
@@ -64,11 +65,15 @@ cycling, depth hotkeys, workspace pickers, and archiving commands:
 
 - **[clearhead.nvim](https://github.com/ClearHeadToDo-Devs/clearhead.nvim)**
 
-For other LSP-compatible editors, start the server directly:
+For other LSP-compatible editors, use the canonical standalone server command:
 
 ```bash
-clearhead start lsp
+clearhead-lsp
 ```
+
+`clearhead start lsp` remains a temporary compatibility shim that execs the
+standalone binary. Set `CLEARHEAD_LSP` to an explicit executable path when
+validating that transition.
 
 ## Specifications
 

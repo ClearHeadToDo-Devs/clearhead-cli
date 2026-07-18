@@ -1,6 +1,6 @@
 # ClearHead LSP
 
-The ClearHead CLI includes a built-in Language Server Protocol (LSP) server to provide a rich editing experience for `.actions` files.
+The standalone [`clearhead-lsp`](https://github.com/ClearHeadToDo-Devs/clearhead-lsp) process provides a rich editing experience for `.actions` files. It depends directly on `clearhead-core`; the CLI no longer owns the editor runtime.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ When a document is opened or changed, the LSP parses it into a `ParsedDocument` 
 
 ## Client Setup
 
-The LSP server is invoked via the `lsp` subcommand: `clearhead_cli lsp`.
+The canonical server command is `clearhead-lsp`. It speaks standard LSP JSON-RPC over stdio.
 
 ### Neovim (Manual Setup)
 
@@ -45,7 +45,7 @@ vim.api.nvim_create_autocmd("FileType", {
         callback = function()
         vim.lsp.start({
                 name = "clearhead-lsp",
-                cmd = { "clearhead_cli", "lsp" },
+                cmd = { "clearhead-lsp" },
                 root_dir = vim.fs.dirname(vim.fs.find({ ".git", "inbox.actions" }, { upward = true })[1]),
                 })
         end,
@@ -62,16 +62,16 @@ The [clearhead.nvim](https://github.com/ClearHeadToDo-Devs/clearhead.nvim) plugi
 - **Capabilities**: Full document sync, diagnostics, code actions, semantic tokens, inlay hints, definition, references, and formatting.
 
 ### Unit Tests
-The logic functions are unit-tested in `src/lsp.rs`. Run them with:
+Provider and protocol tests live in the `clearhead-lsp` repository. Run them from a sibling platform checkout with:
 
 ```bash
-cargo test lsp
+cargo test --manifest-path clearhead-lsp/Cargo.toml
 ```
 
 ### Manual Testing (VSCode)
 To test with VSCode during development:
 1.  Use a generic LSP client extension (like "Run on Save" or a dedicated LSP client).
-2.  Configure it to run the compiled binary: `target/debug/clearhead_cli lsp`.
+2.  Configure it to run the compiled binary: `clearhead-lsp/target/debug/clearhead-lsp`.
 
 ## Future Work
 - **Go to Definition**: Jump between Story links and their definitions.

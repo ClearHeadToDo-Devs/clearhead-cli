@@ -4,7 +4,7 @@ Attempts have been made to make the CLI as thin as possible.
 
 We do this by making many of the _core_ functionalities availabile through the `clearhead-core` crate, which is a pure Rust library with no filesystem or CLI dependencies. This allows us to keep the CLI focused on user interaction and file I/O, while the core crate handles all the domain logic, data modeling, and transformations.
 
-This means the cli is largely left to own the UI layer for the terminal, as well as wiring up to the core library in such a way that it can be easily run from either the command line or the LSP server.
+The CLI owns the terminal UI and synchronous command workflows over core. The separate `clearhead-lsp` process also depends directly on core for editor protocol workflows; it does not route through this crate.
 
 ## Conceptual Model
 
@@ -85,7 +85,7 @@ This is primarily using clearhead-core as the library that outputs all the funct
 - Handling user input and output
 - Managing the workspace and its structure
 - Orchestrating the various commands and their interactions with the core library
-- Starting and managing the LSP server for editor integrations
+- Providing a temporary external `clearhead start lsp` compatibility shim
 - Config management for runtime configuration
 
 
