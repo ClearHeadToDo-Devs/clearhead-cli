@@ -1,7 +1,8 @@
 //! ClearHead CLI Library
 //!
-//! This library provides the CLI and LSP server implementation for the ClearHead framework.
-//! It builds on top of clearhead_core, adding filesystem, configuration, and runtime concerns.
+//! This library provides the command-line implementation for the ClearHead framework.
+//! It builds on top of clearhead_core, adding terminal, configuration, and process concerns.
+//! The editor protocol runtime lives in the separate `clearhead-lsp` crate.
 
 use clearhead_core::WorkspaceConfig;
 use tree_sitter::Tree;

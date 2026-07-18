@@ -11,11 +11,6 @@ repository = "https://github.com/ClearHeadToDo-Devs/clearhead_cli.git"
 name = "clearhead"
 path = "src/main.rs"
 
-[[bin]]
-name = "clearhead-lsp"
-path = "src/lsp_main.rs"
-required-features = ["lsp"]
-
 [features]
 default = ["lsp"]
 # The `lsp` feature enables the Language Server Protocol server.
