@@ -20,7 +20,7 @@ the point is to keep the interface as simple and intuitive as possiible so that 
 
 ### Read 
 
-Read is where we leverage the oxigraph database to allow users to query that data in a flattened manner without creating a custom query languagec
+Read is where we query the workspace graph. The CLI does not hold the engine — it hands the query to `clearhead-graphd` (which owns Oxigraph, SPARQL, and JSON-LD) and projects the result. Users get flattened, queryable data without a custom query language.
 
 ## Verbs
 
@@ -35,28 +35,42 @@ We use the above file formats as our primary nouns so that each verb can operate
 
 ## Output
 
-The CLI is TTY-aware. The same command behaves differently depending on context — no flag needed for the common cases.
+Output is a **presentation projection**, not the data itself — graphd owns meaning (JSON-LD); the CLI turns it into ergonomics. Two things pick the projection: the **destination** and the **verb**.
 
-| Context | Output |
-|---------|--------|
-| Terminal (TTY) | Human-readable table/tree |
-| Pipe or redirect | Native file format |
-| `--jsonld` | JSON-LD (always) |
-| `--ids` | One UUID per line (always) |
+### Destination is binary: human or machine
 
-**Native format** is the format the entity lives in on disk: `.actions` DSL for actions, Markdown for charters, vdir/iCal for plans. Redirecting to a file (`> inbox.actions`) produces a valid workspace file — no conversion needed.
+The only distinction is `isatty(stdout)` — a terminal is a human, everything else is a machine. A pipe and a file redirect are the *same* machine destination, deliberately: branching on FIFO-vs-file would make `cmd > f` and `cmd | tee f` disagree, breaking the composability that makes pipes worth having. Intent finer than "human or machine" is carried by a **flag**, never by the kind of file descriptor.
 
-**`--jsonld`** is the structured escape hatch for external tools. JSON-LD is valid JSON, so `jq` works against it directly. There is no separate `--json` flag.
+### Verb picks the machine format, because representability forces it
 
-**`--ids`** outputs one UUID per line for xargs-style batch operations:
+| Verb | Terminal (human) | Machine (pipe / redirect) |
+|------|------------------|---------------------------|
+| `read <noun>` | static table / tree render | **native on-disk format** |
+| `query <view>` | human summary | **structured, by shape** |
+
+- **`read <noun>`** targets one entity type, and each has a home file: actions → `.actions` DSL, charters → Markdown, plans → vdir/iCal. So its machine output *is* that format. `read actions > inbox.actions` yields a valid workspace file, and `read actions | clearhead update …` round-trips clearhead-to-clearhead — no conversion.
+- **`query <view>`** targets a graph-shaped result — an agenda spanning charters, a dependency network — with **no single home file**. It therefore can't be native; it emits structured output, and the *shape* graphd declares for the view picks which:
+  - **list** (unscheduled, agenda, overdue) → NDJSON, one record per line
+  - **tree** (charter → action hierarchy) → nested JSON
+  - **graph** (dependencies, contexts) → JSON-LD / triples
+
+This line is not a preference toggle. Native format only *exists* where the data has a home file — native where it does, structured where it doesn't.
+
+### Explicit format flags override both
+
+`--jsonld`, `--ndjson`, `--json`, and `--ids` force a format regardless of verb or destination. JSON-LD is valid JSON, so `jq` reads it directly. `--ids` emits one UUID per line for xargs-style batch work:
 ```
 clearhead read actions --charter lsp --ids | xargs -I{} clearhead update action {} --state in-progress
 ```
 
-Mutations accept their entity's native format on stdin, enabling clearhead-to-clearhead pipelines:
+Mutations accept their entity's native format on stdin, which is what makes the round-trip pipelines above work:
 ```
 clearhead read actions --charter inbox | clearhead update action --state in-progress
 ```
+
+### Interactive UI is out of scope (for now)
+
+The terminal renders above are **static** — format a result, print it, exit; `display/tree.rs` is a pure `DomainModel → String` with no event loop. A live, navigable, keybound view is a genuinely separate tool, and — as graphd is to the graph engine — it would be its own binary consuming this output, not a mode of the CLI. It is deferred, not designed here; nothing in this contract assumes it.
 
 ## Flags
 
