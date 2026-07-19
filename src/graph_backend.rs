@@ -97,7 +97,7 @@ fn run_graphd_query(
     let args = [
         std::ffi::OsStr::new("--workspace"),
         workspace,
-        std::ffi::OsStr::new("query"),
+        std::ffi::OsStr::new("_exec"),
     ];
     let stdout = invoke_graphd(&args, &payload)?;
     serde_json::from_slice(&stdout)
