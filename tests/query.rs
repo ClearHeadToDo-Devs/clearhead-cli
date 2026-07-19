@@ -25,13 +25,16 @@ fn parse_graph(output: &[u8]) -> Vec<serde_json::Value> {
 
 #[cfg(unix)]
 #[test]
-fn raw_query_uses_graphd_contract_and_preserves_cli_json_output() {
+fn raw_query_forwards_to_graphd_query_interface_and_passes_output_through() {
+    // The CLI no longer speaks a stdin request protocol: it execs graphd's own
+    // `query` interface and passes its stdout straight through. Capture graphd's
+    // argv to prove the forward, and echo rows to prove the passthrough.
     let env = TestEnv::new();
     let graphd = env.work_dir.join("fake-graphd");
-    let capture = env.work_dir.join("request.json");
+    let capture = env.work_dir.join("argv.txt");
     std::fs::write(
         &graphd,
-        "#!/bin/sh\ncat > \"$CLEARHEAD_GRAPHD_REQUEST_CAPTURE\"\nprintf '[{\"name\":\"from graphd\"}]\\n'\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CLEARHEAD_GRAPHD_ARGV_CAPTURE\"\nprintf '[{\"name\":\"from graphd\"}]\\n'\n",
     )
     .expect("write fake graphd");
     let mut permissions = std::fs::metadata(&graphd).unwrap().permissions();
@@ -41,7 +44,7 @@ fn raw_query_uses_graphd_contract_and_preserves_cli_json_output() {
     let output = env
         .command()
         .env("CLEARHEAD_GRAPHD", &graphd)
-        .env("CLEARHEAD_GRAPHD_REQUEST_CAPTURE", &capture)
+        .env("CLEARHEAD_GRAPHD_ARGV_CAPTURE", &capture)
         .args([
             "query",
             "run",
@@ -60,12 +63,12 @@ fn raw_query_uses_graphd_contract_and_preserves_cli_json_output() {
     let rows: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(rows, serde_json::json!([{"name": "from graphd"}]));
 
-    let request: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(capture).unwrap()).unwrap();
-    assert_eq!(request["version"], 1);
-    assert!(request["sparql"].as_str().unwrap().contains("SELECT ?name"));
-    assert!(request["config"]["tag_hierarchies"].is_object());
-    assert!(request["config"]["additional_workspaces"].is_array());
+    // Forwarded `query raw <sparql> --format json` — no stdin envelope.
+    let argv = std::fs::read_to_string(capture).unwrap();
+    assert!(argv.contains("query"), "argv: {argv}");
+    assert!(argv.contains("raw"), "argv: {argv}");
+    assert!(argv.contains("SELECT ?name"), "argv: {argv}");
+    assert!(argv.contains("json"), "argv: {argv}");
 }
 
 #[test]
