@@ -49,10 +49,14 @@ The only distinction is `isatty(stdout)` — a terminal is a human, everything e
 | `query <view>` | human summary | **structured, by shape** |
 
 - **`read <noun>`** targets one entity type, and each has a home file: actions → `.actions` DSL, charters → Markdown, plans → vdir/iCal. So its machine output *is* that format. `read actions > inbox.actions` yields a valid workspace file, and `read actions | clearhead update …` round-trips clearhead-to-clearhead — no conversion.
-- **`query <view>`** targets a graph-shaped result — an agenda spanning charters, a dependency network — with **no single home file**. It therefore can't be native; it emits structured output, and the *shape* graphd declares for the view picks which:
-  - **list** (unscheduled, agenda, overdue) → NDJSON, one record per line
-  - **tree** (charter → action hierarchy) → nested JSON
-  - **graph** (dependencies, contexts) → JSON-LD / triples
+- **`query <view>`** targets a graph-derived result — an agenda spanning charters, a dependency network — with **no single home file**. It therefore can't be native; it emits structured output selected by the query family:
+  - **index** (unscheduled, agenda, overdue) → validated addressable rows as NDJSON
+  - **tree** (charter → action hierarchy) → validated parent-linked nodes as nested JSON
+  - **graph** (dependencies, contexts) → standard `CONSTRUCT` output as JSON-LD / triples
+
+A family is a portable-query convention, not a custom query language. Queries
+remain complete `.sparql` files; placement under `queries/index/`, `tree/`, or
+`graph/` opts into the corresponding consumer guarantee and validation.
 
 This line is not a preference toggle. Native format only *exists* where the data has a home file — native where it does, structured where it doesn't.
 

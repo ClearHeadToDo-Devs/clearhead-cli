@@ -1120,13 +1120,18 @@ pub enum OutputMode {
     Ids,
 }
 
-/// Output format for raw SPARQL query results
+/// Explicit query output format. Without an override, graphd chooses from the
+/// query family and whether stdout is a terminal.
 #[derive(Clone, Copy, ValueEnum, Debug)]
 pub enum QueryFormat {
-    /// Pretty-printed table
+    /// Pretty-printed human table
     Table,
     /// JSON array of objects
     Json,
+    /// One JSON object per line
+    Ndjson,
+    /// Semantic JSON-LD document (for shaped query families)
+    Jsonld,
 }
 
 /// CLI-specific style enum that maps to library's FormatStyle

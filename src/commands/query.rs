@@ -19,6 +19,8 @@ fn format_arg(format: Option<QueryFormat>) -> Option<&'static str> {
     format.map(|f| match f {
         QueryFormat::Table => "table",
         QueryFormat::Json => "json",
+        QueryFormat::Ndjson => "ndjson",
+        QueryFormat::Jsonld => "jsonld",
     })
 }
 

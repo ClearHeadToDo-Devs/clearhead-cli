@@ -104,7 +104,7 @@ fn agenda_returns_empty_when_no_dated_actions() {
 
     let output = env
         .command()
-        .args(["query", "index", "agenda"])
+        .args(["query", "index", "agenda", "--format", "jsonld"])
         .output()
         .expect("failed to run");
 
@@ -125,7 +125,7 @@ fn agenda_returns_past_dated_action() {
 
     let output = env
         .command()
-        .args(["query", "index", "agenda"])
+        .args(["query", "index", "agenda", "--format", "jsonld"])
         .output()
         .expect("failed to run");
 
@@ -141,6 +141,30 @@ fn agenda_returns_past_dated_action() {
 }
 
 #[test]
+fn index_pipe_defaults_to_ndjson() {
+    let env = TestEnv::new();
+    env.with_workspace_identity()
+        .write_actions("next.actions", DATED_ACTION);
+
+    let output = env
+        .command()
+        .args(["query", "index", "agenda"])
+        .output()
+        .expect("failed to run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let lines: Vec<_> = output.stdout.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "expected one NDJSON record");
+    let row: serde_json::Value = serde_json::from_slice(lines[0]).expect("valid NDJSON row");
+    assert_eq!(row["name"], "past scheduled action");
+    assert!(row.get("@context").is_none(), "NDJSON rows are unframed");
+}
+
+#[test]
 fn agenda_excludes_undated_actions() {
     let env = TestEnv::new();
     // Both actions present — only the dated one should appear.
@@ -150,7 +174,7 @@ fn agenda_excludes_undated_actions() {
 
     let output = env
         .command()
-        .args(["query", "index", "agenda"])
+        .args(["query", "index", "agenda", "--format", "jsonld"])
         .output()
         .expect("failed to run");
 
@@ -172,7 +196,7 @@ fn agenda_row_satisfies_index_contract() {
 
     let output = env
         .command()
-        .args(["query", "index", "agenda"])
+        .args(["query", "index", "agenda", "--format", "jsonld"])
         .output()
         .expect("failed to run");
 
@@ -210,7 +234,7 @@ fn agenda_row_satisfies_index_contract() {
 fn run_index(env: &TestEnv, name: &str) -> Vec<serde_json::Value> {
     let output = env
         .command()
-        .args(["query", "index", name])
+        .args(["query", "index", name, "--format", "jsonld"])
         .output()
         .expect("failed to run");
     assert!(
@@ -489,7 +513,7 @@ ORDER BY ?name"##,
 
     let output = env
         .command()
-        .args(["query", "index", "agenda"])
+        .args(["query", "index", "agenda", "--format", "jsonld"])
         .output()
         .expect("failed to run");
 
@@ -526,7 +550,7 @@ fn query_show_prints_built_in_sparql() {
 fn run_chain(env: &TestEnv, query: &str) -> Vec<serde_json::Value> {
     let output = env
         .command()
-        .args(["query", "chain", query])
+        .args(["query", "chain", query, "--format", "jsonld"])
         .output()
         .expect("failed to run");
     assert!(
