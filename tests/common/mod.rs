@@ -41,8 +41,7 @@ impl TestEnv {
         fs::write(config_path, content).expect("Failed to write config");
     }
 
-    /// Write workspace identity config so index queries can emit ws:charterRoot triples.
-    /// Required for any test that uses `query index` or other location-bearing queries.
+    /// Write workspace identity config for tests that need a stable workspace node.
     pub fn with_workspace_identity(&self) -> &Self {
         self.write_config(r#"{"workspace_id":"test-workspace","workspace_name":"test"}"#);
         self

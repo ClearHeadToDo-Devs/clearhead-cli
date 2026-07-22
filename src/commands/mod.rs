@@ -5,7 +5,6 @@ pub mod doctor;
 pub mod file;
 pub mod init;
 pub mod plan;
-pub mod query;
 pub mod resolver;
 pub mod service;
 pub mod template;
@@ -29,7 +28,6 @@ use clearhead_cli::telemetry::{TelemetryEvent, Tool, emit_event};
 pub struct CommandContext {
     pub config: Config,
     pub data_dir: PathBuf,
-    pub config_dir: PathBuf,
     pub config_path: PathBuf,
     pub project_root: Option<PathBuf>,
     /// When set, `workspace_dirs()` returns only the workspace whose name
@@ -69,7 +67,6 @@ impl CommandContext {
         Ok(Self {
             config,
             data_dir,
-            config_dir,
             config_path,
             project_root,
             workspace_filter: cli.workspace.clone(),

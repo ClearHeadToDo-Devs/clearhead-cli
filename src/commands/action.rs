@@ -1185,18 +1185,6 @@ fn find_action_mut<'a>(actions: &'a mut ActionList, query: &str) -> Option<&'a m
     actions.get_mut(idx)
 }
 
-/// Resolve `query` to an open action without mutating anything — same
-/// UUID/short-prefix/alias/name-contains precedence as the mutation verbs
-/// (`complete action`, `update action`, ...), for read-only lookups like
-/// `query chain` that need to turn a human-typed query into a canonical id.
-pub(crate) fn resolve_open_action(
-    ctx: &CommandContext,
-    query: &str,
-) -> anyhow::Result<Option<Action>> {
-    let found = find_and_load_open_actions(ctx, &None, &None, query)?;
-    Ok(found.and_then(|(_, actions)| find_best_match(&actions, query, is_open_action).cloned()))
-}
-
 pub(super) fn resolve_markdown_charter<'a>(
     charters: &'a [clearhead_core::MarkdownCharter],
     query: &str,

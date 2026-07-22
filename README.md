@@ -6,8 +6,11 @@ Work items live in plain-text `.actions` files that any editor can read and
 write. Recurring schedules live in `.ics` vdir files, and archived charter
 files remain plaintext under the workspace `archive/` directory. `clearhead`
 provides synchronous command and mutation workflows over `clearhead-core`.
-The editor runtime is the separate
-[`clearhead-lsp`](https://github.com/ClearHeadToDo-Devs/clearhead-lsp) process.
+Graph reads and SPARQL export belong to the separate
+[`clearhead-graphd`](https://github.com/ClearHeadToDo-Devs/clearhead-graphd)
+tool; editor intelligence belongs to
+[`clearhead-lsp`](https://github.com/ClearHeadToDo-Devs/clearhead-lsp). The CLI
+does not proxy either public interface.
 
 ## Installation
 
@@ -56,6 +59,15 @@ Every subcommand also has inline help:
 clearhead --help
 clearhead read --help
 clearhead archive charter --help
+```
+
+## Graph queries
+
+Call graphd directly for saved views and ad-hoc SPARQL:
+
+```bash
+clearhead-graphd query index agenda
+clearhead-graphd query raw 'SELECT ?s WHERE { ?s ?p ?o }' --format json
 ```
 
 ## Editor integration

@@ -132,20 +132,6 @@ fn test_invalid_cli_format_argument() {
 }
 
 #[test]
-fn test_query_sparql_and_where_conflict() {
-    let env = TestEnv::new();
-    env.command()
-        .arg("query")
-        .arg("run")
-        .arg("SELECT ?s WHERE { ?s a <urn:x> }")
-        .arg("--where")
-        .arg("?s a <urn:x>")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("cannot be used with"));
-}
-
-#[test]
 fn test_read_empty_workspace() {
     let env = TestEnv::new();
     env.command().arg("read").arg("plans").assert().success();

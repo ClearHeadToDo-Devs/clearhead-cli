@@ -105,18 +105,6 @@ pub enum ActionStateArg {
     Cancelled,
 }
 
-impl ActionStateArg {
-    pub fn to_sparql_iri(self) -> &'static str {
-        match self {
-            ActionStateArg::NotStarted => "<https://clearhead.us/vocab/actions/v4#NotStarted>",
-            ActionStateArg::InProgress => "<https://clearhead.us/vocab/actions/v4#InProgress>",
-            ActionStateArg::Blocked => "<https://clearhead.us/vocab/actions/v4#BlockedOrAwaiting>",
-            ActionStateArg::Completed => "<https://clearhead.us/vocab/actions/v4#Completed>",
-            ActionStateArg::Cancelled => "<https://clearhead.us/vocab/actions/v4#Cancelled>",
-        }
-    }
-}
-
 impl From<ActionStateArg> for clearhead_core::ActionState {
     fn from(s: ActionStateArg) -> Self {
         match s {
@@ -264,12 +252,6 @@ pub enum Verb {
         target: SyncTarget,
     },
 
-    /// Execute SPARQL queries against the workspace RDF graph
-    Query {
-        #[command(subcommand)]
-        target: QueryTarget,
-    },
-
     /// Show resolved config and workspace diagnostics
     Debug,
 
@@ -302,75 +284,6 @@ pub enum CompleteKind {
     Charters,
     /// Workspace names
     Workspaces,
-}
-
-// =============================================================================
-// Query targets
-// =============================================================================
-
-#[derive(Subcommand)]
-pub enum QueryTarget {
-    /// Run a raw SPARQL query
-    Run {
-        /// Full SPARQL SELECT query
-        #[arg(conflicts_with = "where_clause")]
-        sparql: Option<String>,
-
-        /// SPARQL WHERE clause (auto-injects prefixes, selects all variables)
-        #[arg(short = 'w', long = "where", conflicts_with = "sparql")]
-        where_clause: Option<String>,
-
-        /// Output format
-        #[arg(short, long, value_enum)]
-        format: Option<QueryFormat>,
-    },
-
-    /// Run a named query stored in ~/.config/clearhead/queries/ or <workspace>/.clearhead/queries/
-    #[command(name = "named")]
-    NamedRun {
-        /// Name of the query (stem of the .sparql file)
-        name: String,
-
-        /// Filter by action status (substitutes ?STATUS_FILTER in the query)
-        #[arg(short, long, value_enum)]
-        status: Option<ActionStateArg>,
-
-        /// Output format
-        #[arg(short, long, value_enum)]
-        format: Option<QueryFormat>,
-    },
-
-    /// Run an index query — ordered, addressable entries with source locators
-    /// (validates the id/name/status/source_file/source_line/charter_root contract)
-    Index {
-        /// Named query from queries/index/; omit to run the built-in default
-        name: Option<String>,
-
-        /// Output format (default: json)
-        #[arg(short, long, value_enum)]
-        format: Option<QueryFormat>,
-    },
-
-    /// Every open action that must be completed before the given action can
-    /// start, walked recursively through its predecessor chain
-    Chain {
-        /// UUID, 8-char prefix, alias, or name of the action
-        query: String,
-
-        /// Output format (default: json)
-        #[arg(short, long, value_enum)]
-        format: Option<QueryFormat>,
-    },
-
-    /// Print a query's SPARQL to stdout — inspect a built-in, redirect to
-    /// your queries dir, tweak: the override workflow
-    Show {
-        /// Name of the query (index, typed, or freeform)
-        name: String,
-    },
-
-    /// List available named queries
-    List,
 }
 
 // =============================================================================
@@ -1118,20 +1031,6 @@ pub enum OutputMode {
     JsonLd,
     /// One UUID per line — for xargs and reference piping
     Ids,
-}
-
-/// Explicit query output format. Without an override, graphd chooses from the
-/// query family and whether stdout is a terminal.
-#[derive(Clone, Copy, ValueEnum, Debug)]
-pub enum QueryFormat {
-    /// Pretty-printed human table
-    Table,
-    /// JSON array of objects
-    Json,
-    /// One JSON object per line
-    Ndjson,
-    /// Semantic JSON-LD document (for shaped query families)
-    Jsonld,
 }
 
 /// CLI-specific style enum that maps to library's FormatStyle

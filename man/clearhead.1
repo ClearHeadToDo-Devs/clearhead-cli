@@ -196,10 +196,8 @@ Show only charters backed by a \fB.md\fR or \fBREADME.md\fR file;
 omit charters inferred from \fB.actions\fR file stems alone.
 .RE
 .PP
-.B clearhead query index agenda
-.PP
-Show the built-in daily agenda as an index query: ordered, addressable entries
-with source locations and canonical ids, emitted as JSON-LD by default.
+Graph queries are provided by the separate \fBclearhead-graphd\fR tool. For
+example, run \fBclearhead-graphd query index agenda\fR for the daily agenda.
 .\" --------------------------------------------------------------------
 .SS "show \(em inspect a single item"
 .PP
@@ -618,59 +616,11 @@ Defaults to the source filename stem.
 Replace existing \fI<UID>.ics\fR files when a UID collision occurs.
 .RE
 .\" --------------------------------------------------------------------
-.SS "query \(em SPARQL against the workspace graph"
+.SS "graph queries"
 .PP
-.B clearhead query run
-[\fIsparql\fR | \fB\-\-where\fR \fIclause\fR]
-[\fB\-\-format\fR \fIfmt\fR]
-.PP
-Execute a SPARQL query against the in-memory workspace RDF graph.
-.RS 4
-.TP
-\fIsparql\fR
-Full SPARQL SELECT query string.
-.TP
-\fB\-w\fR, \fB\-\-where\fR \fIclause\fR
-WHERE clause only.
-ClearHead auto-injects namespace prefixes and wraps in
-\fBSELECT * WHERE { ... }\fR.
-Mutually exclusive with the positional \fIsparql\fR argument.
-.TP
-\fB\-f\fR, \fB\-\-format\fR \fIfmt\fR
-Output format: \fBtable\fR (default) or \fBjson\fR.
-.RE
-.PP
-.B clearhead query named
-\fIname\fR
-[\fB\-\-status\fR \fIstate\fR]
-[\fB\-\-format\fR \fIfmt\fR]
-.PP
-Run a named SPARQL query stored as \fI<name>.sparql\fR in
-\fI~/.clearhead/queries/\fR or \fI<project>/.clearhead/queries/\fR.
-.RS 4
-.TP
-\fB\-\-status\fR \fIstate\fR
-Substitute \fB?STATUS_FILTER\fR in the query with a state IRI.
-.RE
-.PP
-.B clearhead query index
-[\fIname\fR]
-[\fB\-\-format\fR \fIfmt\fR]
-.PP
-Run a typed index query. Index queries live under
-\fI~/.clearhead/queries/index/\fR or \fI<project>/.clearhead/queries/index/\fR,
-and built-ins include \fBagenda\fR, \fBweekly\fR, and the default open-actions
-view. Output is JSON-LD by default and each row carries a canonical \fBid\fR,
-display fields, and source locators.
-.PP
-.B clearhead query show
-\fIname\fR
-.PP
-Print a query's raw SPARQL to stdout for inspection or copy-and-tweak overrides.
-.PP
-.B clearhead query list
-.PP
-List all available named queries.
+SPARQL execution, saved query families, validation, and query output formats
+belong to the independently installed \fBclearhead-graphd\fR tool. The CLI does
+not proxy that interface. See \fBclearhead-graphd --help\fR.
 .\" --------------------------------------------------------------------
 .SS "sync \(em synchronise with external systems"
 .PP
@@ -845,7 +795,7 @@ The root charter's actions are at \fB.clearhead/charters/next.actions\fR.
 .PP
 \fBarchive.ttl\fR is the only file written by \fBarchive charter\fR.
 It accumulates all closed history and is never deleted.
-Query it with \fBclearhead query run\fR using SPARQL.
+Query workspace graph data directly with \fBclearhead-graphd\fR using SPARQL.
 .\" ====================================================================
 .SH WORKFLOW
 .\" ====================================================================
@@ -1140,10 +1090,10 @@ Project-level named SPARQL queries.
 .PP
 .B Query blocked actions with SPARQL
 .EX
-    clearhead query run --where '
-        ?action a ch:Action ;
-                ch:state ch:BlockedOrAwaiting ;
-                ch:name ?name .
+    clearhead-graphd query raw --where '
+        ?action a actions:Action ;
+                cco:ont00001868 actions:Blocked ;
+                rdfs:label ?name .
     '
 .EE
 .PP

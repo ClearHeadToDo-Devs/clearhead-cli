@@ -1,18 +1,16 @@
 //! Out-of-process bridge to `clearhead-graphd`.
 //!
-//! The CLI reaches graphd two ways. The `query` command execs graphd's own
-//! `query` interface directly with inherited stdio (see `commands::query`) —
-//! graphd owns execution and rendering. JSON-LD export is the remaining stdin
-//! round-trip: a domain model goes in, canonical JSON-LD comes back.
+//! JSON-LD export is the CLI's one graphd bridge: a plain domain model goes
+//! in and canonical JSON-LD comes back. Query execution is intentionally not
+//! proxied here; consumers call graphd's public interface directly.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 const GRAPHD_ENV: &str = "CLEARHEAD_GRAPHD";
 
-/// Build a `Command` for the graphd binary, honoring `CLEARHEAD_GRAPHD` and
-/// falling back to `clearhead-graphd` on `PATH`.
-pub fn graphd_command() -> Command {
+/// Locate graphd for the JSON-LD export bridge.
+fn graphd_command() -> Command {
     let executable = std::env::var_os(GRAPHD_ENV).unwrap_or_else(|| "clearhead-graphd".into());
     Command::new(executable)
 }

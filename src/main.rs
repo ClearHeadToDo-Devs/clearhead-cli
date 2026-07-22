@@ -327,36 +327,6 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 commands::service::sync_calendar(ctx, *dry_run, *conflict)
             }
         },
-        Verb::Query { target } => match target {
-            argparser::QueryTarget::Run {
-                sparql,
-                where_clause,
-                format,
-            } => commands::query::query_workspace(
-                ctx,
-                sparql.as_deref(),
-                where_clause.as_deref(),
-                *format,
-            ),
-            argparser::QueryTarget::NamedRun {
-                name,
-                status,
-                format,
-            } => commands::query::run_named_query(
-                ctx,
-                name,
-                status.map(|s| s.to_sparql_iri()),
-                *format,
-            ),
-            argparser::QueryTarget::Index { name, format } => {
-                commands::query::run_index_query(ctx, name.as_deref(), *format)
-            }
-            argparser::QueryTarget::Chain { query, format } => {
-                commands::query::run_chain_query(ctx, query, *format)
-            }
-            argparser::QueryTarget::Show { name } => commands::query::show_named_query(ctx, name),
-            argparser::QueryTarget::List => commands::query::list_named_queries(ctx),
-        },
         Verb::Debug => commands::debug::run(ctx),
         Verb::Doctor { json } => commands::doctor::run(ctx, *json),
         Verb::Completion { shell } => {

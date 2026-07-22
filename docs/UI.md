@@ -18,9 +18,12 @@ The nouns are mostly standard CRUD operations:
 
 the point is to keep the interface as simple and intuitive as possiible so that users can easily see and compose interactions together
 
-### Read 
+### Read
 
-Read is where we query the workspace graph. The CLI does not hold the engine — it hands the query to `clearhead-graphd` (which owns Oxigraph, SPARQL, and JSON-LD) and projects the result. Users get flattened, queryable data without a custom query language.
+`clearhead read` reads canonical workspace entities through core. Semantic
+queries are a separate tool boundary: `clearhead-graphd` owns SPARQL, query
+families, validation, rendering, and graph export, and clients invoke it
+directly. The CLI does not proxy graphd.
 
 ## Verbs
 
@@ -35,7 +38,8 @@ We use the above file formats as our primary nouns so that each verb can operate
 
 ## Output
 
-Output is a **presentation projection**, not the data itself — graphd owns meaning (JSON-LD); the CLI turns it into ergonomics. Two things pick the projection: the **destination** and the **verb**.
+CLI output covers canonical entities and mutation outcomes. graphd independently
+owns query output; it is not a CLI presentation layer.
 
 ### Destination is binary: human or machine
 
@@ -46,23 +50,25 @@ The only distinction is `isatty(stdout)` — a terminal is a human, everything e
 | Verb | Terminal (human) | Machine (pipe / redirect) |
 |------|------------------|---------------------------|
 | `read <noun>` | static table / tree render | **native on-disk format** |
-| `query <view>` | human summary | **structured, by shape** |
 
 - **`read <noun>`** targets one entity type, and each has a home file: actions → `.actions` DSL, charters → Markdown, plans → vdir/iCal. So its machine output *is* that format. `read actions > inbox.actions` yields a valid workspace file, and `read actions | clearhead update …` round-trips clearhead-to-clearhead — no conversion.
-- **`query <view>`** targets a graph-derived result — an agenda spanning charters, a dependency network — with **no single home file**. It therefore can't be native; it emits structured output selected by the query family:
-  - **index** (unscheduled, agenda, overdue) → validated addressable rows as NDJSON
-  - **tree** (charter → action hierarchy) → validated parent-linked nodes as nested JSON
-  - **graph** (dependencies, contexts) → standard `CONSTRUCT` output as JSON-LD / triples
 
-A family is a portable-query convention, not a custom query language. Queries
-remain complete `.sparql` files; placement under `queries/index/`, `tree/`, or
-`graph/` opts into the corresponding consumer guarantee and validation.
+For graph-derived output use graphd directly. Its query families own NDJSON,
+nested JSON, and RDF/JSON-LD projections without making the CLI middleware.
+The currently implemented index family is invoked as:
+
+```sh
+clearhead-graphd query index agenda
+```
 
 This line is not a preference toggle. Native format only *exists* where the data has a home file — native where it does, structured where it doesn't.
 
 ### Explicit format flags override both
 
-`--jsonld`, `--ndjson`, `--json`, and `--ids` force a format regardless of verb or destination. JSON-LD is valid JSON, so `jq` reads it directly. `--ids` emits one UUID per line for xargs-style batch work:
+Format flags are tool-local. The CLI's entity reads support their documented
+native, JSON-LD, table, and ID modes; graphd separately owns query formats such
+as NDJSON, nested JSON, and RDF serializations. `--ids` emits one UUID per line
+for xargs-style batch work:
 ```
 clearhead read actions --charter lsp --ids | xargs -I{} clearhead update action {} --state in-progress
 ```
