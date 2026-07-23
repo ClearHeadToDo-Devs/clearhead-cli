@@ -993,7 +993,7 @@ pub enum ConflictResolutionArg {
 
 #[derive(Subcommand)]
 pub enum SyncTarget {
-    /// Synchronize existing actions with the events database
+    /// Backfill action-created telemetry records for existing actions
     Events {
         /// File to sync. If not provided, uses the default file
         file: Option<PathBuf>,
