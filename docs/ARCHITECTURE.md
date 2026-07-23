@@ -15,17 +15,17 @@ The **Rust struct (IR) is the canonical representation**. Everything else is a v
                     (canonical in-memory type)
                     Objectives, Charters, Plans, Acts
                               │
-           ┌──────────────────┼──────────────────┐
-           │                  │                  │
-           ▼                  ▼                  ▼
-         CRDT           Workspace           Oxigraph
-     (durable with      (text view        (query cache
-      sync/merge)       for editors)       for SPARQL)
+                    ┌─────────┴─────────┐
+                    │                   │
+                    ▼                   ▼
+               Workspace            Oxigraph
+              (text source          (query cache
+               for editors)          for SPARQL)
 ```
 
-- **CRDT** is durable sync with merge semantics (via autosurgeon). Stores both Domain Model
-- Workspace is all the plaintext files that users interact with directly. These are the source of truth for the domain model and are parsed into the IR. Changes to these files are detected and merged into the CRDT, which then updates the IR. This allows for a seamless editing experience while maintaining a consistent in-memory representation.
-- **Oxigraph** is an ephemeral query cache materialized from the IR. Enables SPARQL queries and SHACL validation. 
+- Workspace is all the plaintext files that users interact with directly. These files are the durable source of truth and are parsed into the IR.
+- **Oxigraph** is an ephemeral query cache materialized from the IR. Enables SPARQL queries and SHACL validation.
+- Distributed synchronization is deferred to a future integration and is not part of the CLI or core build.
 
 ## Workspace Architecture
 
@@ -43,7 +43,7 @@ In particular, its important to know how the different domain models translate t
 
 These four file formats come together to allow us to form and update the `DomainModel` in memory, which will enable the core of what we are doing here
 
-Everything uses this model, from the CLI to the LSP server, to the CRDT syncing, to the UI rendering. This is the heart of our architecture, and it all relies on these file formats being properly defined and adhered to.
+Everything uses this model, from the CLI to the LSP server and UI rendering. This is the heart of our architecture, and it all relies on these file formats being properly defined and adhered to.
 
 As things get closed, we move them to a final `archive.ttl` file that serves as a historical record of all completed objectives, charters, plans, and acts. This file is also in TTL format and conforms to the same ontology as the planned acts.
 
