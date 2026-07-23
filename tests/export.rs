@@ -48,11 +48,10 @@ fn test_export_basic_action_with_date() {
         .assert()
         .success()
         .stdout(predicate::str::contains("BEGIN:VCALENDAR"))
-        .stdout(predicate::str::contains("BEGIN:VEVENT"))
+        .stdout(predicate::str::contains("BEGIN:VTODO"))
         .stdout(predicate::str::contains("SUMMARY:Meeting"))
         .stdout(predicate::str::contains("DTSTART:"))
-        .stdout(predicate::str::contains("DTEND:"))
-        .stdout(predicate::str::contains("END:VEVENT"))
+        .stdout(predicate::str::contains("END:VTODO"))
         .stdout(predicate::str::contains("END:VCALENDAR"));
 }
 
@@ -124,8 +123,15 @@ fn test_export_status_mapping() {
     assert!(output_str.contains("SUMMARY:Completed"));
     assert!(output_str.contains("SUMMARY:Cancelled"));
 
-    let event_count = output_str.matches("BEGIN:VEVENT").count();
-    assert_eq!(event_count, 5);
+    assert_eq!(output_str.matches("STATUS:NEEDS-ACTION").count(), 2);
+    assert!(output_str.contains("STATUS:IN-PROCESS"));
+    assert!(output_str.contains("STATUS:COMPLETED"));
+    assert!(output_str.contains("STATUS:CANCELLED"));
+    assert!(output_str.contains("X-CLEARHEAD-STATUS:blocked"));
+    assert!(output_str.contains("COMPLETED:"));
+
+    let todo_count = output_str.matches("BEGIN:VTODO").count();
+    assert_eq!(todo_count, 5);
 }
 
 #[test]
@@ -161,12 +167,12 @@ fn test_export_open_only_filter() {
     assert!(!output_str.contains("SUMMARY:Completed task"));
     assert!(!output_str.contains("SUMMARY:Cancelled task"));
 
-    let event_count = output_str.matches("BEGIN:VEVENT").count();
-    assert_eq!(event_count, 3);
+    let todo_count = output_str.matches("BEGIN:VTODO").count();
+    assert_eq!(todo_count, 3);
 }
 
 #[test]
-fn test_export_skips_actions_without_dates() {
+fn test_export_includes_actions_without_dates() {
     let env = TestEnv::new();
     let actions = r#"
 [ ] Task with date @2026-01-20T10:00
@@ -190,10 +196,10 @@ fn test_export_skips_actions_without_dates() {
 
     assert!(output_str.contains("SUMMARY:Task with date"));
     assert!(output_str.contains("SUMMARY:Another task with date"));
-    assert!(!output_str.contains("SUMMARY:Task without date"));
+    assert!(output_str.contains("SUMMARY:Task without date"));
 
-    let event_count = output_str.matches("BEGIN:VEVENT").count();
-    assert_eq!(event_count, 2);
+    let todo_count = output_str.matches("BEGIN:VTODO").count();
+    assert_eq!(todo_count, 3);
 }
 
 #[test]
@@ -235,7 +241,7 @@ fn test_export_from_stdin() {
 }
 
 #[test]
-fn test_export_default_duration() {
+fn test_vtodo_does_not_invent_due_from_duration() {
     let env = TestEnv::new();
     let actions = r#"[ ] Meeting without duration @2026-01-20T14:00"#;
     let file = env.write_actions("test.actions", actions);
@@ -253,13 +259,13 @@ fn test_export_default_duration() {
 
     let output_str = String::from_utf8_lossy(&output);
 
-    // Should have both DTSTART and DTEND (15 minute default)
     assert!(output_str.contains("DTSTART:"));
-    assert!(output_str.contains("DTEND:"));
+    assert!(!output_str.contains("DTEND:"));
+    assert!(!output_str.contains("DUE:"));
 }
 
 #[test]
-fn test_export_empty_calendar() {
+fn test_export_unscheduled_only_calendar() {
     let env = TestEnv::new();
     let actions = r#"
 [ ] Task without date
@@ -282,5 +288,5 @@ fn test_export_empty_calendar() {
 
     assert!(output_str.contains("BEGIN:VCALENDAR"));
     assert!(output_str.contains("END:VCALENDAR"));
-    assert_eq!(output_str.matches("BEGIN:VEVENT").count(), 0);
+    assert_eq!(output_str.matches("BEGIN:VTODO").count(), 2);
 }

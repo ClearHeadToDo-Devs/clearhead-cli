@@ -2,12 +2,9 @@ use clearhead_core::{Action, ActionState, DomainModel};
 
 /// Check if an Action should be included in calendar export.
 ///
-/// - Must have `scheduled_at` to anchor the event in time.
-/// - When `open_only`, excludes Completed and Cancelled actions.
+/// VTODO can represent actions without DTSTART or DUE, so only lifecycle state
+/// affects inclusion. When `open_only`, completed and cancelled actions are excluded.
 pub fn should_include_action(action: &Action, open_only: bool) -> bool {
-    if action.scheduled_at.is_none() {
-        return false;
-    }
     if open_only {
         matches!(
             action.state,
@@ -21,8 +18,8 @@ pub fn should_include_action(action: &Action, open_only: bool) -> bool {
 /// Convert a [`DomainModel`] to an iCalendar string.
 ///
 /// Collects all actions from all charters and delegates to
-/// [`clearhead_core::actions_to_icalendar`]. Each action with `scheduled_at`
-/// becomes one individual VEVENT — no RRULE master events.
+/// [`clearhead_core::actions_to_icalendar`]. Each action becomes one individual
+/// VTODO — no RRULE master components.
 pub fn format_as_icalendar(model: &DomainModel, open_only: bool) -> Result<String, String> {
     let actions: Vec<Action> = model
         .charters
@@ -48,10 +45,10 @@ mod tests {
     }
 
     #[test]
-    fn should_include_action_no_scheduled_at() {
+    fn should_include_action_without_scheduled_at() {
         let action = make_action(ActionState::NotStarted, None);
-        assert!(!should_include_action(&action, false));
-        assert!(!should_include_action(&action, true));
+        assert!(should_include_action(&action, false));
+        assert!(should_include_action(&action, true));
     }
 
     #[test]
@@ -80,11 +77,11 @@ mod tests {
         };
         let ics = format_as_icalendar(&model, false).unwrap();
         assert!(ics.contains("BEGIN:VCALENDAR"));
-        assert!(!ics.contains("BEGIN:VEVENT"));
+        assert!(!ics.contains("BEGIN:VTODO"));
     }
 
     #[test]
-    fn format_as_icalendar_scheduled_action_produces_vevent() {
+    fn format_as_icalendar_action_produces_vtodo() {
         use clearhead_core::domain::Charter;
         let dt = Local.with_ymd_and_hms(2026, 1, 10, 14, 0, 0).unwrap();
         let action = Action {
@@ -102,7 +99,7 @@ mod tests {
             }],
         };
         let ics = format_as_icalendar(&model, false).unwrap();
-        assert!(ics.contains("BEGIN:VEVENT"));
+        assert!(ics.contains("BEGIN:VTODO"));
         assert!(ics.contains("Test task"));
         assert!(!ics.contains("RRULE"));
     }
