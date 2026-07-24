@@ -359,16 +359,6 @@ fn load_plan_file(path: &Path) -> anyhow::Result<Vec<clearhead_core::Plan>> {
     }
 }
 
-fn load_import_plan_file(path: &Path) -> anyhow::Result<Vec<clearhead_core::Plan>> {
-    let mut plans = load_plan_file(path)?;
-    plans.extend(
-        clearhead_core::parse_vevent_plans_for_import(path)?
-            .into_iter()
-            .map(|plan| plan.plan),
-    );
-    Ok(plans)
-}
-
 fn charter_stem_from_source(source: &Path) -> anyhow::Result<String> {
     let stem = source
         .file_stem()
@@ -692,7 +682,7 @@ pub fn import_plans(
     overwrite: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let plans = load_import_plan_file(source)?;
+    let plans = load_plan_file(source)?;
     if plans.is_empty() {
         println!("No iCalendar schedules found in {}", source.display());
         return Ok(());

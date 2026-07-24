@@ -152,9 +152,9 @@ or to update multiple items at once using a SPARQL query:
 clearhead_cli update objective --where "{ ?objective a :Objective ; :hasTag :someTag . }" --description "this is an updated description for all objectives with someTag"
 ```
 
-### Calendar Events
+### Calendar Tasks
 
-One core usecase is the creation of calendar events for upcoming planned acts so all we need to do is read all planned acts that have a start time in the future and export them to a calendar format like VEVENT. This can be done with a simple command like:
+One core use case is projecting Actions and recurring Plans into interoperable calendar task resources. ClearHead uses VTODO for both standalone Actions and RRULE-bearing Plan masters. This can be done with a simple command like:
 
 ```
 clearhead_cli export plans --open-only

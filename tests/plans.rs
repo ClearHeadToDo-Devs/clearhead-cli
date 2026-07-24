@@ -21,7 +21,7 @@ fn write_plans_sync_store(env: &TestEnv, action_id: &str, scheduled_at: &str) {
 }
 
 #[test]
-fn test_read_plans_shows_ics_vevent() {
+fn test_read_plans_shows_recurring_vtodo() {
     let env = TestEnv::new();
     env.write_plan_ics("inbox", "root.ics", &["My Plan"]);
     env.command()
@@ -33,12 +33,12 @@ fn test_read_plans_shows_ics_vevent() {
 }
 
 #[test]
-fn test_import_plans_splits_multi_event_ics_into_vdir_files() {
+fn test_import_plans_splits_multi_vtodo_ics_into_vdir_files() {
     let env = TestEnv::new();
     let source = env.data_dir.join("bulk-export.ics");
     fs::write(
         &source,
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:plan-one@example.com\r\nSUMMARY:Plan One\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:plan-two@example.com\r\nSUMMARY:Plan Two\r\nDTSTART:20260429T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:plan-one@example.com\r\nSUMMARY:Plan One\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nBEGIN:VTODO\r\nUID:plan-two@example.com\r\nSUMMARY:Plan Two\r\nDTSTART:20260429T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     ).unwrap();
     env.command()
         .arg("import")
@@ -53,7 +53,6 @@ fn test_import_plans_splits_multi_event_ics_into_vdir_files() {
     let first = fs::read_to_string(plans_dir.join("plan-one@example.com.ics")).unwrap();
     assert!(first.contains("BEGIN:VTODO"), "{first}");
     assert!(first.contains("RRULE:FREQ=WEEKLY"), "{first}");
-    assert!(!first.contains("BEGIN:VEVENT"), "{first}");
     assert!(plans_dir.join("plan-two@example.com.ics").exists());
     env.command()
         .arg("read")
@@ -69,7 +68,7 @@ fn test_import_plans_honors_explicit_charter_flag() {
     let source = env.data_dir.join("calendar.ics");
     fs::write(
         &source,
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Focus Block\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:focus@example.com\r\nSUMMARY:Focus Block\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     ).unwrap();
     env.command()
         .arg("import")
@@ -100,9 +99,9 @@ fn test_import_plans_errors_on_existing_uid_without_overwrite() {
         .join("inbox")
         .join("focus@example.com.ics");
     fs::create_dir_all(existing.parent().unwrap()).unwrap();
-    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
     let source = env.data_dir.join("collision.ics");
-    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
     env.command()
         .arg("import")
         .arg("plans")
@@ -128,9 +127,9 @@ fn test_import_plans_overwrites_existing_uid_with_flag() {
         .join("inbox")
         .join("focus@example.com.ics");
     fs::create_dir_all(existing.parent().unwrap()).unwrap();
-    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
     let source = env.data_dir.join("collision.ics");
-    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
     env.command()
         .arg("import")
         .arg("plans")

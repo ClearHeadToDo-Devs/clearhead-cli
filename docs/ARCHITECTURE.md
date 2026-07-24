@@ -56,7 +56,7 @@ What needs to be known is that converting between different file formats is a co
 - Mardown (Objectives and Charters)
 - TTL (Planned Acts)
 - JSON
-- VEVENT (For calendar integrations)
+- VTODO (for recurring Plans and standalone Action projections)
 
 By getting these structures in place we can easily deliver functionality by simply making different structures available in different formats
 

@@ -171,7 +171,7 @@ List all available column names and exit.
 [\fB\-\-file\fR \fIpath\fR]
 [\fB\-\-stdio\fR]
 .PP
-List schedule plans (\fB.ics\fR VEVENTs) across the workspace or scoped to a charter.
+List recurring schedule Plans (\fB.ics\fR VTODOs) across the workspace or scoped to a charter.
 .RS 4
 .TP
 \fB\-\-charter\fR \fIname\fR
@@ -213,7 +213,7 @@ Searches open actions first, then \fB.completed.actions\fR.
 [\fB\-\-file\fR \fIpath\fR]
 [\fB\-F\fR \fIfmt\fR]
 .PP
-Print all fields of a single schedule plan (VEVENT).
+Print all fields of a single recurring VTODO Plan.
 .PP
 .B clearhead show charter
 \fIquery\fR
@@ -276,13 +276,13 @@ Plans describe \fIwhen\fR actions should be generated; they do not hold action s
 .RS 4
 .TP
 \fB\-\-scheduled\-at\fR \fIdatetime\fR
-DTSTART for the VEVENT (RFC 3339).
+DTSTART for the VTODO (RFC 3339).
 .TP
 \fB\-\-rrule\fR \fIRRULE\fR
 RFC 5545 recurrence rule, e.g. \fIFREQ=WEEKLY;BYDAY=MO\fR.
 .TP
 \fB\-\-template\fR \fIname\fR
-Template to bind via VEVENT DESCRIPTION (stem of a \fBtemplates/\fR file).
+Template to bind via VTODO DESCRIPTION (stem of a \fBtemplates/\fR file).
 .RE
 .PP
 .B clearhead add charter
@@ -339,7 +339,7 @@ New state: \fBnot\-started\fR, \fBin\-progress\fR, \fBblocked\fR,
 [\fB\-\-file\fR \fIpath\fR]
 [\fB\-\-dry\-run\fR]
 .PP
-Update fields on a schedule plan (VEVENT).
+Update fields on a recurring VTODO Plan.
 .PP
 .B clearhead update charter
 \fIquery\fR
@@ -394,7 +394,7 @@ This is destructive; prefer \fBcancel\fR for audit-trail preservation.
 [\fB\-\-file\fR \fIpath\fR]
 [\fB\-\-dry\-run\fR]
 .PP
-Remove a schedule plan (\fB.ics\fR VEVENT file) from the workspace.
+Remove a recurring VTODO Plan resource from the workspace.
 .\" --------------------------------------------------------------------
 .SS "archive \(em move completed work out of active files"
 .PP
@@ -452,7 +452,7 @@ What \fBarchive charter\fR does:
 .IP \(bu 4
 Completed actions from \fB<charter>.completed.actions\fR \(-> \fBarchive.ttl\fR
 .IP \(bu 4
-Plan VEVENTs from \fBplans/<charter>/\fR \(-> \fBarchive.ttl\fR
+Plan VTODOs from \fBplans/<charter>/\fR \(-> \fBarchive.ttl\fR
 .IP \(bu 4
 Charter metadata itself \(-> \fBarchive.ttl\fR
 .IP \(bu 4
@@ -548,7 +548,7 @@ Overwrite \fIprimary\fR with the merged result.
 [\fIfile\fR]
 [\fB\-\-dry\-run\fR]
 .PP
-Expand recurring plans (\fB.ics\fR VEVENTs) into concrete action instances in
+Expand recurring Plans (\fB.ics\fR VTODOs) into concrete action instances in
 the corresponding \fB.actions\fR files.
 Generates up to \fBexpansion_primary_instances\fR actions into the primary
 \fB.actions\fR file and additional instances into \fB.upcoming.actions\fR.
@@ -599,9 +599,8 @@ Include sub-charter plans (requires \fIreference\fR).
 [\fB\-\-overwrite\fR]
 [\fB\-\-dry\-run\fR]
 .PP
-Import recurring VTODO or VEVENT schedules and write individual VTODO+RRULE
-resources inside the target charter's \fBplans/\fR vdir. One-off VEVENTs remain
-external calendar context and are not imported as Plans.
+Import recurring VTODO schedules and write individual VTODO+RRULE resources
+inside the target charter's \fBplans/\fR vdir.
 .RS 4
 .TP
 \fIsource\fR

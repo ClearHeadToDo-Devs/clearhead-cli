@@ -954,9 +954,9 @@ pub enum ExportTarget {
 
 #[derive(Subcommand)]
 pub enum ImportTarget {
-    /// Import recurring .ics schedules as VTODO Plan resources
+    /// Import recurring VTODO Plan resources into vdir storage
     Plans {
-        /// Source .ics file containing recurring VTODOs or VEVENTs
+        /// Source .ics file containing recurring VTODOs
         source: PathBuf,
 
         /// Target charter (name, alias, or UUID). Defaults to source filename stem.

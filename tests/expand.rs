@@ -126,7 +126,7 @@ fn test_expand_acts_applies_global_template_to_recurring_event() {
         "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:weekly-review-tpl@example.com\r\nSUMMARY:Weekly Review\r\nDTSTART:20260518T100000\r\nRRULE:FREQ=WEEKLY\r\nDESCRIPTION:template: weekly-review\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
 
-    // Template has its own named root — structurally replaces the VEVENT flat action.
+    // Template has its own named root — structurally replaces the VTODO flat action.
     env.write_text(
         "templates/weekly-review.actions",
         "[ ] Review Root\n\t[ ] Get Clear\n\t\t[ ] Collect loose papers\n\t[ ] Get Current\n",
@@ -156,9 +156,9 @@ fn test_expand_acts_applies_global_template_to_recurring_event() {
         "nested template child must be present"
     );
 
-    // The VEVENT SUMMARY must NOT appear as a separate wrapper action
+    // The VTODO SUMMARY must NOT appear as a separate wrapper action
     assert!(
         !primary.contains("Weekly Review"),
-        "VEVENT flat wrapper must not be written when template is applied"
+        "VTODO flat wrapper must not be written when template is applied"
     );
 }

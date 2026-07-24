@@ -1057,7 +1057,7 @@ fn resolve_expanded_acts(
 /// that idempotency checks in future expansion runs find it correctly.
 fn apply_template_in_place(
     plan: &clearhead_core::domain::Plan,
-    vevent_uid: &str,
+    plan_uid: &str,
     occ_key: &str,
     root_id: uuid::Uuid,
     scheduled_at: Option<chrono::DateTime<Local>>,
@@ -1093,7 +1093,7 @@ fn apply_template_in_place(
         .iter()
         .find(|a| a.parent_id.is_none())
         .map(|a| a.id);
-    let uid = vevent_uid.to_string();
+    let uid = plan_uid.to_string();
     let key = occ_key.to_string();
 
     let mut instantiated = templates::instantiate_template(
