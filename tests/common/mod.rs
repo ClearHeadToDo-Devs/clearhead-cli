@@ -90,7 +90,7 @@ impl TestEnv {
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\n".to_string();
         for (i, summary) in summaries.iter().enumerate() {
             content.push_str(&format!(
-                "BEGIN:VEVENT\r\nUID:test-uid-{}@test\r\nSUMMARY:{}\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\n",
+                "BEGIN:VTODO\r\nUID:test-uid-{}@test\r\nSUMMARY:{}\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\n",
                 i, summary
             ));
         }
@@ -120,7 +120,8 @@ impl TestEnv {
 pub fn read_example(filename: &str) -> String {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let example_path = manifest_dir.join("examples").join(filename);
-    fs::read_to_string(&example_path).unwrap_or_else(|_| panic!("Failed to read example file: {}", filename))
+    fs::read_to_string(&example_path)
+        .unwrap_or_else(|_| panic!("Failed to read example file: {}", filename))
 }
 
 pub fn get_examples() -> HashMap<String, String> {

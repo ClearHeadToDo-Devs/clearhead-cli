@@ -8,7 +8,7 @@ fn test_expand_acts_writes_primary_and_upcoming_files() {
     let env = TestEnv::new();
     env.write_text(
         "plans/work/work.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:work-standup@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:work-standup@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/work.actions", "");
     env.command()
@@ -38,7 +38,7 @@ fn test_expand_acts_idempotent_across_runs() {
     let env = TestEnv::new();
     env.write_text(
         "plans/work/work.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:work-standup-idem@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:work-standup-idem@example.com\r\nSUMMARY:Weekly Standup\r\nDTSTART:20260518T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/work.actions", "");
     env.command()
@@ -71,7 +71,7 @@ fn test_expand_acts_parse_error_keeps_actions_file_unchanged_and_fails() {
     let env = TestEnv::new();
     env.write_text(
         "plans/focus/focus.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20260601T100000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:focus-1@example.com\r\nSUMMARY:Focus block\r\nDTSTART:20260601T100000\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
     let malformed = "not valid actions syntax !!!\n[ ] existing stable action\n";
     env.write_text("charters/focus.actions", malformed);
@@ -90,13 +90,13 @@ fn test_expand_acts_mixed_batch_writes_valid_file_and_fails_overall() {
     let env = TestEnv::new();
     env.write_text(
         "plans/bad/bad.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20260601T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:bad-1@example.com\r\nSUMMARY:Bad schedule\r\nDTSTART:20260601T090000\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
     let bad_content = "not valid actions syntax !!!\n[ ] preserve me\n";
     env.write_text("charters/bad.actions", bad_content);
     env.write_text(
         "plans/good/good.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20260601T110000\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:good-1@example.com\r\nSUMMARY:Good schedule\r\nDTSTART:20260601T110000\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
     env.write_text("charters/good.actions", "[ ] already here\n");
     env.command()
@@ -123,7 +123,7 @@ fn test_expand_acts_applies_global_template_to_recurring_event() {
     // SUMMARY is "Weekly Review" — this should NOT appear; template content replaces it.
     env.write_text(
         "plans/review/review.ics",
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:weekly-review-tpl@example.com\r\nSUMMARY:Weekly Review\r\nDTSTART:20260518T100000\r\nRRULE:FREQ=WEEKLY\r\nDESCRIPTION:template: weekly-review\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:weekly-review-tpl@example.com\r\nSUMMARY:Weekly Review\r\nDTSTART:20260518T100000\r\nRRULE:FREQ=WEEKLY\r\nDESCRIPTION:template: weekly-review\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
 
     // Template has its own named root — structurally replaces the VEVENT flat action.

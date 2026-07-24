@@ -316,6 +316,11 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 dry_run,
             } => commands::plan::import_plans(ctx, source, charter, *overwrite, *dry_run),
         },
+        Verb::Migrate { target } => match target {
+            argparser::MigrateTarget::PlansVtodo { dry_run } => {
+                commands::plan::migrate_plans_to_vtodo(ctx, *dry_run)
+            }
+        },
         Verb::Start { target } => match target {
             argparser::StartTarget::Lsp => commands::service::start_lsp(),
         },

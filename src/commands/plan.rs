@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::{DateTime, Local, Utc};
-use icalendar::{Calendar, Component, EventLike, Todo};
+use icalendar::{Calendar, CalendarComponent, Component, EventLike, Todo};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
@@ -359,6 +359,16 @@ fn load_plan_file(path: &Path) -> anyhow::Result<Vec<clearhead_core::Plan>> {
     }
 }
 
+fn load_import_plan_file(path: &Path) -> anyhow::Result<Vec<clearhead_core::Plan>> {
+    let mut plans = load_plan_file(path)?;
+    plans.extend(
+        clearhead_core::parse_legacy_vevent_plans(path)?
+            .into_iter()
+            .map(|plan| plan.plan),
+    );
+    Ok(plans)
+}
+
 fn charter_stem_from_source(source: &Path) -> anyhow::Result<String> {
     let stem = source
         .file_stem()
@@ -675,6 +685,75 @@ pub fn archive_plans(
     )
 }
 
+/// One-time in-place migration of legacy recurring VEVENT plan resources.
+/// Standalone/external VEVENTs are deliberately untouched: only files made
+/// entirely of RRULE-bearing VEVENTs qualify as legacy ClearHead plan files.
+pub fn migrate_plans_to_vtodo(ctx: &CommandContext, dry_run: bool) -> anyhow::Result<()> {
+    let _lock = clearhead_core::workspace::durability::WorkspaceLock::try_acquire(&ctx.data_dir)?
+        .ok_or_else(|| anyhow::anyhow!("workspace is locked by another writer"))?;
+    let mut migrated = 0usize;
+
+    for entry in ctx.collect_plan_files()? {
+        let content = fs::read_to_string(&entry.path)
+            .with_context(|| format!("Failed to read '{}'", entry.path.display()))?;
+        let calendar: Calendar = content.parse().map_err(|error: String| {
+            anyhow::anyhow!("Could not parse '{}': {}", entry.path.display(), error)
+        })?;
+        let legacy_count = calendar
+            .components
+            .iter()
+            .filter(|component| {
+                matches!(component, CalendarComponent::Event(event) if event.property_value("RRULE").is_some())
+            })
+            .count();
+        if legacy_count == 0 {
+            continue;
+        }
+        if legacy_count != calendar.components.len() {
+            anyhow::bail!(
+                "Refusing to migrate mixed calendar resource '{}'; expected only recurring VEVENT plan masters",
+                entry.path.display()
+            );
+        }
+
+        let plans = clearhead_core::parse_legacy_vevent_plans(&entry.path)?
+            .into_iter()
+            .map(|plan| plan.plan)
+            .collect::<Vec<_>>();
+        if plans.len() != legacy_count {
+            anyhow::bail!(
+                "Could not recover every recurring VEVENT in '{}'",
+                entry.path.display()
+            );
+        }
+        if dry_run {
+            println!("Would migrate {}", entry.path.display());
+        } else {
+            clearhead_core::workspace::durability::atomic_write(
+                &entry.path,
+                format_plans_as_ics(&plans).as_bytes(),
+            )?;
+            println!("Migrated {}", entry.path.display());
+        }
+        migrated += 1;
+    }
+
+    if migrated == 0 {
+        println!("No legacy recurring VEVENT plans found.");
+    } else if dry_run {
+        println!(
+            "Dry run complete. {} plan resource(s) to migrate.",
+            migrated
+        );
+    } else {
+        println!(
+            "Migration complete. {} plan resource(s) converted.",
+            migrated
+        );
+    }
+    Ok(())
+}
+
 pub fn import_plans(
     ctx: &CommandContext,
     source: &Path,
@@ -682,9 +761,9 @@ pub fn import_plans(
     overwrite: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let plans = load_plan_file(source)?;
+    let plans = load_import_plan_file(source)?;
     if plans.is_empty() {
-        println!("No VEVENT schedules found in {}", source.display());
+        println!("No iCalendar schedules found in {}", source.display());
         return Ok(());
     }
 

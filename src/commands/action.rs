@@ -161,7 +161,7 @@ fn resolve_acts_file(
     anyhow::bail!("Specify --charter <name> or --file <path> to target a charter's actions file")
 }
 
-/// Expand ICS schedule VEVENTs into actions in the charter's `.actions` and
+/// Expand recurring Plan VTODOs into actions in the charter's `.actions` and
 /// `.upcoming.actions` files.
 pub fn expand_actions(
     ctx: &CommandContext,

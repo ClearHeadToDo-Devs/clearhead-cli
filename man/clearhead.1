@@ -572,9 +572,8 @@ New UUIDs are assigned to all appended actions.
 [\fB\-\-open\-only\fR]
 [\fB\-\-recursive\fR]
 .PP
-Export schedule plans to iCalendar (\fB.ics\fR) format for import into
-Google Calendar, Apple Calendar, Outlook, etc.
-Only actions carrying \fB@\fR do-dates are included.
+Export Actions as standalone iCalendar VTODO components. Unscheduled and
+due-only Actions are representable; \fB\-\-open\-only\fR excludes terminal states.
 .RS 4
 .TP
 \fIreference\fR
@@ -600,9 +599,8 @@ Include sub-charter plans (requires \fIreference\fR).
 [\fB\-\-overwrite\fR]
 [\fB\-\-dry\-run\fR]
 .PP
-Import a multi-event \fB.ics\fR file and split it into individual VEVENT
-files inside the target charter's \fBplans/\fR vdir directory.
-Each VEVENT becomes one \fI<UID>.ics\fR file.
+Import an iCalendar schedule file and split its recurring components into
+individual VTODO+RRULE resources inside the target charter's \fBplans/\fR vdir.
 .RS 4
 .TP
 \fIsource\fR
@@ -615,6 +613,14 @@ Defaults to the source filename stem.
 \fB\-\-overwrite\fR
 Replace existing \fI<UID>.ics\fR files when a UID collision occurs.
 .RE
+.\" --------------------------------------------------------------------
+.SS "migrate — one-time storage migrations"
+.PP
+.B clearhead migrate plans-vtodo
+[\fB\-\-dry\-run\fR]
+.PP
+Convert legacy recurring VEVENT Plan resources in the configured vdir to
+VTODO+RRULE in place. Non-recurring external VEVENTs remain untouched.
 .\" --------------------------------------------------------------------
 .SS "graph queries"
 .PP
@@ -629,6 +635,14 @@ not proxy that interface. See \fBclearhead-graphd --help\fR.
 [\fB\-\-dry\-run\fR]
 .PP
 Backfill action-created telemetry records for existing actions.
+.PP
+.B clearhead sync calendar
+[\fB\-\-dry\-run\fR]
+[\fB\-\-conflict\fR \fIaction|calendar\fR]
+.PP
+Synchronize standalone Action VTODOs through the configured plans vdir.
+Calendar-created VTODOs become Actions; missing projections are recreated.
+No CalDAV server or transport implementation is assumed.
 .\" --------------------------------------------------------------------
 .SS "start \(em launch services"
 .PP
@@ -783,7 +797,7 @@ The nearest ancestor directory containing a \fB.clearhead/\fR subdirectory.
     │   └── <alias>.md
     ├── plans/
     │   └── <charter>/
-    │       └── <uid>.ics        # one VEVENT per file (vdir)
+    │       └── <resource>.ics   # one primary component per vdir resource
     └── templates/
         └── <name>.actions
 .EE

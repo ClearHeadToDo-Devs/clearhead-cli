@@ -58,7 +58,7 @@ pub struct PlanScheduleFields {
     #[arg(long)]
     pub rrule: Option<String>,
 
-    /// Template name to bind through VEVENT DESCRIPTION
+    /// Template name to bind through recurring VTODO DESCRIPTION
     #[arg(long)]
     pub template: Option<String>,
 }
@@ -214,6 +214,12 @@ pub enum Verb {
     Import {
         #[command(subcommand)]
         target: ImportTarget,
+    },
+
+    /// Run one-time storage migrations
+    Migrate {
+        #[command(subcommand)]
+        target: MigrateTarget,
     },
 
     /// Expand schedule plans into Action instances
@@ -412,7 +418,7 @@ pub enum ShowTarget {
 
 #[derive(Subcommand)]
 pub enum AddTarget {
-    /// Add a new schedule plan (.ics VEVENT)
+    /// Add a new recurring schedule Plan (.ics VTODO+RRULE)
     Plan {
         /// Name of the plan
         name: String,
@@ -529,7 +535,7 @@ pub enum AddTarget {
 
 #[derive(Subcommand)]
 pub enum UpdateTarget {
-    /// Update an existing schedule plan (.ics VEVENT)
+    /// Update an existing recurring schedule Plan (.ics VTODO+RRULE)
     Plan {
         /// UUID, short UUID, alias, or name of the plan to update
         query: String,
@@ -669,7 +675,7 @@ pub enum CompleteTarget {
 
 #[derive(Subcommand)]
 pub enum DeleteTarget {
-    /// Delete a schedule plan (.ics VEVENT)
+    /// Delete a recurring schedule Plan (.ics VTODO+RRULE)
     Plan {
         /// UUID or name of the plan to delete
         query: String,
@@ -963,11 +969,21 @@ pub enum ImportTarget {
         #[arg(long)]
         charter: Option<String>,
 
-        /// Overwrite existing plan files when the imported VEVENT UID already exists.
+        /// Overwrite existing plan files when the imported component UID already exists.
         #[arg(long)]
         overwrite: bool,
 
         /// Preview what would be imported without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MigrateTarget {
+    /// Convert legacy recurring VEVENT plan resources to VTODO+RRULE in place
+    PlansVtodo {
+        /// Preview files that would be converted
         #[arg(long)]
         dry_run: bool,
     },
@@ -1002,7 +1018,7 @@ pub enum SyncTarget {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Reconcile standalone scheduled actions with mirrored calendar `.ics` files
+    /// Reconcile Actions with standalone VTODOs in the configured plans vdir
     Calendar {
         /// Dry run: show what would be changed without writing
         #[arg(long)]

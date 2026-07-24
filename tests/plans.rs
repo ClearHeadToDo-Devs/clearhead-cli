@@ -249,6 +249,46 @@ fn test_archive_plans_explains_externally_owned_schedule_lifecycle() {
 }
 
 #[test]
+fn test_migrate_plans_vtodo_converts_only_recurring_vevent_resources() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "");
+    let legacy_path = "plans/inbox/legacy.ics";
+    let legacy = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legacy-plan@example.test\r\nSUMMARY:Legacy plan\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    env.write_text(legacy_path, legacy);
+    let external_path = "plans/inbox/external-event.ics";
+    let external = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting@example.test\r\nSUMMARY:Meeting\r\nDTSTART:20260428T120000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    env.write_text(external_path, external);
+
+    env.command()
+        .arg("migrate")
+        .arg("plans-vtodo")
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 plan resource(s) to migrate"));
+    assert_eq!(
+        fs::read_to_string(env.data_dir.join(legacy_path)).unwrap(),
+        legacy
+    );
+
+    env.command()
+        .arg("migrate")
+        .arg("plans-vtodo")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 plan resource(s) converted"));
+    let migrated = fs::read_to_string(env.data_dir.join(legacy_path)).unwrap();
+    assert!(migrated.contains("BEGIN:VTODO"));
+    assert!(migrated.contains("RRULE:FREQ=WEEKLY"));
+    assert!(!migrated.contains("BEGIN:VEVENT"));
+    assert_eq!(
+        fs::read_to_string(env.data_dir.join(external_path)).unwrap(),
+        external,
+        "non-recurring external VEVENT context must remain untouched"
+    );
+}
+
+#[test]
 fn test_sync_events_command() {
     let env = TestEnv::new();
     let uuid1 = "019baaec-00b6-7991-be34-94b68212619a";
@@ -371,7 +411,7 @@ fn test_sync_calendar_pulls_all_owned_vtodo_fields_from_arbitrary_vdir_filename(
     fs::write(
         &transported,
         format!(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other Client//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Edited title\r\nDESCRIPTION:edited notes\r\nSTATUS:COMPLETED\r\nDTSTART:20260430T140000Z\r\nDUE:20260501T180000Z\r\nCOMPLETED:20260430T150000Z\r\nX-CLIENT-METADATA:keep-me\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other Client//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Edited title\r\nDESCRIPTION:edited notes\r\nSTATUS:COMPLETED\r\nPRIORITY:9\r\nCATEGORIES:calendar,portable\r\nDTSTART:20260430T140000Z\r\nDUE:20260501T180000Z\r\nCOMPLETED:20260430T150000Z\r\nX-CLIENT-METADATA:keep-me\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
             uuid
         ),
     )
@@ -388,12 +428,127 @@ fn test_sync_calendar_pulls_all_owned_vtodo_fields_from_arbitrary_vdir_filename(
     assert!(actions.contains("[x] Edited title"));
     assert!(actions.contains("edited notes"), "{actions}");
     assert!(actions.contains("%2026-04-30T"));
+    assert!(actions.contains("!9"), "{actions}");
+    assert!(actions.contains("+calendar,portable"), "{actions}");
     assert!(
         !canonical.exists(),
         "sync must not duplicate a transport-renamed resource"
     );
     let resource = fs::read_to_string(transported).unwrap();
     assert!(resource.contains("X-CLIENT-METADATA:keep-me"));
+}
+
+#[test]
+fn test_sync_calendar_imports_calendar_created_vtodo_with_arbitrary_uid() {
+    let env = TestEnv::new();
+    env.write_actions("inbox.actions", "");
+    let uid = "calendar-client-generated@example.test";
+    let expected_id = clearhead_core::action_id_from_vtodo_uid(uid);
+    env.write_text(
+        "plans/inbox/client-resource.ics",
+        &format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Calendar Client//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Captured in calendar\r\nDESCRIPTION:created from the calendar UI\r\nSTATUS:IN-PROCESS\r\nPRIORITY:8\r\nCATEGORIES:errands,phone\r\nDUE:20260501T180000Z\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+            uid
+        ),
+    );
+
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pull calendar → new action"));
+
+    let actions = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(actions.contains("[-] Captured in calendar"), "{actions}");
+    assert!(actions.contains("!8"), "{actions}");
+    assert!(actions.contains("+errands,phone"), "{actions}");
+    assert!(actions.contains(&format!("#{}", expected_id)), "{actions}");
+
+    // Adoption is stable and does not rewrite the client's interoperable UID.
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already in sync."));
+    let original_resource = env.data_dir.join("plans/inbox/client-resource.ics");
+    let resource = fs::read_to_string(&original_resource).unwrap();
+    assert!(resource.contains(&format!("UID:{}", uid)));
+
+    // Resource absence has no lifecycle meaning: recreate it with the original
+    // arbitrary UID remembered by the vdir projection store.
+    fs::remove_file(original_resource).unwrap();
+    env.command().arg("sync").arg("calendar").assert().success();
+    let recreated = env
+        .data_dir
+        .join(format!("plans/inbox/{}.ics", expected_id));
+    let resource = fs::read_to_string(recreated).unwrap();
+    assert!(resource.contains(&format!("UID:{}", uid)));
+    let actions = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(actions.contains("[-] Captured in calendar"));
+}
+
+#[test]
+fn test_sync_calendar_import_creates_implicit_charter_action_file() {
+    let env = TestEnv::new();
+    env.write_text(
+        "plans/fresh/client.ics",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:fresh-task@example.test\r\nSUMMARY:Fresh capture\r\nSTATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+    );
+    env.command().arg("sync").arg("calendar").assert().success();
+    let actions = fs::read_to_string(env.data_dir.join("charters/fresh.actions")).unwrap();
+    assert!(actions.contains("[ ] Fresh capture"), "{actions}");
+}
+
+#[test]
+fn test_sync_calendar_recreates_a_missing_projection_without_changing_state() {
+    let env = TestEnv::new();
+    let uuid = "019baaec-00b6-7991-be34-94b68212619a";
+    env.write_actions(
+        "inbox.actions",
+        &format!("[-] Keep the action !7 +work #{}", uuid),
+    );
+    env.command().arg("sync").arg("calendar").assert().success();
+    let resource = env.data_dir.join(format!("plans/inbox/{}.ics", uuid));
+    fs::remove_file(&resource).unwrap();
+
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("push action → calendar"));
+    assert!(resource.exists());
+    let actions = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(actions.contains("[-] Keep the action"));
+}
+
+#[test]
+fn test_sync_calendar_status_cancelled_is_the_explicit_cancellation_signal() {
+    let env = TestEnv::new();
+    let uuid = "019baaec-00b6-7991-be34-94b68212619a";
+    env.write_actions(
+        "inbox.actions",
+        &format!("[ ] Cancel from calendar #{}", uuid),
+    );
+    env.command().arg("sync").arg("calendar").assert().success();
+    env.write_text(
+        &format!("plans/inbox/{}.ics", uuid),
+        &format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Cancel from calendar\r\nSTATUS:CANCELLED\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+            uuid
+        ),
+    );
+
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pull calendar → action"));
+    let actions = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(actions.contains("[_] Cancel from calendar"), "{actions}");
 }
 
 #[test]

@@ -89,7 +89,9 @@ fn test_export_with_categories() {
         .arg(&file)
         .assert()
         .success()
-        .stdout(predicate::str::contains("CATEGORIES:Work\\,Meeting\\,Team"));
+        .stdout(predicate::str::contains("CATEGORIES:Work"))
+        .stdout(predicate::str::contains("CATEGORIES:Meeting"))
+        .stdout(predicate::str::contains("CATEGORIES:Team"));
 }
 
 #[test]

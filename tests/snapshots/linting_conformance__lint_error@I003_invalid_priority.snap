@@ -6,7 +6,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I003",
         severity: Info,
-        message: "Priority must be 1-5 (got 0) (I003).",
+        message: "Priority must be 1-9 (got 0) (I003).",
         range: SourceRange {
             start_row: 1,
             start_col: 0,
@@ -28,12 +28,12 @@ expression: diagnostics
     LintDiagnostic {
         code: "I003",
         severity: Info,
-        message: "Priority must be 1-5 (got 6) (I003).",
+        message: "Priority must be 1-9 (got 10) (I003).",
         range: SourceRange {
             start_row: 2,
             start_col: 0,
             end_row: 2,
-            end_col: 34,
+            end_col: 35,
         },
     },
     LintDiagnostic {
@@ -44,13 +44,13 @@ expression: diagnostics
             start_row: 2,
             start_col: 0,
             end_row: 2,
-            end_col: 34,
+            end_col: 35,
         },
     },
     LintDiagnostic {
         code: "I003",
         severity: Info,
-        message: "Priority must be 1-5 (got 10) (I003).",
+        message: "Priority must be 1-9 (got 11) (I003).",
         range: SourceRange {
             start_row: 3,
             start_col: 0,
@@ -72,7 +72,7 @@ expression: diagnostics
     LintDiagnostic {
         code: "I003",
         severity: Info,
-        message: "Priority must be 1-5 (got 99) (I003).",
+        message: "Priority must be 1-9 (got 99) (I003).",
         range: SourceRange {
             start_row: 4,
             start_col: 0,

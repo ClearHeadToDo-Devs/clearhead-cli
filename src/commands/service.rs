@@ -115,6 +115,12 @@ pub fn sync_calendar(
         eprintln!("{}", warning);
     }
 
+    for import in &report.imports {
+        println!(
+            "pull calendar → new action: {} #{} ({})",
+            import.action.title, import.action.id, import.charter_name
+        );
+    }
     for entry in &report.entries {
         println!("{}", render_sync_entry(entry));
     }
@@ -153,6 +159,8 @@ fn resolve_conflicts(
         resolve_one(&mut entry.state, choice);
         resolve_one(&mut entry.title, choice);
         resolve_one(&mut entry.description, choice);
+        resolve_one(&mut entry.priority, choice);
+        resolve_one(&mut entry.contexts, choice);
     }
 
     report
@@ -177,6 +185,8 @@ fn render_sync_entry(entry: &SyncEntry) -> String {
     render_field("state", &entry.state, &mut changes);
     render_field("title", &entry.title, &mut changes);
     render_field("description", &entry.description, &mut changes);
+    render_field("priority", &entry.priority, &mut changes);
+    render_field("contexts", &entry.contexts, &mut changes);
     format!(
         "{}: {} #{}",
         changes.join(", "),
