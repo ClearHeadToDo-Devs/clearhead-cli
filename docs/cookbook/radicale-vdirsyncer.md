@@ -106,7 +106,14 @@ fileext = ".ics"
 type = "caldav"
 url = "https://calendar.example.test/USERNAME/"
 username = "USERNAME"
-password.fetch = ["command", "secret-tool", "lookup", "service", "radicale", "user", "USERNAME"]
+password.fetch = ["command", "pass", "radicale/USERNAME"]
+```
+
+This example uses `pass`; initialize its password store and insert the matching
+Radicale credential before discovery:
+
+```sh
+pass insert radicale/USERNAME
 ```
 
 Use a dedicated Radicale account or collection namespace for ClearHead during
@@ -120,7 +127,11 @@ vdirsyncer discover clearhead
 ```
 
 The local charter directories and remote CalDAV collections should correspond.
-Resolve naming surprises before the first synchronization.
+Resolve naming surprises before the first synchronization. Discovery records
+the current collection set; when ClearHead later creates a VTODO in a new
+charter directory, run discovery again and explicitly approve the matching
+remote collection. Collection creation is intentionally not automated by the
+timer.
 
 ## Seed a fresh remote
 
