@@ -14,7 +14,10 @@ fn write_plans_sync_store(env: &TestEnv, action_id: &str, scheduled_at: &str) {
             }
         }
     });
-    env.write_text("sync/plans.json", &serde_json::to_string_pretty(&content).unwrap());
+    env.write_text(
+        "sync/plans.json",
+        &serde_json::to_string_pretty(&content).unwrap(),
+    );
 }
 
 #[test]
@@ -322,7 +325,7 @@ fn test_sync_calendar_pulls_calendar_edit_into_action_file() {
     env.write_text(
         &format!("plans/inbox/{}.ics", uuid),
         &format!(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nSUMMARY:Pull me\r\nDTSTART:20260429T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Pull me\r\nSTATUS:NEEDS-ACTION\r\nDTSTART:20260429T100000\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
             uuid
         ),
     );
@@ -346,6 +349,54 @@ fn test_sync_calendar_pulls_calendar_edit_into_action_file() {
 }
 
 #[test]
+fn test_sync_calendar_pulls_all_owned_vtodo_fields_from_arbitrary_vdir_filename() {
+    let env = TestEnv::new();
+    let uuid = "019baaec-00b6-7991-be34-94b68212619a";
+    env.write_actions(
+        "inbox.actions",
+        &format!(
+            "[ ] Original $ old notes $ @2026-04-28T10:00 :2026-04-29T17:00 #{}",
+            uuid
+        ),
+    );
+    env.command().arg("sync").arg("calendar").assert().success();
+
+    let canonical = env
+        .data_dir
+        .join("plans")
+        .join("inbox")
+        .join(format!("{}.ics", uuid));
+    let transported = canonical.parent().unwrap().join("server-resource-name.ics");
+    fs::rename(&canonical, &transported).unwrap();
+    fs::write(
+        &transported,
+        format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other Client//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Edited title\r\nDESCRIPTION:edited notes\r\nSTATUS:COMPLETED\r\nDTSTART:20260430T140000Z\r\nDUE:20260501T180000Z\r\nCOMPLETED:20260430T150000Z\r\nX-CLIENT-METADATA:keep-me\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+            uuid
+        ),
+    )
+    .unwrap();
+
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pull calendar → action"));
+
+    let actions = fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap();
+    assert!(actions.contains("[x] Edited title"));
+    assert!(actions.contains("edited notes"), "{actions}");
+    assert!(actions.contains("%2026-04-30T"));
+    assert!(
+        !canonical.exists(),
+        "sync must not duplicate a transport-renamed resource"
+    );
+    let resource = fs::read_to_string(transported).unwrap();
+    assert!(resource.contains("X-CLIENT-METADATA:keep-me"));
+}
+
+#[test]
 fn test_sync_calendar_conflict_can_be_resolved_toward_action() {
     let env = TestEnv::new();
     let uuid = "019baaec-00b6-7991-be34-94b68212619a";
@@ -362,7 +413,7 @@ fn test_sync_calendar_conflict_can_be_resolved_toward_action() {
     env.write_text(
         &format!("plans/inbox/{}.ics", uuid),
         &format!(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nSUMMARY:Clash\r\nDTSTART:20260430T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Clash\r\nSTATUS:NEEDS-ACTION\r\nDTSTART:20260430T100000\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
             uuid
         ),
     );
@@ -384,10 +435,10 @@ fn test_sync_calendar_conflict_can_be_resolved_toward_action() {
         .join("plans")
         .join("inbox")
         .join(format!("{}.ics", uuid));
-    let plans = clearhead_core::workspace::calendar::ics::parse_ics_file(&ics_path).unwrap();
-    assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0].plan.external_id.as_deref(), Some(uuid));
-    let dt = plans[0].plan.dtstart.unwrap();
+    let actions = clearhead_core::parse_vtodo_actions(&ics_path).unwrap();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].id.to_string(), uuid);
+    let dt = actions[0].scheduled_at.unwrap();
     assert_eq!(dt.format("%Y-%m-%dT%H:%M").to_string(), "2026-04-29T10:00");
 }
 
@@ -408,7 +459,7 @@ fn test_sync_calendar_conflict_can_be_resolved_toward_calendar() {
     env.write_text(
         &format!("plans/inbox/{}.ics", uuid),
         &format!(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nSUMMARY:Clash\r\nDTSTART:20260430T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VTODO\r\nUID:{}\r\nSUMMARY:Clash\r\nSTATUS:NEEDS-ACTION\r\nDTSTART:20260430T100000\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
             uuid
         ),
     );
