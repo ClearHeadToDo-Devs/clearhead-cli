@@ -61,6 +61,10 @@ clearhead read --help
 clearhead archive charter --help
 ```
 
+Concrete deployment and tool-composition recipes live in the
+[CLI cookbook](./docs/cookbook/README.md), beginning with
+[Radicale and vdirsyncer](./docs/cookbook/radicale-vdirsyncer.md).
+
 ## Graph queries
 
 Call graphd directly for saved views and ad-hoc SPARQL:
