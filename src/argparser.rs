@@ -216,12 +216,6 @@ pub enum Verb {
         target: ImportTarget,
     },
 
-    /// Run one-time storage migrations
-    Migrate {
-        #[command(subcommand)]
-        target: MigrateTarget,
-    },
-
     /// Expand schedule plans into Action instances
     Expand {
         #[command(subcommand)]
@@ -960,9 +954,9 @@ pub enum ExportTarget {
 
 #[derive(Subcommand)]
 pub enum ImportTarget {
-    /// Import .ics plans and split them into vdir storage
+    /// Import recurring .ics schedules as VTODO Plan resources
     Plans {
-        /// Source .ics file to import
+        /// Source .ics file containing recurring VTODOs or VEVENTs
         source: PathBuf,
 
         /// Target charter (name, alias, or UUID). Defaults to source filename stem.
@@ -974,16 +968,6 @@ pub enum ImportTarget {
         overwrite: bool,
 
         /// Preview what would be imported without writing
-        #[arg(long)]
-        dry_run: bool,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum MigrateTarget {
-    /// Convert legacy recurring VEVENT plan resources to VTODO+RRULE in place
-    PlansVtodo {
-        /// Preview files that would be converted
         #[arg(long)]
         dry_run: bool,
     },

@@ -38,7 +38,7 @@ fn test_import_plans_splits_multi_event_ics_into_vdir_files() {
     let source = env.data_dir.join("bulk-export.ics");
     fs::write(
         &source,
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:plan-one@example.com\r\nSUMMARY:Plan One\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:plan-two@example.com\r\nSUMMARY:Plan Two\r\nDTSTART:20260429T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:plan-one@example.com\r\nSUMMARY:Plan One\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:plan-two@example.com\r\nSUMMARY:Plan Two\r\nDTSTART:20260429T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     ).unwrap();
     env.command()
         .arg("import")
@@ -50,8 +50,17 @@ fn test_import_plans_splits_multi_event_ics_into_vdir_files() {
             "Imported 2 plan(s) into charter 'bulk-export'",
         ));
     let plans_dir = env.data_dir.join("plans").join("bulk-export");
-    assert!(plans_dir.join("plan-one@example.com.ics").exists());
+    let first = fs::read_to_string(plans_dir.join("plan-one@example.com.ics")).unwrap();
+    assert!(first.contains("BEGIN:VTODO"), "{first}");
+    assert!(first.contains("RRULE:FREQ=WEEKLY"), "{first}");
+    assert!(!first.contains("BEGIN:VEVENT"), "{first}");
     assert!(plans_dir.join("plan-two@example.com.ics").exists());
+    env.command()
+        .arg("read")
+        .arg("plans")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Plan One"));
 }
 
 #[test]
@@ -60,7 +69,7 @@ fn test_import_plans_honors_explicit_charter_flag() {
     let source = env.data_dir.join("calendar.ics");
     fs::write(
         &source,
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Focus Block\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Focus Block\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
     ).unwrap();
     env.command()
         .arg("import")
@@ -91,9 +100,9 @@ fn test_import_plans_errors_on_existing_uid_without_overwrite() {
         .join("inbox")
         .join("focus@example.com.ics");
     fs::create_dir_all(existing.parent().unwrap()).unwrap();
-    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
     let source = env.data_dir.join("collision.ics");
-    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
     env.command()
         .arg("import")
         .arg("plans")
@@ -119,9 +128,9 @@ fn test_import_plans_overwrites_existing_uid_with_flag() {
         .join("inbox")
         .join("focus@example.com.ics");
     fs::create_dir_all(existing.parent().unwrap()).unwrap();
-    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&existing, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:Old Focus\r\nDTSTART:20260427T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
     let source = env.data_dir.join("collision.ics");
-    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\nBEGIN:VEVENT\r\nUID:focus@example.com\r\nSUMMARY:New Focus\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
     env.command()
         .arg("import")
         .arg("plans")
@@ -246,46 +255,6 @@ fn test_archive_plans_explains_externally_owned_schedule_lifecycle() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("use `delete plan`"));
-}
-
-#[test]
-fn test_migrate_plans_vtodo_converts_only_recurring_vevent_resources() {
-    let env = TestEnv::new();
-    env.write_actions("inbox.actions", "");
-    let legacy_path = "plans/inbox/legacy.ics";
-    let legacy = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legacy-plan@example.test\r\nSUMMARY:Legacy plan\r\nDTSTART:20260428T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-    env.write_text(legacy_path, legacy);
-    let external_path = "plans/inbox/external-event.ics";
-    let external = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting@example.test\r\nSUMMARY:Meeting\r\nDTSTART:20260428T120000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-    env.write_text(external_path, external);
-
-    env.command()
-        .arg("migrate")
-        .arg("plans-vtodo")
-        .arg("--dry-run")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("1 plan resource(s) to migrate"));
-    assert_eq!(
-        fs::read_to_string(env.data_dir.join(legacy_path)).unwrap(),
-        legacy
-    );
-
-    env.command()
-        .arg("migrate")
-        .arg("plans-vtodo")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("1 plan resource(s) converted"));
-    let migrated = fs::read_to_string(env.data_dir.join(legacy_path)).unwrap();
-    assert!(migrated.contains("BEGIN:VTODO"));
-    assert!(migrated.contains("RRULE:FREQ=WEEKLY"));
-    assert!(!migrated.contains("BEGIN:VEVENT"));
-    assert_eq!(
-        fs::read_to_string(env.data_dir.join(external_path)).unwrap(),
-        external,
-        "non-recurring external VEVENT context must remain untouched"
-    );
 }
 
 #[test]
