@@ -1017,9 +1017,12 @@ fn resolve_expanded_acts(
 ) -> Vec<Action> {
     let mut out: Vec<Action> = Vec::new();
     for action in actions {
+        // Must match core's occurrence identity exactly: core derives the
+        // occurrence UUID from the canonical key, so recomputing it here with a
+        // different format (e.g. rfc3339) would break template matching.
         let occ_key = action
             .scheduled_at
-            .map(|dt| dt.to_rfc3339())
+            .map(clearhead_core::canonical_occurrence_key)
             .unwrap_or_default();
         let matching_plan = all_plans.iter().find(|p| {
             p.external_id
@@ -1278,6 +1281,23 @@ fn collect_all_actions(
         .iter()
         .flat_map(|mc| mc.actions.iter().map(|sourced| sourced.action.clone()))
         .collect();
+
+    // Union in each matching charter's projected occurrences via the same
+    // render the Workspace→DomainModel lowering uses, so the single-workspace
+    // listing agrees with the projected model (a materialized line wins by id).
+    let projection = ctx.projection();
+    let materialized: std::collections::HashSet<uuid::Uuid> = result.iter().map(|a| a.id).collect();
+    for mc in &matching {
+        for ics_plan in &mc.plans {
+            for occ in clearhead_core::render_occurrences(ics_plan, projection.now, projection.window)
+            {
+                if !materialized.contains(&occ.id) {
+                    result.push(occ);
+                }
+            }
+        }
+    }
+
     if open_only {
         result.retain(is_open_action);
     } else {
