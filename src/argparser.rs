@@ -216,12 +216,6 @@ pub enum Verb {
         target: ImportTarget,
     },
 
-    /// Expand schedule plans into Action instances
-    Expand {
-        #[command(subcommand)]
-        target: ExpandTarget,
-    },
-
     /// Cancel an item (sets state to Cancelled without deleting)
     Cancel {
         #[command(subcommand)]
@@ -835,23 +829,6 @@ pub enum ArchiveTarget {
         force: bool,
 
         /// Show what would be archived without writing or deleting anything.
-        #[arg(long)]
-        dry_run: bool,
-    },
-}
-
-// =============================================================================
-// Expand targets
-// =============================================================================
-
-#[derive(Subcommand)]
-pub enum ExpandTarget {
-    /// Expand recurring plans into Action instances
-    Actions {
-        /// File to expand (.actions format). If not provided, uses the default file.
-        file: Option<PathBuf>,
-
-        /// Preview what would be written without writing
         #[arg(long)]
         dry_run: bool,
     },

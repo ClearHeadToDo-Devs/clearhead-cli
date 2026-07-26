@@ -1,6 +1,5 @@
 //! Handlers for action commands (expand, complete, cancel, update, read, archive).
 
-use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +7,7 @@ use anyhow::Context;
 use chrono::Local;
 use tracing::{info, warn};
 
-use clearhead_core::workspace::{action_files, read_actions, templates};
+use clearhead_core::workspace::action_files;
 use clearhead_core::{Action, ActionList, ActionState, PredecessorRef};
 
 use super::CommandContext;
@@ -159,192 +158,6 @@ fn resolve_acts_file(
     }
 
     anyhow::bail!("Specify --charter <name> or --file <path> to target a charter's actions file")
-}
-
-/// Expand recurring Plan VTODOs into actions in the charter's `.actions` and
-/// `.upcoming.actions` files.
-pub fn expand_actions(
-    ctx: &CommandContext,
-    file: &Option<PathBuf>,
-    dry_run: bool,
-) -> anyhow::Result<()> {
-    use clearhead_core::workspace::calendar::ics::parse_ics_file;
-    use clearhead_core::{ExpansionConfig, upcoming_actions_path};
-
-    let data_root = clearhead_core::workspace_data_root(&ctx.data_dir);
-    let now = Local::now();
-
-    let expansion_config = ExpansionConfig {
-        total_instances: ctx.config.expansion_total_instances,
-        primary_instances: ctx.config.expansion_primary_instances,
-    };
-
-    let all_entries = ctx
-        .collect_plan_files()
-        .context("Failed to discover ICS files")?;
-
-    let entries: Vec<_> = if let Some(actions_path) = file {
-        let relative = actions_path
-            .strip_prefix(&data_root)
-            .unwrap_or(actions_path.as_path());
-        let charter_name = clearhead_core::infer_charter_name(relative).with_context(|| {
-            format!(
-                "Cannot infer charter name from '{}'",
-                actions_path.display()
-            )
-        })?;
-        all_entries
-            .into_iter()
-            .filter(|e| e.charter_name == charter_name)
-            .collect()
-    } else {
-        all_entries
-    };
-
-    if entries.is_empty() {
-        println!("No ICS schedule files found.");
-        return Ok(());
-    }
-
-    let mut by_charter: HashMap<String, Vec<_>> = HashMap::new();
-    for entry in entries {
-        by_charter
-            .entry(entry.charter_name.clone())
-            .or_default()
-            .push(entry);
-    }
-
-    let mut total_added = 0usize;
-    let mut charters_touched = 0usize;
-    let mut parse_failures: Vec<PathBuf> = Vec::new();
-
-    for (charter_name, charter_entries) in by_charter {
-        let actions_path = resolve_acts_file(ctx, &Some(charter_name.clone()), &None)?;
-        let upcoming_path = upcoming_actions_path(&actions_path);
-        let charter_dir = actions_path.parent().unwrap_or(Path::new(""));
-
-        let primary_list = match super::load_file_for_mutation(&actions_path, "expand actions") {
-            Ok(actions) => actions,
-            Err(err) => {
-                warn!(path = %actions_path.display(), error = %err, "Skipping charter due to parse issues");
-                parse_failures.push(actions_path.clone());
-                continue;
-            }
-        };
-
-        // Load existing upcoming file (empty list if file doesn't exist yet)
-        let upcoming_list = if upcoming_path.exists() {
-            match super::load_file_for_mutation(&upcoming_path, "expand actions (upcoming)") {
-                Ok(actions) => actions,
-                Err(err) => {
-                    warn!(path = %upcoming_path.display(), error = %err, "Could not read upcoming file — treating as empty");
-                    vec![]
-                }
-            }
-        } else {
-            vec![]
-        };
-
-        let mut all_plans = Vec::new();
-        for entry in &charter_entries {
-            match parse_ics_file(&entry.path) {
-                Ok(plans) => all_plans.extend(plans.into_iter().map(|ip| ip.plan)),
-                Err(e) => anyhow::bail!("Failed to parse {}: {}", entry.path.display(), e),
-            }
-        }
-
-        let expand_result = clearhead_core::expand_plans_into_actions(
-            &all_plans,
-            &primary_list,
-            &upcoming_list,
-            now,
-            &expansion_config,
-        );
-
-        if expand_result.primary.is_empty() && expand_result.upcoming.is_empty() {
-            continue;
-        }
-
-        // Resolve template expansions: when a plan has a template, the template
-        // replaces the flat root action rather than being appended as its children.
-        let primary_expanded =
-            resolve_expanded_acts(expand_result.primary, &all_plans, charter_dir, &data_root);
-        let upcoming_expanded =
-            resolve_expanded_acts(expand_result.upcoming, &all_plans, charter_dir, &data_root);
-
-        let new_primary_count = primary_expanded.len();
-        let new_upcoming_count = upcoming_expanded.len();
-        let new_count = new_primary_count + new_upcoming_count;
-
-        if dry_run {
-            if new_primary_count > 0 {
-                println!(
-                    "Would add {} action(s) to {}",
-                    new_primary_count,
-                    actions_path.display()
-                );
-            }
-            if new_upcoming_count > 0 {
-                println!(
-                    "Would add {} action(s) to {}",
-                    new_upcoming_count,
-                    upcoming_path.display()
-                );
-            }
-        } else {
-            if new_primary_count > 0 {
-                let mut updated_primary = primary_list;
-                updated_primary.extend(primary_expanded);
-                super::save_file(&actions_path, &updated_primary)?;
-                info!(count = new_primary_count, path = %actions_path.display(), "Actions expanded (primary)");
-                println!(
-                    "Added {} action(s) to {}",
-                    new_primary_count,
-                    actions_path.display()
-                );
-            }
-            if new_upcoming_count > 0 {
-                let mut updated_upcoming = upcoming_list;
-                updated_upcoming.extend(upcoming_expanded);
-                super::save_file(&upcoming_path, &updated_upcoming)?;
-                info!(count = new_upcoming_count, path = %upcoming_path.display(), "Actions expanded (upcoming)");
-                println!(
-                    "Added {} action(s) to {}",
-                    new_upcoming_count,
-                    upcoming_path.display()
-                );
-            }
-            if new_count > 0 {
-                total_added += new_count;
-                charters_touched += 1;
-            }
-        }
-    }
-
-    if total_added == 0 && !dry_run {
-        println!("Nothing to expand.");
-    } else if charters_touched > 1 {
-        println!(
-            "Expanded {} action(s) across {} charter(s).",
-            total_added, charters_touched
-        );
-    }
-
-    if !parse_failures.is_empty() {
-        eprintln!(
-            "expand actions failed for {} charter file(s) due to parse errors",
-            parse_failures.len()
-        );
-        for path in &parse_failures {
-            eprintln!("  - {}", path.display());
-        }
-        anyhow::bail!(
-            "expand actions skipped {} file(s) due to parse errors",
-            parse_failures.len()
-        );
-    }
-
-    Ok(())
 }
 
 // ============================================================================
@@ -511,6 +324,69 @@ fn try_close_occurrence(
     Ok(true)
 }
 
+/// Reschedule a *projected* recurring occurrence by writing a `RECURRENCE-ID`
+/// override with a new time — the update-path sibling of [`try_close_occurrence`].
+/// A projected occurrence has no line to text-edit, so only reschedule is
+/// supported; any other field edit is rejected. Returns `Ok(false)` when `query`
+/// matches no open projected occurrence (caller falls through to not-found).
+fn try_reschedule_occurrence(
+    ctx: &CommandContext,
+    query: &str,
+    new_scheduled: Option<chrono::DateTime<Local>>,
+    other_edits: bool,
+    dry_run: bool,
+) -> anyhow::Result<bool> {
+    use anyhow::Context;
+
+    let model = ctx.load_model()?;
+    let Some(occurrence) = model
+        .all_actions()
+        .into_iter()
+        .find(|a| a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query))
+        .cloned()
+    else {
+        return Ok(false);
+    };
+
+    if other_edits {
+        anyhow::bail!(
+            "a projected recurring occurrence supports only reschedule (--scheduled-at); \
+             edit the plan or a materialized action for other fields"
+        );
+    }
+    let Some(scheduled_at) = new_scheduled else {
+        anyhow::bail!("nothing to reschedule: pass --scheduled-at for a projected occurrence");
+    };
+
+    let plan_id = occurrence
+        .plan_id
+        .context("projected occurrence is missing its plan_id handle")?;
+    let key = occurrence
+        .external_occurrence_key
+        .clone()
+        .context("projected occurrence is missing its occurrence key")?;
+
+    if dry_run {
+        println!(
+            "Would reschedule occurrence {} to {}",
+            &occurrence.id.to_string()[..8],
+            scheduled_at.format("%Y-%m-%d %H:%M"),
+        );
+        return Ok(true);
+    }
+
+    clearhead_core::apply_occurrence_op(
+        &ctx.data_dir,
+        ctx.plan_override().as_deref(),
+        plan_id,
+        &key,
+        &clearhead_core::OccurrenceOp::Reschedule { scheduled_at: Some(scheduled_at), due_date: None },
+    )?;
+    info!(%occurrence.id, %plan_id, "Occurrence rescheduled via deviation");
+    VerbOutcome::Updated { id: canonical_id(occurrence.id) }.emit();
+    Ok(true)
+}
+
 /// Update an open action's fields.
 ///
 /// Kept explicit at the CLI adapter boundary so flag-to-field wiring remains
@@ -532,12 +408,6 @@ pub fn update_action(
     file: &Option<PathBuf>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let Some((actions_path, mut open_actions)) =
-        find_and_load_open_actions(ctx, file, charter, query)?
-    else {
-        return Err(verb_target_error(ctx, query).into());
-    };
-
     let new_scheduled = scheduled_at
         .as_deref()
         .map(|s| {
@@ -546,6 +416,25 @@ pub fn update_action(
                 .map_err(|e| anyhow::anyhow!("Invalid --scheduled-at '{}': {}", s, e))
         })
         .transpose()?;
+
+    let Some((actions_path, mut open_actions)) =
+        find_and_load_open_actions(ctx, file, charter, query)?
+    else {
+        // Not a materialized line — it may be a projected occurrence, which
+        // supports only operations (here: reschedule via a RECURRENCE-ID override).
+        let other_edits = name.is_some()
+            || priority.is_some()
+            || state.is_some()
+            || duration.is_some()
+            || description.is_some()
+            || !context.is_empty()
+            || !predecessor.is_empty()
+            || sequential;
+        if try_reschedule_occurrence(ctx, query, new_scheduled, other_edits, dry_run)? {
+            return Ok(());
+        }
+        return Err(verb_target_error(ctx, query).into());
+    };
 
     let action_id = {
         let Some(action) = find_action_mut(&mut open_actions, query) else {
@@ -863,12 +752,22 @@ fn collect_workspace_actions(
         };
         let charter_root = clearhead_core::charter_root(&ws_path);
 
+        let projection = ctx.projection();
         for mc in &charters {
             let mut open: Vec<Action> = mc
                 .actions
                 .iter()
                 .map(|sourced| sourced.action.clone())
                 .collect();
+            // Union in projected occurrences via the same shared rule as every
+            // other read path — without this, multi-workspace listings silently
+            // dropped recurring occurrences.
+            clearhead_core::extend_with_projected_occurrences(
+                &mut open,
+                &mc.plans,
+                projection.now,
+                projection.window,
+            );
             if open_only {
                 open.retain(is_open_action);
             }
@@ -1080,121 +979,6 @@ fn verb_target_error(ctx: &CommandContext, query: &str) -> VerbError {
     }
 }
 
-/// For each action in `actions`, if its plan has a template, replace it with the instantiated
-/// template (template root gets the occurrence UUID + scheduled_at for idempotency).
-/// Actions with no template are passed through unchanged.
-fn resolve_expanded_acts(
-    actions: Vec<Action>,
-    all_plans: &[clearhead_core::domain::Plan],
-    charter_dir: &Path,
-    data_root: &Path,
-) -> Vec<Action> {
-    let mut out: Vec<Action> = Vec::new();
-    for action in actions {
-        // Must match core's occurrence identity exactly: core derives the
-        // occurrence UUID from the canonical key, so recomputing it here with a
-        // different format (e.g. rfc3339) would break template matching.
-        let occ_key = action
-            .scheduled_at
-            .map(clearhead_core::canonical_occurrence_key)
-            .unwrap_or_default();
-        let matching_plan = all_plans.iter().find(|p| {
-            p.external_id
-                .as_deref()
-                .map(|uid| clearhead_core::occurrence_action_id(uid, &occ_key) == action.id)
-                .unwrap_or(false)
-        });
-
-        let template_applied = matching_plan.and_then(|plan| {
-            plan.external_id.as_deref().and_then(|uid| {
-                apply_template_in_place(
-                    plan,
-                    uid,
-                    &occ_key,
-                    action.id,
-                    action.scheduled_at,
-                    charter_dir,
-                    data_root,
-                )
-            })
-        });
-
-        match template_applied {
-            Some(instantiated) => out.extend(instantiated),
-            None => out.push(action),
-        }
-    }
-    out
-}
-
-/// Load and instantiate a template for one occurrence. Returns `None` when the plan has no
-/// template or the template file can't be found/read (caller falls back to the flat action).
-///
-/// The first template root action receives `root_id` (the deterministic occurrence UUID) so
-/// that idempotency checks in future expansion runs find it correctly.
-fn apply_template_in_place(
-    plan: &clearhead_core::domain::Plan,
-    plan_uid: &str,
-    occ_key: &str,
-    root_id: uuid::Uuid,
-    scheduled_at: Option<chrono::DateTime<Local>>,
-    charter_dir: &Path,
-    data_root: &Path,
-) -> Option<Vec<Action>> {
-    use clearhead_core::workspace::calendar::ics::occurrence_action_id;
-
-    let tpl_name = plan.template_name.as_deref()?;
-
-    let tpl_path = match templates::resolve_template(charter_dir, data_root, tpl_name) {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            warn!(template = %tpl_name, "Template not found, expanding flat action only");
-            return None;
-        }
-        Err(e) => {
-            warn!(template = %tpl_name, error = %e, "Failed to resolve template");
-            return None;
-        }
-    };
-
-    let tpl_acts = match read_actions(&tpl_path) {
-        Ok(actions) => actions,
-        Err(e) => {
-            warn!(template = %tpl_name, path = %tpl_path.display(), error = %e, "Failed to read template");
-            return None;
-        }
-    };
-
-    // First template root gets the occurrence UUID so idempotency works on re-runs.
-    let first_root_tpl_id = tpl_acts
-        .iter()
-        .find(|a| a.parent_id.is_none())
-        .map(|a| a.id);
-    let uid = plan_uid.to_string();
-    let key = occ_key.to_string();
-
-    let mut instantiated = templates::instantiate_template(
-        &tpl_acts,
-        |tid| {
-            if Some(tid) == first_root_tpl_id {
-                root_id
-            } else {
-                occurrence_action_id(&format!("{}:tpl:{}", uid, tid), &key)
-            }
-        },
-        None,
-    );
-
-    // Stamp scheduled_at onto root-level actions (parent_id == None after instantiation).
-    for action in &mut instantiated {
-        if action.parent_id.is_none() {
-            action.scheduled_at = scheduled_at;
-        }
-    }
-
-    Some(instantiated)
-}
-
 /// Precedence tier for `query` against `action`: 0 = full UUID, 1 = short UUID,
 /// 2 = alias, 3 = name-contains, `None` = no match. Lower wins.
 ///
@@ -1356,20 +1140,17 @@ fn collect_all_actions(
         .flat_map(|mc| mc.actions.iter().map(|sourced| sourced.action.clone()))
         .collect();
 
-    // Union in each matching charter's projected occurrences via the same
-    // render the Workspace→DomainModel lowering uses, so the single-workspace
-    // listing agrees with the projected model (a materialized line wins by id).
+    // Union in projected occurrences via the one shared rule the Workspace→
+    // DomainModel lowering uses, so this flat listing agrees with the projected
+    // model (a materialized line wins by id).
     let projection = ctx.projection();
-    let materialized: std::collections::HashSet<uuid::Uuid> = result.iter().map(|a| a.id).collect();
     for mc in &matching {
-        for ics_plan in &mc.plans {
-            for occ in clearhead_core::render_occurrences(ics_plan, projection.now, projection.window)
-            {
-                if !materialized.contains(&occ.id) {
-                    result.push(occ);
-                }
-            }
-        }
+        clearhead_core::extend_with_projected_occurrences(
+            &mut result,
+            &mc.plans,
+            projection.now,
+            projection.window,
+        );
     }
 
     if open_only {

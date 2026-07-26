@@ -24,7 +24,6 @@ expression: actions
     alias: Some("release-v2"),
     is_sequential: Some(true),
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -47,7 +46,6 @@ expression: actions
     alias: Some("parser-update"),
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -70,7 +68,6 @@ expression: actions
     alias: Some("cli-update"),
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -93,7 +90,6 @@ expression: actions
     alias: Some("lint-update"),
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -116,7 +112,6 @@ expression: actions
     alias: Some("docs-update"),
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -144,7 +139,6 @@ expression: actions
     alias: Some("integration-tests"),
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -174,7 +168,6 @@ expression: actions
     alias: None,
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
   Action(
@@ -202,7 +195,6 @@ expression: actions
     alias: Some("deploy-prod"),
     is_sequential: None,
     plan_id: None,
-    external_schedule_id: None,
     external_occurrence_key: None,
   ),
 ]

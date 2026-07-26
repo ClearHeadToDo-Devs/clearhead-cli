@@ -197,7 +197,6 @@ impl CommandContext {
         clearhead_core::WorkspaceConfig {
             tag_hierarchies: self.config.tag_hierarchies.clone(),
             expansion_total_instances: self.config.expansion_total_instances,
-            expansion_primary_instances: self.config.expansion_primary_instances,
             plan_path: resolved_plan_path,
             additional_workspaces: resolved_additional
                 .into_iter()

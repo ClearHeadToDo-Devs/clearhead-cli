@@ -55,10 +55,6 @@ pub struct Config {
     #[serde(default = "default_expansion_total_instances")]
     pub expansion_total_instances: u32,
 
-    // Expansion: instances placed in the primary .actions file
-    #[serde(default = "default_expansion_primary_instances")]
-    pub expansion_primary_instances: u32,
-
     // Configured plans vdir, laid out as <plan_path>/<charter>/<uid>.ics.
     // Transport and sharing are external. When None, plans live under
     // <data_root>/plans.
@@ -104,10 +100,6 @@ fn default_indent_width() -> usize {
 
 fn default_expansion_total_instances() -> u32 {
     2
-}
-
-fn default_expansion_primary_instances() -> u32 {
-    1
 }
 
 /// Load configuration with the shared precedence chain (defaults → global →

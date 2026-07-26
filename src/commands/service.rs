@@ -106,11 +106,26 @@ pub fn sync_calendar(
     let report = clearhead_core::plan_sync(&model, &sync_store, &calendar_actions)?;
     let report = resolve_conflicts(report, conflict);
 
+    // Ingest foreign roll-forwards on recurring masters (a camp-B client advancing
+    // a master's DTSTART to mean "completed"). Independent of the standalone
+    // reconcile above, and a real write — so it runs on non-dry-run syncs only.
+    let rolled_forward = if dry_run {
+        0
+    } else {
+        clearhead_core::sync_master_rollforwards(&ctx.data_dir, ctx.plan_override().as_deref())?
+    };
+
     if report.is_empty() {
         if !dry_run {
             clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)?;
         }
-        println!("Already in sync.");
+        if rolled_forward > 0 {
+            println!(
+                "Ingested {rolled_forward} occurrence completion(s) from a calendar roll-forward."
+            );
+        } else {
+            println!("Already in sync.");
+        }
         return Ok(());
     }
 
@@ -140,11 +155,14 @@ pub fn sync_calendar(
 
     let applied =
         clearhead_core::apply_sync(&ctx.data_dir, ctx.plan_override().as_deref(), &report)?;
-    info!(?applied, "Calendar sync complete");
+    info!(?applied, rolled_forward, "Calendar sync complete");
     println!(
         "Sync complete. {} push, {} pull, {} converged, {} conflict.",
         applied.take_action, applied.take_calendar, applied.converged, applied.conflict
     );
+    if rolled_forward > 0 {
+        println!("Ingested {rolled_forward} occurrence completion(s) from a calendar roll-forward.");
+    }
     Ok(())
 }
 

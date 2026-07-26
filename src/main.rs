@@ -340,11 +340,6 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             );
             Ok(())
         }
-        Verb::Expand { target } => match target {
-            argparser::ExpandTarget::Actions { file, dry_run } => {
-                commands::action::expand_actions(ctx, file, *dry_run)
-            }
-        },
         Verb::Cancel { target } => match target {
             argparser::CancelTarget::Action {
                 query,

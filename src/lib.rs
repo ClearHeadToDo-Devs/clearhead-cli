@@ -71,8 +71,8 @@ pub fn get_action_list_tree(actions: &str) -> Result<Tree, String> {
 /// Build a [`WorkspaceConfig`] from a tag hierarchy map.
 ///
 /// Maps the semantic fields core understands for graph operations.
-/// Expansion config (`expansion_total_instances`, `expansion_primary_instances`)
-/// is not passed here — it only affects file expansion, not graph queries.
+/// Expansion config (`expansion_total_instances`, the projection window) is not
+/// passed here — it only affects occurrence projection, not graph queries.
 pub fn workspace_config_from(
     tag_hierarchies: &std::collections::HashMap<String, Vec<String>>,
 ) -> WorkspaceConfig {
