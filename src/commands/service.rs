@@ -97,7 +97,10 @@ pub fn sync_calendar(
     conflict: Option<crate::argparser::ConflictResolutionArg>,
 ) -> anyhow::Result<()> {
     let plans_root = ctx.plans_root();
-    let model = ctx.load_model()?;
+    // Sync reconciles owned, materialized artifacts only. Projected occurrences
+    // have no standalone resource to reconcile and no line for apply_sync to
+    // locate; they sync via deviations on their master, not this path.
+    let model = ctx.load_model_materialized()?;
     let sync_store = clearhead_core::read_plans_sync_store(&ctx.data_dir, &plans_root)?;
     let calendar_actions = clearhead_core::read_vtodo_actions(&plans_root)?;
     let report = clearhead_core::plan_sync(&model, &sync_store, &calendar_actions)?;

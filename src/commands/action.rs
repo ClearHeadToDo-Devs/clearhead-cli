@@ -385,6 +385,13 @@ fn close_action_subtree(
     let Some((actions_path, mut open_actions)) =
         find_and_load_open_actions(ctx, file, charter, query)?
     else {
+        // Not a materialized line in any file — it may be a projected recurring
+        // occurrence, acted on by writing a deviation to its master rather than
+        // editing a line. Materialized actions always win, so this only runs
+        // after the file search comes up empty.
+        if try_close_occurrence(ctx, query, closing_state, dry_run)? {
+            return Ok(());
+        }
         return Err(verb_target_error(ctx, query).into());
     };
 
@@ -435,6 +442,73 @@ fn close_action_subtree(
     info!(%action_id, children, "Action subtree closed ({:?})", closing_state);
     outcome.emit();
     Ok(())
+}
+
+/// Close a *projected* recurring occurrence by recording a deviation on its
+/// master: `complete` → completed `RECURRENCE-ID` override, `cancel` → `EXDATE`
+/// (skip this instance). Returns `Ok(false)` when `query` matches no open
+/// projected occurrence, so the caller can fall through to its not-found error.
+///
+/// Occurrences have no `.actions` line; this is the write half of the
+/// operations-uniform / text-editing-not seam. The branch lives here, behind the
+/// operation, not in each command.
+fn try_close_occurrence(
+    ctx: &CommandContext,
+    query: &str,
+    closing_state: ActionState,
+    dry_run: bool,
+) -> anyhow::Result<bool> {
+    use anyhow::Context;
+
+    let model = ctx.load_model()?; // projected — includes occurrences
+    let Some(occurrence) = model
+        .all_actions()
+        .into_iter()
+        .find(|a| a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query))
+        .cloned()
+    else {
+        return Ok(false);
+    };
+
+    let plan_id = occurrence
+        .plan_id
+        .context("projected occurrence is missing its plan_id handle")?;
+    let key = occurrence
+        .external_occurrence_key
+        .clone()
+        .context("projected occurrence is missing its occurrence key")?;
+    let op = match closing_state {
+        ActionState::Completed => clearhead_core::OccurrenceOp::Complete { at: Local::now() },
+        ActionState::Cancelled => clearhead_core::OccurrenceOp::Skip,
+        other => anyhow::bail!("cannot map state {other:?} to an occurrence operation"),
+    };
+
+    if dry_run {
+        let verb = if closing_state == ActionState::Cancelled { "skip" } else { "complete" };
+        println!(
+            "Would {} occurrence {} of plan {}",
+            verb,
+            &occurrence.id.to_string()[..8],
+            &plan_id.to_string()[..8],
+        );
+        return Ok(true);
+    }
+
+    clearhead_core::apply_occurrence_op(
+        &ctx.data_dir,
+        ctx.plan_override().as_deref(),
+        plan_id,
+        &key,
+        &op,
+    )?;
+
+    let outcome = match closing_state {
+        ActionState::Cancelled => VerbOutcome::Cancelled { id: canonical_id(occurrence.id), children: 0 },
+        _ => VerbOutcome::Completed { id: canonical_id(occurrence.id), children: 0 },
+    };
+    info!(%occurrence.id, %plan_id, "Occurrence deviation written ({:?})", closing_state);
+    outcome.emit();
+    Ok(true)
 }
 
 /// Update an open action's fields.

@@ -235,6 +235,21 @@ impl CommandContext {
         )?)
     }
 
+    /// Load the primary workspace's domain model with occurrence projection
+    /// **off** — materialized, owned artifacts only.
+    ///
+    /// Write paths (sync) use this instead of [`load_model`](Self::load_model):
+    /// they reconcile owned artifacts, and a projected occurrence has no
+    /// standalone resource to reconcile against. Occurrences sync via deviations
+    /// on their master, a separate channel.
+    pub fn load_model_materialized(&self) -> anyhow::Result<clearhead_core::DomainModel> {
+        Ok(clearhead_core::load_domain_model_with_projection(
+            &self.data_dir,
+            self.plan_override().as_deref(),
+            clearhead_core::Projection::without_occurrences(),
+        )?)
+    }
+
     /// Load the primary workspace's charters, honoring `plan_path`.
     pub fn load_charters(&self) -> anyhow::Result<Vec<clearhead_core::MarkdownCharter>> {
         Ok(clearhead_core::load_workspace_with_plans(
