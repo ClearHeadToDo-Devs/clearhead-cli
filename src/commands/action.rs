@@ -237,6 +237,27 @@ fn close_action_subtree(
         Local::now(),
     )?;
 
+    // If the closed line was a materialized recurring occurrence, closing it is only
+    // half the operation: write the completed/skip deviation to its master and stamp
+    // the plan's next token. `resolve_materialized_occurrence` is a no-op (`false`)
+    // for an ordinary action, so this is safe to attempt unconditionally.
+    let occurrence_op = match closing_state {
+        ActionState::Completed => Some(clearhead_core::OccurrenceOp::Complete { at: Local::now() }),
+        ActionState::Cancelled => Some(clearhead_core::OccurrenceOp::Skip),
+        _ => None,
+    };
+    if let Some(op) = occurrence_op
+        && clearhead_core::resolve_materialized_occurrence(
+            &workspace_root,
+            ctx.plan_override().as_deref(),
+            action_id,
+            &op,
+            Local::now(),
+        )?
+    {
+        info!(%action_id, "Recurring occurrence: deviation written to master, next token stamped");
+    }
+
     let children = if result.already_closed {
         subtree_ids.len().saturating_sub(1)
     } else {
