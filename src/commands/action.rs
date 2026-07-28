@@ -294,7 +294,7 @@ fn try_close_occurrence(
 ) -> anyhow::Result<bool> {
     use anyhow::Context;
 
-    let model = ctx.load_model()?; // projected — includes occurrences
+    let model = ctx.load_model()?; // materialized-only; the present occurrence is a real line
     let Some(occurrence) = model
         .all_actions()
         .into_iter()
@@ -773,22 +773,15 @@ fn collect_workspace_actions(
         };
         let charter_root = clearhead_core::charter_root(&ws_path);
 
-        let projection = ctx.projection();
         for mc in &charters {
             let mut open: Vec<Action> = mc
                 .actions
                 .iter()
                 .map(|sourced| sourced.action.clone())
                 .collect();
-            // Union in projected occurrences via the same shared rule as every
-            // other read path — without this, multi-workspace listings silently
-            // dropped recurring occurrences.
-            clearhead_core::extend_with_projected_occurrences(
-                &mut open,
-                &mc.plans,
-                projection.now,
-                projection.window,
-            );
+            // Occurrences are not projected into listings — the present due
+            // occurrence is a materialized `.actions` line and appears above like
+            // any other action; the future is a calendar-view concern.
             if open_only {
                 open.retain(is_open_action);
             }
@@ -1161,18 +1154,8 @@ fn collect_all_actions(
         .flat_map(|mc| mc.actions.iter().map(|sourced| sourced.action.clone()))
         .collect();
 
-    // Union in projected occurrences via the one shared rule the Workspace→
-    // DomainModel lowering uses, so this flat listing agrees with the projected
-    // model (a materialized line wins by id).
-    let projection = ctx.projection();
-    for mc in &matching {
-        clearhead_core::extend_with_projected_occurrences(
-            &mut result,
-            &mc.plans,
-            projection.now,
-            projection.window,
-        );
-    }
+    // Occurrences are not projected into this flat listing — the present due
+    // occurrence is a materialized `.actions` line already collected above.
 
     if open_only {
         result.retain(is_open_action);

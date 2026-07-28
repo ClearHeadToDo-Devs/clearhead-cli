@@ -98,11 +98,11 @@ pub fn sync_calendar(
 ) -> anyhow::Result<()> {
     let plans_root = ctx.plans_root();
     // Sync reconciles owned, standalone artifacts only. Occurrences never sync as
-    // standalone VTODOs — they ride their master's RRULE + deviations. Two layers
-    // enforce that: window-0 keeps *projected* occurrences out of this model
-    // entirely, and `plan_sync` additionally excludes the *materialized* single-token
-    // occurrence and its grafted template subtree (real lines a window-0 load keeps).
-    let model = ctx.load_model_materialized()?;
+    // standalone VTODOs — they ride their master's RRULE + deviations. The loaded
+    // model is materialized-only (occurrences are never projected into it), and
+    // `plan_sync` additionally excludes the materialized single-token occurrence
+    // and its grafted template subtree from standalone reconciliation.
+    let model = ctx.load_model()?;
     let sync_store = clearhead_core::read_plans_sync_store(&ctx.data_dir, &plans_root)?;
     let calendar_actions = clearhead_core::read_vtodo_actions(&plans_root)?;
     let report = clearhead_core::plan_sync(&model, &sync_store, &calendar_actions)?;

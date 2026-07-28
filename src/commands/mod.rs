@@ -147,13 +147,9 @@ impl CommandContext {
             let is_primary = path == self.data_dir;
             // The primary honors plan_path; additional workspaces use their own default.
             let loaded = if is_primary {
-                clearhead_core::load_domain_model_with_projection(
-                    &path,
-                    self.plan_override().as_deref(),
-                    self.projection(),
-                )
+                clearhead_core::load_domain_model_with_plans(&path, self.plan_override().as_deref())
             } else {
-                clearhead_core::load_domain_model_with_projection(&path, None, self.projection())
+                clearhead_core::load_domain_model_with_plans(&path, None)
             };
             match loaded {
                 Ok(m) => models.push((name, m)),
@@ -216,36 +212,16 @@ impl CommandContext {
         self.workspace_config().plan_path.map(PathBuf::from)
     }
 
-    /// The projection the CLI lowers workspaces under: occurrences windowed from
-    /// now to `expansion_total_instances` per recurring plan.
-    pub fn projection(&self) -> clearhead_core::Projection {
-        clearhead_core::Projection {
-            now: chrono::Local::now(),
-            window: self.config.expansion_total_instances,
-        }
-    }
-
     /// Load the primary workspace's domain model, honoring `plan_path`.
-    pub fn load_model(&self) -> anyhow::Result<clearhead_core::DomainModel> {
-        Ok(clearhead_core::load_domain_model_with_projection(
-            &self.data_dir,
-            self.plan_override().as_deref(),
-            self.projection(),
-        )?)
-    }
-
-    /// Load the primary workspace's domain model with occurrence projection
-    /// **off** — materialized, owned artifacts only.
     ///
-    /// Write paths (sync) use this instead of [`load_model`](Self::load_model):
-    /// they reconcile owned artifacts, and a projected occurrence has no
-    /// standalone resource to reconcile against. Occurrences sync via deviations
-    /// on their master, a separate channel.
-    pub fn load_model_materialized(&self) -> anyhow::Result<clearhead_core::DomainModel> {
-        Ok(clearhead_core::load_domain_model_with_projection(
+    /// The loaded model is materialized artifacts only — occurrences are not
+    /// projected into it. The present due occurrence appears as a real `.actions`
+    /// line (stamped on the write path); future occurrences are a read-only
+    /// calendar concern rendered from the recurrence engine, not part of this model.
+    pub fn load_model(&self) -> anyhow::Result<clearhead_core::DomainModel> {
+        Ok(clearhead_core::load_domain_model_with_plans(
             &self.data_dir,
             self.plan_override().as_deref(),
-            clearhead_core::Projection::without_occurrences(),
         )?)
     }
 
