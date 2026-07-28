@@ -97,9 +97,11 @@ pub fn sync_calendar(
     conflict: Option<crate::argparser::ConflictResolutionArg>,
 ) -> anyhow::Result<()> {
     let plans_root = ctx.plans_root();
-    // Sync reconciles owned, materialized artifacts only. Projected occurrences
-    // have no standalone resource to reconcile and no line for apply_sync to
-    // locate; they sync via deviations on their master, not this path.
+    // Sync reconciles owned, standalone artifacts only. Occurrences never sync as
+    // standalone VTODOs — they ride their master's RRULE + deviations. Two layers
+    // enforce that: window-0 keeps *projected* occurrences out of this model
+    // entirely, and `plan_sync` additionally excludes the *materialized* single-token
+    // occurrence and its grafted template subtree (real lines a window-0 load keeps).
     let model = ctx.load_model_materialized()?;
     let sync_store = clearhead_core::read_plans_sync_store(&ctx.data_dir, &plans_root)?;
     let calendar_actions = clearhead_core::read_vtodo_actions(&plans_root)?;
