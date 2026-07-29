@@ -4,6 +4,46 @@ use predicates::prelude::*;
 use std::fs;
 
 #[test]
+fn doctor_fix_previews_then_prunes_orphaned_sidecar_state() {
+    let env = TestEnv::new();
+    env.write_text(
+        "workspace.json",
+        r#"{"workspace_id":"019e0000-0000-7000-8000-000000000001","workspace_name":"test"}"#,
+    );
+    let live = "019e0000-0000-7000-8000-000000000010";
+    let stale = "019e0000-0000-7000-8000-000000000011";
+    env.write_actions("inbox.actions", &format!("[ ] Live #{live}\n"));
+    env.write_text(
+        "charters/.inbox.json",
+        &format!(r#"{{"actions":{{"{live}":{{}},"{stale}":{{}}}}}}"#),
+    );
+    env.write_text("charters/.gone.json", r#"{"actions":{}}"#);
+
+    env.command()
+        .args(["doctor", "--fix", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Would prune sidecar entry"))
+        .stdout(predicate::str::contains("Would remove orphaned sidecar"));
+    assert!(env.data_dir.join("charters/.gone.json").exists());
+    assert!(
+        fs::read_to_string(env.data_dir.join("charters/.inbox.json"))
+            .unwrap()
+            .contains(stale)
+    );
+
+    env.command()
+        .args(["doctor", "--fix"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("workspace clean"));
+    assert!(!env.data_dir.join("charters/.gone.json").exists());
+    let sidecar = fs::read_to_string(env.data_dir.join("charters/.inbox.json")).unwrap();
+    assert!(sidecar.contains(live));
+    assert!(!sidecar.contains(stale));
+}
+
+#[test]
 fn test_workspace_read_succeeds_when_empty() {
     let env = TestEnv::new();
     env.command().arg("read").arg("plans").assert().success();

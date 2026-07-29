@@ -356,7 +356,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             }
         },
         Verb::Debug => commands::debug::run(ctx),
-        Verb::Doctor { json } => commands::doctor::run(ctx, *json),
+        Verb::Doctor { json, fix, dry_run } => commands::doctor::run(ctx, *json, *fix, *dry_run),
         Verb::Completion { shell } => {
             use clap::CommandFactory;
             use clap_complete::generate;

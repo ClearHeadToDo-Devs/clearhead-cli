@@ -249,11 +249,19 @@ pub enum Verb {
     /// Show resolved config and workspace diagnostics
     Debug,
 
-    /// Check workspace coherence (read-only fsck): exits 0 clean, 1 warnings, 2 violations
+    /// Check workspace coherence: exits 0 clean, 1 warnings, 2 violations
     Doctor {
         /// Emit the diagnosis as JSON for scripting
-        #[arg(long)]
+        #[arg(long, conflicts_with = "fix")]
         json: bool,
+
+        /// Remove fixable orphaned sidecar state, then diagnose again
+        #[arg(long)]
+        fix: bool,
+
+        /// Preview sidecar cleanup without writing (requires --fix)
+        #[arg(long, requires = "fix")]
+        dry_run: bool,
     },
 
     /// Initialize a clearhead workspace in the current directory
