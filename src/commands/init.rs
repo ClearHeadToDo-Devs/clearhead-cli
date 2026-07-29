@@ -44,9 +44,9 @@ fn nested_in_user_workspace(
 /// Initialize a clearhead workspace in the current directory.
 ///
 /// Creates `.clearhead/workspace.json` (the identity manifest) with a stable
-/// workspace UUID and a name derived from the current directory. Creates
-/// `.clearhead/charters/` if absent. Idempotent — safe to rerun; does not
-/// overwrite an existing manifest.
+/// workspace UUID and a name derived from the current directory. Bootstraps the
+/// project root charter at `.clearhead/charters/next.actions` if absent.
+/// Idempotent — safe to rerun; does not overwrite existing data or identity.
 pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("Cannot determine current directory")?;
 
@@ -87,9 +87,21 @@ pub fn run(config_path_override: Option<PathBuf>) -> anyhow::Result<()> {
     }
     fs::write(&gitignore_path, gitignore).context("Failed to write .clearhead/.gitignore")?;
 
+    // A project layout always has a root charter. `next.actions` is the signal
+    // that lets the loader resolve flat named charters as its children. Without
+    // it, a fresh `init -> add charter -> add plan` invents an unresolvable
+    // parent and routes the plan into a charterless vdir slug.
+    let root_actions = charters_dir.join("next.actions");
+    if !root_actions.exists() {
+        clearhead_core::workspace::durability::atomic_write(&root_actions, "")
+            .context("Failed to create root charter actions file")?;
+    }
+    clearhead_core::workspace::sidecar::stamp_charter_id(&root_actions, uuid::Uuid::now_v7())
+        .context("Failed to record root charter id")?;
+
     // Idempotent on an existing identity: init never clobbers or re-mints a
     // workspace that already has a workspace_id (which would orphan the named
-    // graph).
+    // graph). Root-charter repair above is deliberately still performed.
     if WorkspaceManifest::read(&cwd).workspace_id.is_some() {
         println!("Already initialized — workspace already has an identity.");
         return Ok(());

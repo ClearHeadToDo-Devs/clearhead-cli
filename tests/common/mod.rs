@@ -99,8 +99,12 @@ impl TestEnv {
     }
 
     pub fn command(&self) -> Command {
+        Command::from_std(self.std_command())
+    }
+
+    pub fn std_command(&self) -> std::process::Command {
         let bin = assert_cmd::cargo::cargo_bin!("clearhead");
-        let mut cmd = Command::new(bin);
+        let mut cmd = std::process::Command::new(bin);
         cmd.env("XDG_CONFIG_HOME", self.config_dir.parent().unwrap());
         cmd.env("XDG_DATA_HOME", self.data_dir.parent().unwrap());
         cmd.env("XDG_STATE_HOME", &self.state_dir);

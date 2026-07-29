@@ -1,6 +1,7 @@
 mod common;
 use common::TestEnv;
 use predicates::prelude::*;
+use std::process::Stdio;
 
 // ── open-only filter ─────────────────────────────────────────────────────────
 
@@ -137,6 +138,25 @@ fn pipe_output_is_dsl_format() {
 }
 
 // ── no filter: all actions returned ──────────────────────────────────────────
+
+#[test]
+fn closed_stdout_is_a_clean_pipeline_exit() {
+    let env = TestEnv::new();
+    let actions = (0..20_000)
+        .map(|i| format!("[ ] Task {i} #019e0000-0000-7000-8000-{i:012x}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    env.write_actions("inbox.actions", &actions);
+
+    let mut command = env.std_command();
+    command
+        .args(["read", "actions", "--format", "ids"])
+        .stdout(Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    drop(child.stdout.take());
+    let status = child.wait().unwrap();
+    assert!(status.success(), "closed stdout exited with {status}");
+}
 
 #[test]
 fn no_filter_returns_all_states() {

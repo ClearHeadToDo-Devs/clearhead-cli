@@ -2,6 +2,7 @@ use anyhow::Context;
 use chrono::{DateTime, Local, Utc};
 use icalendar::{Calendar, Component, EventLike, Todo};
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
@@ -104,7 +105,7 @@ fn collect_charter_tree(
 
 pub fn read_plans(
     ctx: &CommandContext,
-    _format: &Option<argparser::OutputMode>,
+    format: &Option<argparser::OutputMode>,
     charter: &Option<String>,
     recursive: bool,
     file: &Option<std::path::PathBuf>,
@@ -112,7 +113,6 @@ pub fn read_plans(
     _table_options: &argparser::CliTableOptions,
 ) -> anyhow::Result<()> {
     use clearhead_core::workspace::calendar::ics::parse_ics_file;
-    use comfy_table::{Cell, Table};
 
     let plans: Vec<(String, clearhead_core::Plan)> = if let Some(path) = file {
         let charter_name = path
@@ -172,9 +172,34 @@ pub fn read_plans(
         return Ok(());
     }
 
+    match format {
+        Some(argparser::OutputMode::JsonLd) => {
+            let model = model_containing_plans(ctx, &plans)?;
+            let jsonld = clearhead_cli::serialize_domain_to_jsonld(&model)
+                .map_err(|e| anyhow::anyhow!("Failed to serialize JSON-LD: {e}"))?;
+            println!("{}", jsonld);
+        }
+        Some(argparser::OutputMode::Ids) => {
+            for (_, plan) in &plans {
+                println!("{}", plan.id);
+            }
+        }
+        Some(argparser::OutputMode::Table) => print_plans_table(&plans),
+        None if !std::io::stdout().is_terminal() => {
+            let plans: Vec<_> = plans.into_iter().map(|(_, plan)| plan).collect();
+            print!("{}", format_plans_as_ics(&plans));
+        }
+        None => print_plans_table(&plans),
+    }
+    Ok(())
+}
+
+fn print_plans_table(plans: &[(String, clearhead_core::Plan)]) {
+    use comfy_table::{Cell, Table};
+
     let mut table = Table::new();
     table.set_header(vec!["name", "charter", "dtstart", "recurrence"]);
-    for (charter_name, plan) in &plans {
+    for (charter_name, plan) in plans {
         let dtstart = plan
             .dtstart
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
@@ -192,7 +217,50 @@ pub fn read_plans(
         ]);
     }
     println!("{}", table);
-    Ok(())
+}
+
+/// Build the smallest truthful graph model containing the selected plans.
+/// Workspace-backed plans retain their real charter identities; `--file` plans
+/// that are not in the workspace receive a deterministic synthetic charter.
+fn model_containing_plans(
+    ctx: &CommandContext,
+    plans: &[(String, clearhead_core::Plan)],
+) -> anyhow::Result<clearhead_core::DomainModel> {
+    use std::collections::{BTreeMap, HashSet};
+
+    let selected: HashSet<_> = plans.iter().map(|(_, plan)| plan.id).collect();
+    let mut model = ctx.load_model()?;
+    model.objectives.clear();
+    for charter in &mut model.charters {
+        charter.actions.clear();
+        charter.plans.retain(|plan| selected.contains(&plan.id));
+    }
+    model.charters.retain(|charter| !charter.plans.is_empty());
+
+    let represented: HashSet<_> = model
+        .charters
+        .iter()
+        .flat_map(|charter| charter.plans.iter().map(|plan| plan.id))
+        .collect();
+    let mut unmatched: BTreeMap<String, Vec<clearhead_core::Plan>> = BTreeMap::new();
+    for (charter_name, plan) in plans {
+        if !represented.contains(&plan.id) {
+            unmatched
+                .entry(charter_name.clone())
+                .or_default()
+                .push(plan.clone());
+        }
+    }
+    for (charter_name, plans) in unmatched {
+        model.charters.push(clearhead_core::Charter {
+            id: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, charter_name.as_bytes()),
+            title: charter_name.clone(),
+            alias: Some(charter_name),
+            plans,
+            ..Default::default()
+        });
+    }
+    Ok(model)
 }
 
 pub fn show_plan(

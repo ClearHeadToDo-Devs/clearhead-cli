@@ -21,6 +21,56 @@ fn write_plans_sync_store(env: &TestEnv, action_id: &str, scheduled_at: &str) {
 }
 
 #[test]
+fn fresh_init_charter_plan_sync_stamps_into_the_real_charter() {
+    let env = TestEnv::new();
+
+    env.command().arg("init").assert().success();
+    assert!(
+        env.work_dir
+            .join(".clearhead/charters/next.actions")
+            .exists(),
+        "init must materialize the project root charter"
+    );
+    assert!(
+        env.work_dir.join(".clearhead/charters/.next.json").exists(),
+        "the root charter must have persistent identity"
+    );
+
+    env.command()
+        .args(["add", "charter", "Dogfood Operations", "--alias", "dogfood"])
+        .assert()
+        .success();
+
+    let anchor = (Local::now() + chrono::Duration::minutes(1)).to_rfc3339();
+    env.command()
+        .args([
+            "add",
+            "plan",
+            "Dogfood recurring check",
+            "--charter",
+            "dogfood",
+            "--scheduled-at",
+            &anchor,
+            "--rrule",
+            "FREQ=DAILY",
+        ])
+        .assert()
+        .success();
+
+    env.command().args(["sync", "calendar"]).assert().success();
+
+    let actions =
+        fs::read_to_string(env.work_dir.join(".clearhead/charters/dogfood.actions")).unwrap();
+    assert!(actions.contains("Dogfood recurring check"), "{actions}");
+
+    env.command()
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("workspace clean"));
+}
+
+#[test]
 fn test_read_plans_shows_recurring_vtodo() {
     let env = TestEnv::new();
     env.write_plan_ics("inbox", "root.ics", &["My Plan"]);
@@ -29,7 +79,41 @@ fn test_read_plans_shows_recurring_vtodo() {
         .arg("plans")
         .assert()
         .success()
-        .stdout(predicate::str::contains("My Plan"));
+        .stdout(predicate::str::contains("BEGIN:VCALENDAR"))
+        .stdout(predicate::str::contains("SUMMARY:My Plan"));
+}
+
+#[test]
+fn test_read_plans_honors_ids_and_jsonld_formats() {
+    let env = TestEnv::new();
+    env.write_plan_ics("inbox", "root.ics", &["My Plan"]);
+
+    let ids = env
+        .command()
+        .args(["read", "plans", "--format", "ids"])
+        .output()
+        .unwrap();
+    assert!(ids.status.success());
+    let ids = String::from_utf8(ids.stdout).unwrap();
+    let id = ids.trim();
+    assert_eq!(id.len(), 36, "{ids}");
+    assert!(uuid::Uuid::parse_str(id).is_ok(), "{ids}");
+
+    let json = env
+        .command()
+        .args(["read", "plans", "--format", "json-ld"])
+        .output()
+        .unwrap();
+    assert!(json.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    let graph = value["@graph"].as_array().unwrap();
+    assert!(
+        graph
+            .iter()
+            .any(|node| node.get("name").and_then(|v| v.as_str()) == Some("My Plan")),
+        "{}",
+        String::from_utf8_lossy(&json.stdout)
+    );
 }
 
 #[test]
