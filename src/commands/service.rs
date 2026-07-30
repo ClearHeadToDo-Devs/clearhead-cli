@@ -96,6 +96,7 @@ pub fn sync_calendar(
     dry_run: bool,
     conflict: Option<crate::argparser::ConflictResolutionArg>,
 ) -> anyhow::Result<()> {
+    ctx.require_source_integrity("sync calendar")?;
     let plans_root = ctx.plans_root();
     // Sync reconciles owned, standalone artifacts only. Occurrences never sync as
     // standalone VTODOs — they ride their master's RRULE + deviations. The loaded

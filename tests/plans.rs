@@ -71,6 +71,27 @@ fn fresh_init_charter_plan_sync_stamps_into_the_real_charter() {
 }
 
 #[test]
+fn sync_calendar_refuses_a_quarantined_action_workspace() {
+    let env = TestEnv::new();
+    let malformed = concat!(
+        "[ ] Read [[docs|https://example.com\n",
+        "[ ] Next #019f0000-0000-7000-8000-000000000001\n",
+    );
+    env.write_text("charters/inbox.actions", malformed);
+
+    env.command()
+        .args(["sync", "calendar"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("sync calendar refused"));
+    assert_eq!(
+        fs::read_to_string(env.data_dir.join("charters/inbox.actions")).unwrap(),
+        malformed,
+        "semantic mutation refusal must leave source byte-stable"
+    );
+}
+
+#[test]
 fn test_read_plans_shows_recurring_vtodo() {
     let env = TestEnv::new();
     env.write_plan_ics("inbox", "root.ics", &["My Plan"]);

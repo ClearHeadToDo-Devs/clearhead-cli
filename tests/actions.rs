@@ -562,14 +562,13 @@ fn test_read_acts_skips_hidden_directories() {
 }
 
 #[test]
-fn test_read_acts_file_recovers_from_malformed_input() {
-    // `read` now goes through the same workspace loader every other command uses
-    // (Decision 34's relaxed reader): a malformed file becomes a warning plus
-    // whatever recovered, not a hard failure — consistent with `doctor`, `sync`, etc.
+fn test_read_acts_file_quarantines_malformed_semantics() {
+    // Relaxed parsing still diagnoses the source, but recovered field/UUID
+    // attachment is not trustworthy enough to enter semantic command output.
     let env = TestEnv::new();
     env.write_text(
         "charters/malformed.actions",
-        "not valid actions syntax !!!\n[ ] Keep me\n",
+        "not valid actions syntax !!!\n[ ] Do not misattach me\n",
     );
     let path = env.data_dir.join("charters").join("malformed.actions");
     env.command()
@@ -579,8 +578,8 @@ fn test_read_acts_file_recovers_from_malformed_input() {
         .arg(&path)
         .assert()
         .success()
-        .stderr(predicate::str::contains("recoverable action"))
-        .stdout(predicate::str::contains("Keep me"));
+        .stderr(predicate::str::contains("file quarantined"))
+        .stdout(predicate::str::contains("Do not misattach me").not());
 }
 
 #[test]

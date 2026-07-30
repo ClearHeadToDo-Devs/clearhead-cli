@@ -212,6 +212,37 @@ impl CommandContext {
         self.workspace_config().plan_path.map(PathBuf::from)
     }
 
+    /// Refuse a semantic workspace mutation while any action source requires
+    /// parser recovery. Diagnostic reads remain relaxed, but a partial model is
+    /// not a safe basis for reconciliation or identity-bearing writes.
+    pub fn require_source_integrity(&self, command: &str) -> anyhow::Result<()> {
+        let read = clearhead_core::workspace::read_workspace_with_plans(
+            &self.data_dir,
+            self.plan_override().as_deref(),
+        )?;
+        let quarantined: Vec<_> = read
+            .findings
+            .iter()
+            .filter(|finding| finding.code == "syntax-errors")
+            .collect();
+        if !quarantined.is_empty() {
+            for finding in &quarantined {
+                eprintln!(
+                    "error: [{}] {} cannot continue: {}",
+                    finding.path.display(),
+                    command,
+                    finding.message
+                );
+            }
+            anyhow::bail!(
+                "{} refused: fix parser integrity errors in {} action file(s) first",
+                command,
+                quarantined.len()
+            );
+        }
+        Ok(())
+    }
+
     /// Load the primary workspace's domain model, honoring `plan_path`.
     ///
     /// The loaded model is materialized artifacts only — occurrences are not
@@ -318,6 +349,30 @@ pub fn parse_content_for_read(
     Ok(outcome.document.actions)
 }
 
+/// Parse source into the capability required by any operation that may
+/// reserialize or semantically mutate it.
+pub fn parse_content_for_rewrite(
+    content: &str,
+    source: &str,
+    command: &str,
+) -> anyhow::Result<clearhead_cli::TrustedDocument> {
+    let outcome =
+        clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
+            .with_context(|| format!("Failed to parse '{}'", source))?;
+
+    match clearhead_cli::TrustedDocument::try_from(outcome.document) {
+        Ok(document) => Ok(document),
+        Err(error) => {
+            report_mutation_parse_failure(Path::new(source), command, &error.issues);
+            anyhow::bail!(
+                "Parse error in '{}': {} issue(s). Source not rewritten.",
+                source,
+                error.issues.len()
+            );
+        }
+    }
+}
+
 /// Parse actions content for mutating operations.
 ///
 /// If syntax issues are present, this returns an error and callers must not write.
@@ -326,20 +381,9 @@ pub fn parse_content_for_mutation(
     source: &str,
     command: &str,
 ) -> anyhow::Result<ActionList> {
-    let outcome =
-        clearhead_cli::parse_actions_with_mode(content, clearhead_cli::ParseMode::Recover)
-            .with_context(|| format!("Failed to parse '{}'", source))?;
-
-    if !outcome.syntax_errors.is_empty() {
-        report_mutation_parse_failure(Path::new(source), command, &outcome.syntax_errors);
-        anyhow::bail!(
-            "Parse error in '{}': {} issue(s). File not modified.",
-            source,
-            outcome.syntax_errors.len()
-        );
-    }
-
-    Ok(outcome.document.actions)
+    Ok(parse_content_for_rewrite(content, source, command)?
+        .into_parsed()
+        .actions)
 }
 
 /// Load actions for mutating operations.

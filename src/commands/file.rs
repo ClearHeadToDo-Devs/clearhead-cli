@@ -2,7 +2,8 @@ use anyhow::Context;
 use tracing::debug;
 
 use crate::commands::{
-    CommandContext, parse_content_for_mutation, parse_content_for_read, read_input, write_or_print,
+    CommandContext, parse_content_for_mutation, parse_content_for_read, parse_content_for_rewrite,
+    read_input, write_or_print,
 };
 
 pub fn format_file(
@@ -17,11 +18,9 @@ pub fn format_file(
     debug!(input_file = ?input_file, write = write, "Executing Format File");
     let content = read_input(input_file)?;
     let source = source_label(input_file);
-    let actions = if write {
-        parse_content_for_mutation(&content, &source, "format file")?
-    } else {
-        parse_content_for_read(&content, &source, "format file")?
-    };
+    // Formatting is a rewrite even when emitted to stdout: callers may pipe
+    // that output over the source. Never serialize parser recovery.
+    let document = parse_content_for_rewrite(&content, &source, "format file")?;
 
     let (config_indent_style, config_indent_width) = ctx.indent_config();
 
@@ -40,13 +39,8 @@ pub fn format_file(
         include_id: true,
     };
 
-    let formatted = clearhead_cli::format(
-        &actions,
-        clearhead_cli::OutputFormat::Actions,
-        Some(format_config),
-        None,
-    )
-    .map_err(|e| anyhow::anyhow!(e))?;
+    let formatted = clearhead_cli::format_trusted_source(&document, Some(format_config))
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     write_or_print(&formatted, write, input_file)?;
     Ok(())
@@ -106,15 +100,10 @@ pub fn normalize_file(
     debug!(input_file = ?input_file, write = write, "Executing Normalize File");
     let content = read_input(input_file)?;
     let source = source_label(input_file);
-    let actions = if write {
-        parse_content_for_mutation(&content, &source, "normalize file")?
-    } else {
-        parse_content_for_read(&content, &source, "normalize file")?
-    };
+    let document = parse_content_for_rewrite(&content, &source, "normalize file")?;
 
     let output = if no_format {
-        clearhead_cli::format(&actions, clearhead_cli::OutputFormat::Actions, None, None)
-            .map_err(|e| anyhow::anyhow!(e))?
+        clearhead_cli::format_trusted_source(&document, None).map_err(|e| anyhow::anyhow!(e))?
     } else {
         let (resolved_indent_style, resolved_indent_width) = ctx.indent_config();
 
@@ -124,21 +113,17 @@ pub fn normalize_file(
             indent_width: resolved_indent_width,
             include_id: true,
         };
-        clearhead_cli::format(
-            &actions,
-            clearhead_cli::OutputFormat::Actions,
-            Some(format_config),
-            None,
-        )
-        .map_err(|e| anyhow::anyhow!(e))?
+        clearhead_cli::format_trusted_source(&document, Some(format_config))
+            .map_err(|e| anyhow::anyhow!(e))?
     };
 
     write_or_print(&output, write, input_file)?;
     if write
         && let Some(file_path) = input_file
-            && let Err(e) = super::update_sidecar(file_path, &actions) {
-                tracing::warn!(path = %file_path.display(), error = %e, "Failed to update sidecar");
-            }
+        && let Err(e) = super::update_sidecar(file_path, document.actions())
+    {
+        tracing::warn!(path = %file_path.display(), error = %e, "Failed to update sidecar");
+    }
     Ok(())
 }
 

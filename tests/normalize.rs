@@ -119,21 +119,27 @@ fn test_normalize_file_write_parse_error_keeps_file_unchanged_and_fails() {
 }
 
 #[test]
-fn test_format_file_read_recover_mode_warns_and_succeeds() {
+fn test_format_file_refuses_recovered_source_even_for_stdout() {
     let env = TestEnv::new();
-    env.write_text(
-        "charters/format-recover.actions",
-        "not valid actions syntax !!!\n[ ] Keep formatting preview\n",
+    let malformed = concat!(
+        "[ ] Read [[docs|https://example.com\n",
+        "[ ] Keep formatting preview #019f0000-0000-7000-8000-000000000001\n",
     );
+    env.write_text("charters/format-recover.actions", malformed);
     let path = env.data_dir.join("charters").join("format-recover.actions");
     env.command()
         .arg("format")
         .arg("file")
         .arg(&path)
         .assert()
-        .success()
-        .stdout(predicate::str::contains("Keep formatting preview"))
-        .stderr(predicate::str::contains("parsed with"));
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("Source not rewritten"));
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        malformed,
+        "format refusal must leave recovered source byte-stable"
+    );
 }
 
 #[test]
