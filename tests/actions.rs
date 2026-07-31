@@ -428,6 +428,10 @@ fn test_archive_actions_project_root_next_actions_uses_project_name() {
     );
     let content = fs::read_to_string(&completed_path).unwrap();
     assert!(content.contains("[x] Already done"));
+    assert!(
+        content.contains(" %"),
+        "archival must stamp a missing completion date before moving the action: {content}"
+    );
     assert!(!charters_dir.join("charters.completed.actions").exists());
 }
 
