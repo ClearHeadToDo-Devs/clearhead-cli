@@ -298,7 +298,9 @@ fn try_close_occurrence(
     let Some(occurrence) = model
         .all_actions()
         .into_iter()
-        .find(|a| a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query))
+        .find(|a| {
+            a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query)
+        })
         .cloned()
     else {
         return Ok(false);
@@ -318,7 +320,11 @@ fn try_close_occurrence(
     };
 
     if dry_run {
-        let verb = if closing_state == ActionState::Cancelled { "skip" } else { "complete" };
+        let verb = if closing_state == ActionState::Cancelled {
+            "skip"
+        } else {
+            "complete"
+        };
         println!(
             "Would {} occurrence {} of plan {}",
             verb,
@@ -337,8 +343,14 @@ fn try_close_occurrence(
     )?;
 
     let outcome = match closing_state {
-        ActionState::Cancelled => VerbOutcome::Cancelled { id: canonical_id(occurrence.id), children: 0 },
-        _ => VerbOutcome::Completed { id: canonical_id(occurrence.id), children: 0 },
+        ActionState::Cancelled => VerbOutcome::Cancelled {
+            id: canonical_id(occurrence.id),
+            children: 0,
+        },
+        _ => VerbOutcome::Completed {
+            id: canonical_id(occurrence.id),
+            children: 0,
+        },
     };
     info!(%occurrence.id, %plan_id, "Occurrence deviation written ({:?})", closing_state);
     outcome.emit();
@@ -363,7 +375,9 @@ fn try_reschedule_occurrence(
     let Some(occurrence) = model
         .all_actions()
         .into_iter()
-        .find(|a| a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query))
+        .find(|a| {
+            a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query)
+        })
         .cloned()
     else {
         return Ok(false);
@@ -401,10 +415,16 @@ fn try_reschedule_occurrence(
         ctx.plan_override().as_deref(),
         plan_id,
         &key,
-        &clearhead_core::OccurrenceOp::Reschedule { scheduled_at: Some(scheduled_at), due_date: None },
+        &clearhead_core::OccurrenceOp::Reschedule {
+            scheduled_at: Some(scheduled_at),
+            due_date: None,
+        },
     )?;
     info!(%occurrence.id, %plan_id, "Occurrence rescheduled via deviation");
-    VerbOutcome::Updated { id: canonical_id(occurrence.id) }.emit();
+    VerbOutcome::Updated {
+        id: canonical_id(occurrence.id),
+    }
+    .emit();
     Ok(true)
 }
 

@@ -11,7 +11,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 pub fn run(ctx: &CommandContext, json: bool, fix: bool, dry_run: bool) -> anyhow::Result<()> {
-    let mut diagnosis = diagnose(&ctx.data_dir, ctx.plan_override().as_deref()).context("doctor")?;
+    let mut diagnosis =
+        diagnose(&ctx.data_dir, ctx.plan_override().as_deref()).context("doctor")?;
 
     if fix {
         prune_sidecars(ctx, &diagnosis, dry_run)?;

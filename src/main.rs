@@ -154,9 +154,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             argparser::ShowTarget::Action { query, file } => {
                 commands::action::show_action(ctx, query, file)
             }
-            argparser::ShowTarget::Charter { query } => {
-                commands::charter::show_charter(ctx, query)
-            }
+            argparser::ShowTarget::Charter { query } => commands::charter::show_charter(ctx, query),
         },
         Verb::Add { target } => match target {
             argparser::AddTarget::Plan {
@@ -389,9 +387,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 query,
                 file,
                 dry_run,
-            } => {
-                commands::charter::close_charter(ctx, query.as_deref(), file.as_deref(), *dry_run)
-            }
+            } => commands::charter::close_charter(ctx, query.as_deref(), file.as_deref(), *dry_run),
         },
         Verb::CompleteValues { kind } => commands::complete_values(ctx, *kind),
         Verb::Init => unreachable!("handled before CommandContext construction"),

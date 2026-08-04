@@ -164,7 +164,9 @@ pub fn sync_calendar(
         applied.take_action, applied.take_calendar, applied.converged, applied.conflict
     );
     if rolled_forward > 0 {
-        println!("Ingested {rolled_forward} occurrence completion(s) from a calendar roll-forward.");
+        println!(
+            "Ingested {rolled_forward} occurrence completion(s) from a calendar roll-forward."
+        );
     }
     Ok(())
 }
