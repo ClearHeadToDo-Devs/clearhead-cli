@@ -32,12 +32,16 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
-      - name: Test
+      - name: Format
         working-directory: workspace/clearhead-cli
-        run: cargo test --locked
+        run: cargo fmt --check
 
       - name: Clippy
         working-directory: workspace/clearhead-cli
         run: cargo clippy --all-targets --no-deps --locked -- -D warnings
+
+      - name: Test
+        working-directory: workspace/clearhead-cli
+        run: cargo test --locked
