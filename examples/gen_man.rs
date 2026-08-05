@@ -6,8 +6,8 @@
 //! hand-authored file by hand.
 //!
 //! Usage:
-//!   cargo run --bin gen-man                     # writes to man/clearhead.1.generated
-//!   cargo run --bin gen-man -- /custom/path     # writes to a custom directory
+//!   cargo run --example gen_man                     # writes to man/clearhead.1.generated
+//!   cargo run --example gen_man -- /custom/path     # writes to a custom directory
 
 use clap::CommandFactory;
 use clap_mangen::Man;
