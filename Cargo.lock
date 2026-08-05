@@ -283,7 +283,6 @@ dependencies = [
  "clearhead_core",
  "comfy-table",
  "config",
- "icalendar",
  "insta",
  "predicates",
  "serde",

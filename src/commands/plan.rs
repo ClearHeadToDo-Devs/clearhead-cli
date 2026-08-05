@@ -1,6 +1,5 @@
 use anyhow::Context;
-use chrono::{DateTime, Local, Utc};
-use icalendar::{Calendar, Component, EventLike, Todo};
+use chrono::{DateTime, Local};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -187,7 +186,7 @@ pub fn read_plans(
         Some(argparser::OutputMode::Table) => print_plans_table(&plans),
         None if !std::io::stdout().is_terminal() => {
             let plans: Vec<_> = plans.into_iter().map(|(_, plan)| plan).collect();
-            print!("{}", format_plans_as_ics(&plans));
+            print!("{}", clearhead_core::plans_to_icalendar(&plans));
         }
         None => print_plans_table(&plans),
     }
@@ -426,59 +425,15 @@ fn charter_stem_from_source(source: &Path) -> anyhow::Result<String> {
         .file_stem()
         .and_then(|value| value.to_str())
         .ok_or_else(|| anyhow::anyhow!("Cannot derive charter name from '{}'", source.display()))?;
-    Ok(slug(stem))
+    Ok(clearhead_core::slugify(stem))
 }
 
 fn save_plan_file(path: &Path, plan: &clearhead_core::Plan) -> anyhow::Result<()> {
     clearhead_core::workspace::durability::atomic_write(
         path,
-        format_plans_as_ics(std::slice::from_ref(plan)),
+        clearhead_core::plans_to_icalendar(std::slice::from_ref(plan)),
     )
     .with_context(|| format!("Failed to write plan file '{}'", path.display()))
-}
-
-fn format_plans_as_ics(plans: &[clearhead_core::Plan]) -> String {
-    let mut calendar = Calendar::new()
-        .name("ClearHead Plans")
-        .description("Schedules managed by ClearHead")
-        .done();
-
-    for plan in plans {
-        calendar.push(plan_to_todo(plan));
-    }
-
-    calendar.to_string()
-}
-
-fn plan_to_todo(plan: &clearhead_core::Plan) -> Todo {
-    let mut todo = Todo::new();
-    let uid = plan
-        .external_id
-        .clone()
-        .unwrap_or_else(|| plan.id.to_string());
-    todo.uid(&uid);
-    todo.summary(&plan.name);
-
-    if let Some(dtstart) = plan.dtstart {
-        todo.starts(dtstart.with_timezone(&Utc));
-    }
-    if let Some(recurrence) = &plan.recurrence {
-        let rrule = recurrence.to_string();
-        todo.add_property("RRULE", rrule.strip_prefix("R:").unwrap_or(&rrule));
-    }
-
-    let mut description = Vec::new();
-    if let Some(template) = &plan.template_name {
-        description.push(format!("template: {}", template));
-    }
-    if let Some(text) = &plan.description {
-        description.push(text.clone());
-    }
-    if !description.is_empty() {
-        todo.description(&description.join("\n"));
-    }
-
-    todo
 }
 
 fn parse_local_datetime(value: Option<&str>) -> anyhow::Result<Option<DateTime<Local>>> {
@@ -582,10 +537,6 @@ fn resolve_markdown_charter<'a>(
     super::action::resolve_markdown_charter(charters, query)
 }
 
-fn slug(value: &str) -> String {
-    value.to_lowercase().replace(' ', "-").replace('&', "and")
-}
-
 // CLI adapter: the grouped clap field structs are intentionally passed
 // explicitly before being assembled into one Plan.
 #[allow(clippy::too_many_arguments)]
@@ -628,7 +579,7 @@ pub fn add_plan(
     debug!(name = %name, output_file = %output_file.display(), dry_run = dry_run, "Executing Add Plan");
 
     if dry_run {
-        println!("{}", format_plans_as_ics(&[new_plan]));
+        println!("{}", clearhead_core::plans_to_icalendar(&[new_plan]));
     } else {
         save_plan_file(&output_file, &new_plan)?;
 
@@ -680,7 +631,7 @@ pub fn update_plan(
     let updated = plan.clone();
 
     if dry_run {
-        println!("{}", format_plans_as_ics(&[updated]));
+        println!("{}", clearhead_core::plans_to_icalendar(&[updated]));
     } else {
         save_plan_file(&input_file, &updated)?;
         info!(name = %updated.name, id = %updated.id, "Plan updated successfully");
@@ -710,7 +661,7 @@ pub fn delete_plan(
     debug!(query = %query, input_file = %input_file.display(), dry_run = dry_run, "Executing Delete Plan");
 
     if dry_run {
-        println!("{}", format_plans_as_ics(&[plan]));
+        println!("{}", clearhead_core::plans_to_icalendar(&[plan]));
     } else {
         fs::remove_file(&input_file)
             .with_context(|| format!("Failed to delete plan file '{}'", input_file.display()))?;
