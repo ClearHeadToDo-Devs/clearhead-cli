@@ -129,7 +129,7 @@ pub fn read_plans(
 
         let allowed: Option<std::collections::HashSet<String>> = if let Some(query) = charter {
             let model = ctx.load_model()?;
-            let found = crate::commands::charter::resolve_charter(&model.charters, query)
+            let found = crate::commands::charter::resolve_charter(&model.charters, query)?
                 .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", query))?;
             let key = charter_graph_name(found);
             let names = if recursive {
@@ -274,8 +274,6 @@ pub fn show_plan(
 
     debug!(query = %query, "Executing Show Plan");
 
-    let query_lower = query.to_lowercase();
-
     let candidates: Vec<(String, clearhead_core::Plan)> = if let Some(path) = file {
         let charter_name = path
             .file_stem()
@@ -301,17 +299,13 @@ pub fn show_plan(
         result
     };
 
+    let plan_refs: Vec<&clearhead_core::Plan> = candidates.iter().map(|(_, plan)| plan).collect();
+    let index = find_plan_match_pos(&plan_refs, query)?
+        .ok_or_else(|| anyhow::anyhow!("No plan found matching '{}'", query))?;
     let (charter_name, plan) = candidates
         .into_iter()
-        .find(|(_, p)| {
-            p.name.to_lowercase().contains(&query_lower)
-                || p.external_id
-                    .as_deref()
-                    .map(|uid| uid.to_lowercase().contains(&query_lower))
-                    .unwrap_or(false)
-                || p.id.to_string().starts_with(&query_lower)
-        })
-        .ok_or_else(|| anyhow::anyhow!("No plan found matching '{}'", query))?;
+        .nth(index)
+        .expect("selected Plan index comes from candidates");
 
     println!(
         "{}",
@@ -355,7 +349,7 @@ fn resolve_plans_dir(
 
     if let Some(query) = charter {
         let charters = ctx.load_charters()?;
-        if let Some(charter) = resolve_markdown_charter(&charters, query) {
+        if let Some(charter) = resolve_markdown_charter(&charters, query)? {
             return Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(charter)));
         }
 
@@ -397,7 +391,7 @@ fn resolve_add_plan_output_path(
 
     if let Some(query) = charter {
         let charters = ctx.load_charters()?;
-        if let Some(charter) = resolve_markdown_charter(&charters, query) {
+        if let Some(charter) = resolve_markdown_charter(&charters, query)? {
             return Ok(clearhead_core::plan_output_path(
                 &ctx.plans_root(),
                 charter,
@@ -533,58 +527,59 @@ fn find_plan_for_mutation(
             .collect()
     };
 
+    let mut candidates = Vec::new();
     for path in files {
-        let plans = load_plan_file(&path)?;
-        if let Some(plan) = plans.into_iter().find(|plan| plan_matches(plan, query)) {
-            return Ok((path, plan));
+        for plan in load_plan_file(&path)? {
+            candidates.push((path.clone(), plan));
         }
     }
-
-    anyhow::bail!("No plan found matching '{}'", query)
+    let plan_refs: Vec<&clearhead_core::Plan> = candidates.iter().map(|(_, plan)| plan).collect();
+    let index = find_plan_match_pos(&plan_refs, query)?
+        .ok_or_else(|| anyhow::anyhow!("No plan found matching '{}'", query))?;
+    Ok(candidates
+        .into_iter()
+        .nth(index)
+        .expect("selected Plan index comes from candidates"))
 }
 
-fn plan_matches(plan: &clearhead_core::Plan, query: &str) -> bool {
-    let query_lower = query.to_lowercase();
-    let id = plan.id.to_string();
-    id == query
-        || id.starts_with(query)
-        || plan
-            .external_id
-            .as_deref()
-            .map(|uid| uid.eq_ignore_ascii_case(query) || uid.to_lowercase().contains(&query_lower))
-            .unwrap_or(false)
-        || plan.name.to_lowercase().contains(&query_lower)
+fn find_plan_match_pos<T>(plans: &[T], query: &str) -> anyhow::Result<Option<usize>>
+where
+    T: std::borrow::Borrow<clearhead_core::Plan> + clearhead_core::ReferenceEntity,
+{
+    match clearhead_core::select_reference(plans, query) {
+        clearhead_core::ReferenceSelection::Unique { index, .. } => Ok(Some(index)),
+        clearhead_core::ReferenceSelection::Ambiguous { indices, .. } => {
+            let candidates = indices
+                .into_iter()
+                .map(|index| plans[index].borrow().id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!(
+                "Ambiguous Plan reference '{}'; candidates: {}",
+                query,
+                candidates
+            )
+        }
+        clearhead_core::ReferenceSelection::NotFound if uuid::Uuid::parse_str(query).is_ok() => {
+            Ok(None)
+        }
+        clearhead_core::ReferenceSelection::NotFound => {
+            let query_lower = query.to_lowercase();
+            Ok(plans.iter().position(|candidate| {
+                let plan = candidate.borrow();
+                plan.external_id.as_deref().is_some_and(|uid| {
+                    uid.eq_ignore_ascii_case(query) || uid.to_lowercase().contains(&query_lower)
+                }) || plan.name.to_lowercase().contains(&query_lower)
+            }))
+        }
+    }
 }
 
 fn resolve_markdown_charter<'a>(
     charters: &'a [clearhead_core::MarkdownCharter],
     query: &str,
-) -> Option<&'a clearhead_core::MarkdownCharter> {
-    let query_lower = query.to_lowercase();
-    if let Ok(uuid) = uuid::Uuid::parse_str(query)
-        && let Some(c) = charters.iter().find(|c| c.id == uuid)
-    {
-        return Some(c);
-    }
-    if query.len() >= 4
-        && query.chars().all(|c| c.is_ascii_hexdigit())
-        && let Some(c) = charters
-            .iter()
-            .find(|c| c.id.to_string().starts_with(query))
-    {
-        return Some(c);
-    }
-    if let Some(c) = charters.iter().find(|c| {
-        c.alias
-            .as_deref()
-            .map(|alias| alias.eq_ignore_ascii_case(query))
-            .unwrap_or(false)
-    }) {
-        return Some(c);
-    }
-    charters
-        .iter()
-        .find(|c| c.title.to_lowercase().contains(&query_lower))
+) -> anyhow::Result<Option<&'a clearhead_core::MarkdownCharter>> {
+    super::action::resolve_markdown_charter(charters, query)
 }
 
 fn slug(value: &str) -> String {

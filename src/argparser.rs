@@ -559,7 +559,7 @@ pub enum UpdateTarget {
 
     /// Update an action's fields
     Action {
-        /// UUID, 8-char prefix, alias, or name of the action
+        /// UUID, short prefix (at least 4 hex digits), alias, or name of the action
         query: String,
 
         /// New name
@@ -652,7 +652,7 @@ pub enum CompleteTarget {
 
     /// Mark an action as completed
     Action {
-        /// UUID, 8-char prefix, alias, or name of the action
+        /// UUID, short prefix (at least 4 hex digits), alias, or name of the action
         query: String,
 
         /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
@@ -897,7 +897,7 @@ pub enum CloseTarget {
 pub enum CancelTarget {
     /// Cancel an action (sets state to Cancelled)
     Action {
-        /// UUID, 8-char prefix, alias, or name of the action
+        /// UUID, short prefix (at least 4 hex digits), alias, or name of the action
         query: String,
 
         /// Scope search to a specific charter (name, alias, or UUID). Makes resolution deterministic when names collide across charters.
@@ -919,7 +919,7 @@ pub enum ExportTarget {
     /// Export plans to calendar format (iCalendar)
     #[command(alias = "calendar")]
     Plans {
-        /// Reference to export (charter/plan/action alias or UUID, or .actions file)
+        /// Reference to export (charter/action alias or entity UUID, or .actions file)
         #[arg(value_name = "REFERENCE")]
         reference: Option<String>,
 

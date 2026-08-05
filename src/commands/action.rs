@@ -45,7 +45,7 @@ pub fn add_action(
     let parent_id = parent
         .as_deref()
         .map(|query| {
-            find_best_match(&list, query, is_open_action)
+            find_best_match(&list, query, is_open_action)?
                 .map(|action| action.id)
                 .ok_or_else(|| anyhow::anyhow!("No action found matching parent '{}'", query))
         })
@@ -205,15 +205,15 @@ fn close_action_subtree(
         if try_close_occurrence(ctx, query, closing_state, dry_run)? {
             return Ok(());
         }
-        return Err(verb_target_error(ctx, query).into());
+        return Err(verb_target_error(ctx, query)?.into());
     };
 
-    let (action_id, selector) = match find_action_mut(&mut open_actions, query) {
+    let (action_id, selector) = match find_action_mut(&mut open_actions, query)? {
         Some(action) => (
             action.id,
             clearhead_core::CloseActionSelector::from(&*action),
         ),
-        None => return Err(verb_target_error(ctx, query).into()),
+        None => return Err(verb_target_error(ctx, query)?.into()),
     };
 
     let subtree_ids = clearhead_core::collect_subtree_ids(&open_actions, action_id);
@@ -295,14 +295,12 @@ fn try_close_occurrence(
     use anyhow::Context;
 
     let model = ctx.load_model()?; // materialized-only; the present occurrence is a real line
-    let Some(occurrence) = model
+    let occurrences: Vec<&Action> = model
         .all_actions()
         .into_iter()
-        .find(|a| {
-            a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query)
-        })
-        .cloned()
-    else {
+        .filter(|action| action.external_occurrence_key.is_some())
+        .collect();
+    let Some(occurrence) = find_best_match(&occurrences, query, is_open_action)?.cloned() else {
         return Ok(false);
     };
 
@@ -372,14 +370,12 @@ fn try_reschedule_occurrence(
     use anyhow::Context;
 
     let model = ctx.load_model()?;
-    let Some(occurrence) = model
+    let occurrences: Vec<&Action> = model
         .all_actions()
         .into_iter()
-        .find(|a| {
-            a.external_occurrence_key.is_some() && is_open_action(a) && action_matches(a, query)
-        })
-        .cloned()
-    else {
+        .filter(|action| action.external_occurrence_key.is_some())
+        .collect();
+    let Some(occurrence) = find_best_match(&occurrences, query, is_open_action)?.cloned() else {
         return Ok(false);
     };
 
@@ -474,12 +470,12 @@ pub fn update_action(
         if try_reschedule_occurrence(ctx, query, new_scheduled, other_edits, dry_run)? {
             return Ok(());
         }
-        return Err(verb_target_error(ctx, query).into());
+        return Err(verb_target_error(ctx, query)?.into());
     };
 
     let action_id = {
-        let Some(action) = find_action_mut(&mut open_actions, query) else {
-            return Err(verb_target_error(ctx, query).into());
+        let Some(action) = find_action_mut(&mut open_actions, query)? else {
+            return Err(verb_target_error(ctx, query)?.into());
         };
         let id = action.id;
         if !dry_run {
@@ -553,7 +549,7 @@ pub fn delete_action(
 
     for actions_path in &action_files {
         let mut open = action_files::read_actions(actions_path)?;
-        if let Some(action_id) = find_best_match(&open, query, |_| true).map(|a| a.id) {
+        if let Some(action_id) = find_best_match(&open, query, |_| true)?.map(|a| a.id) {
             let subtree_ids = clearhead_core::collect_subtree_ids(&open, action_id);
             if dry_run {
                 println!(
@@ -577,7 +573,7 @@ pub fn delete_action(
         // Check completed file — single action only (no tree context in closed file)
         let completed_path = action_files::completed_actions_path(actions_path);
         let mut closed = action_files::read_actions(&completed_path)?;
-        if let Some(pos) = find_best_match_pos(&closed, query, |_| true) {
+        if let Some(pos) = find_best_match_pos(&closed, query, |_| true)? {
             let action_id = closed[pos].id;
             if dry_run {
                 println!("Would delete action {}", &action_id.to_string()[..8]);
@@ -752,7 +748,7 @@ fn filtered_primary_model(
 ) -> anyhow::Result<clearhead_core::DomainModel> {
     let primary = ctx.load_model()?;
     let mut model = if let Some(query) = charter_filter {
-        let charter = super::charter::resolve_charter(&primary.charters, query)
+        let charter = super::charter::resolve_charter(&primary.charters, query)?
             .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", query))?
             .clone();
         clearhead_core::DomainModel {
@@ -839,7 +835,7 @@ pub fn show_action(
             collect_all_actions(ctx, file, false)?
         };
 
-    let action = find_best_match(&actions, query, |_| true)
+    let action = find_best_match(&actions, query, |_| true)?
         .ok_or_else(|| anyhow::anyhow!("No action found matching '{}'", query))?;
 
     println!("{}", crate::display::render_action_detail(action));
@@ -968,27 +964,32 @@ fn find_act_in_open_files(
     data_dir: &Path,
     query: &str,
 ) -> anyhow::Result<Option<(PathBuf, ActionList)>> {
-    let action_files =
-        clearhead_core::list_action_files(data_dir).context("Failed to list workspace")?;
-
-    for actions_path in action_files {
-        let action_list = action_files::read_actions(&actions_path)?;
-        if action_list
-            .iter()
-            .any(|a| is_open_action(a) && action_matches(a, query))
-        {
-            return Ok(Some((actions_path, action_list)));
-        }
+    let paths = clearhead_core::list_action_files(data_dir).context("Failed to list workspace")?;
+    let mut loaded = Vec::with_capacity(paths.len());
+    for path in paths {
+        loaded.push((path.clone(), action_files::read_actions(&path)?));
     }
 
-    Ok(None)
+    let candidates: Vec<&Action> = loaded
+        .iter()
+        .flat_map(|(_, actions)| actions.iter())
+        .collect();
+    let Some(target_id) =
+        find_best_match(&candidates, query, is_open_action)?.map(|action| action.id)
+    else {
+        return Ok(None);
+    };
+
+    Ok(loaded
+        .into_iter()
+        .find(|(_, actions)| actions.iter().any(|action| action.id == target_id)))
 }
 
 /// Build the typed error for a verb whose query matched nothing open
 /// (query_output.md, "Errors as data"). A closed match may still sit in an
 /// open file (not yet archived) or in a completed archive — either way the
 /// action is already closed; with no match anywhere it is not found.
-fn verb_target_error(ctx: &CommandContext, query: &str) -> VerbError {
+fn verb_target_error(ctx: &CommandContext, query: &str) -> anyhow::Result<VerbError> {
     for (_, ws_dir) in ctx.workspace_dirs() {
         let open_files = clearhead_core::list_action_files(&ws_dir).unwrap_or_default();
         let archives: Vec<PathBuf> = open_files
@@ -999,116 +1000,104 @@ fn verb_target_error(ctx: &CommandContext, query: &str) -> VerbError {
             let Ok(actions) = action_files::read_actions(path) else {
                 continue;
             };
-            if let Some(action) = find_best_match(&actions, query, |a| !is_open_action(a)) {
-                return VerbError::AlreadyClosed {
+            if let Some(action) = find_best_match(&actions, query, |a| !is_open_action(a))? {
+                return Ok(VerbError::AlreadyClosed {
                     id: canonical_id(action.id),
                     state: format!("{:?}", action.state),
                     query: query.to_string(),
-                };
+                });
             }
         }
     }
-    VerbError::NotFound {
+    Ok(VerbError::NotFound {
         query: query.to_string(),
-    }
-}
-
-/// Precedence tier for `query` against `action`: 0 = full UUID, 1 = short UUID,
-/// 2 = alias, 3 = name-contains, `None` = no match. Lower wins.
-///
-/// Canonical identity short-circuits: a query that parses as a full UUID —
-/// bare or `urn:uuid:` exactly as the query contract exports `id`
-/// (specifications/query_output.md) — resolves by identity only. It never
-/// degrades to alias or name matching, so a client holding a node id acts on
-/// exactly that node or fails.
-fn action_match_tier(action: &Action, query: &str) -> Option<u8> {
-    let q = query.trim_start_matches('/');
-    if let Ok(uuid) = uuid::Uuid::parse_str(q) {
-        return (action.id == uuid).then_some(0);
-    }
-    let id_str = action.id.to_string();
-    let short = &id_str[..8.min(id_str.len())];
-    if short == q {
-        Some(1)
-    } else if action
-        .alias
-        .as_deref()
-        .map(|alias| alias.eq_ignore_ascii_case(q))
-        .unwrap_or(false)
-    {
-        Some(2)
-    } else if action.name.to_lowercase().contains(&q.to_lowercase()) {
-        Some(3)
-    } else {
-        None
-    }
-}
-
-/// True if `query` matches `action` under any tier. Existence-only — does not
-/// resolve precedence across a list, so never use this to pick *which* action
-/// when more than one might match. Use `find_best_match`/`_mut`/`_pos` for that.
-fn action_matches(action: &Action, query: &str) -> bool {
-    action_match_tier(action, query).is_some()
-}
-
-/// Resolve `query` against `actions` honoring precedence — full UUID, then short
-/// UUID, then alias, then name-contains — across the whole list, rather than the
-/// first list-order action that matches any criterion. An earlier name-contains
-/// match must never shadow a later exact alias or UUID match.
-fn find_best_match_pos(
-    actions: &[Action],
-    query: &str,
-    filter: impl Fn(&Action) -> bool,
-) -> Option<usize> {
-    (0..=3u8).find_map(|tier| {
-        actions
-            .iter()
-            .position(|a| filter(a) && action_match_tier(a, query) == Some(tier))
     })
 }
 
-fn find_best_match<'a>(
-    actions: &'a [Action],
+/// Resolve canonical UUID/alias references in core, then apply the CLI-only
+/// partial-name search when no reference matches. Ambiguous canonical matches
+/// are errors and report candidate identities rather than choosing file order.
+fn find_best_match_pos<T>(
+    actions: &[T],
     query: &str,
     filter: impl Fn(&Action) -> bool,
-) -> Option<&'a Action> {
-    find_best_match_pos(actions, query, filter).map(|i| &actions[i])
+) -> anyhow::Result<Option<usize>>
+where
+    T: std::borrow::Borrow<Action> + clearhead_core::ReferenceEntity,
+{
+    let query = query.trim_start_matches('/');
+    match clearhead_core::select_reference_where(actions, query, |candidate| {
+        filter(candidate.borrow())
+    }) {
+        clearhead_core::ReferenceSelection::Unique { index, .. } => Ok(Some(index)),
+        clearhead_core::ReferenceSelection::Ambiguous { indices, .. } => {
+            let candidates = indices
+                .into_iter()
+                .map(|index| canonical_id(actions[index].borrow().id))
+                .collect();
+            Err(VerbError::Ambiguous {
+                query: query.to_string(),
+                candidates,
+            }
+            .into())
+        }
+        clearhead_core::ReferenceSelection::NotFound if uuid::Uuid::parse_str(query).is_ok() => {
+            Ok(None)
+        }
+        clearhead_core::ReferenceSelection::NotFound => {
+            let query_lower = query.to_lowercase();
+            Ok(actions.iter().position(|candidate| {
+                let action = candidate.borrow();
+                filter(action) && action.name.to_lowercase().contains(&query_lower)
+            }))
+        }
+    }
 }
 
-fn find_action_mut<'a>(actions: &'a mut ActionList, query: &str) -> Option<&'a mut Action> {
-    let idx = find_best_match_pos(actions, query, is_open_action)?;
-    actions.get_mut(idx)
+fn find_best_match<'a, T>(
+    actions: &'a [T],
+    query: &str,
+    filter: impl Fn(&Action) -> bool,
+) -> anyhow::Result<Option<&'a Action>>
+where
+    T: std::borrow::Borrow<Action> + clearhead_core::ReferenceEntity,
+{
+    Ok(find_best_match_pos(actions, query, filter)?.map(|index| actions[index].borrow()))
+}
+
+fn find_action_mut<'a>(
+    actions: &'a mut ActionList,
+    query: &str,
+) -> anyhow::Result<Option<&'a mut Action>> {
+    let index = find_best_match_pos(actions, query, is_open_action)?;
+    Ok(index.and_then(|index| actions.get_mut(index)))
 }
 
 pub(super) fn resolve_markdown_charter<'a>(
     charters: &'a [clearhead_core::MarkdownCharter],
     query: &str,
-) -> Option<&'a clearhead_core::MarkdownCharter> {
-    let query_lower = query.to_lowercase();
-    if query.len() == 8
-        && query.chars().all(|c| c.is_ascii_hexdigit())
-        && let Some(c) = charters
-            .iter()
-            .find(|c| c.id.to_string().starts_with(query))
-    {
-        return Some(c);
+) -> anyhow::Result<Option<&'a clearhead_core::MarkdownCharter>> {
+    match clearhead_core::select_reference(charters, query) {
+        clearhead_core::ReferenceSelection::Unique { index, .. } => Ok(Some(&charters[index])),
+        clearhead_core::ReferenceSelection::Ambiguous { indices, .. } => {
+            let candidates = indices
+                .into_iter()
+                .map(|index| charters[index].id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!(
+                "Ambiguous charter reference '{}'; candidates: {}",
+                query,
+                candidates
+            )
+        }
+        clearhead_core::ReferenceSelection::NotFound => {
+            let query_lower = query.to_lowercase();
+            Ok(charters
+                .iter()
+                .find(|charter| charter.title.to_lowercase().contains(&query_lower)))
+        }
     }
-    if let Ok(uuid) = uuid::Uuid::parse_str(query)
-        && let Some(c) = charters.iter().find(|c| c.id == uuid)
-    {
-        return Some(c);
-    }
-    if let Some(c) = charters.iter().find(|c| {
-        c.alias
-            .as_deref()
-            .map(|a| a.to_lowercase() == query_lower)
-            .unwrap_or(false)
-    }) {
-        return Some(c);
-    }
-    charters
-        .iter()
-        .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
 /// Search configured workspaces (respecting `--workspace` filter) for a charter matching `query`.
@@ -1128,7 +1117,7 @@ pub(super) fn resolve_charter_across_workspaces(
                 continue;
             }
         };
-        if let Some(mc) = resolve_markdown_charter(&mcs, query) {
+        if let Some(mc) = resolve_markdown_charter(&mcs, query)? {
             return Ok((mc.clone(), ws_root));
         }
     }
@@ -1261,7 +1250,9 @@ mod resolution_tests {
             make_action("Deploy", Some("staging")),
         ];
 
-        let found = find_best_match(&actions, "staging", |_| true).unwrap();
+        let found = find_best_match(&actions, "staging", |_| true)
+            .unwrap()
+            .unwrap();
         assert_eq!(found.name, "Deploy");
         assert_eq!(found.alias.as_deref(), Some("staging"));
     }
@@ -1276,7 +1267,7 @@ mod resolution_tests {
             target.clone(),
         ];
 
-        let found = find_best_match(&actions, short, |_| true).unwrap();
+        let found = find_best_match(&actions, short, |_| true).unwrap().unwrap();
         assert_eq!(found.id, target.id);
     }
 
@@ -1286,7 +1277,9 @@ mod resolution_tests {
         let decoy = make_action(&target.id.to_string(), None);
         let actions = vec![decoy, target.clone()];
 
-        let found = find_best_match(&actions, &target.id.to_string(), |_| true).unwrap();
+        let found = find_best_match(&actions, &target.id.to_string(), |_| true)
+            .unwrap()
+            .unwrap();
         assert_eq!(found.id, target.id);
     }
 
@@ -1298,7 +1291,9 @@ mod resolution_tests {
         let actions = vec![make_action("Decoy", None), target.clone()];
 
         let query = format!("urn:uuid:{}", target.id);
-        let found = find_best_match(&actions, &query, |_| true).unwrap();
+        let found = find_best_match(&actions, &query, |_| true)
+            .unwrap()
+            .unwrap();
         assert_eq!(found.id, target.id);
     }
 
@@ -1311,7 +1306,26 @@ mod resolution_tests {
         let decoy = make_action(&format!("Notes about {}", ghost), None);
         let actions = vec![decoy];
 
-        assert!(find_best_match(&actions, &ghost.to_string(), |_| true).is_none());
-        assert!(find_best_match(&actions, &format!("urn:uuid:{}", ghost), |_| true).is_none());
+        assert!(
+            find_best_match(&actions, &ghost.to_string(), |_| true)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            find_best_match(&actions, &format!("urn:uuid:{}", ghost), |_| true)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn ambiguous_short_uuid_is_an_error() {
+        let mut first = make_action("First", None);
+        first.id = Uuid::parse_str("dead0000-0000-7000-8000-000000000001").unwrap();
+        let mut second = make_action("Second", None);
+        second.id = Uuid::parse_str("deadffff-0000-7000-8000-000000000002").unwrap();
+
+        let error = find_best_match(&[first, second], "dead", |_| true).unwrap_err();
+        assert!(error.to_string().contains("Ambiguous action reference"));
     }
 }

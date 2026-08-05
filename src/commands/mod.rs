@@ -507,7 +507,7 @@ pub fn charter_to_file_path(data_dir: &Path, charter_query: &str) -> anyhow::Res
 
     // Fall back to model-level resolution (matches alias, UUID, partial title)
     let model = clearhead_core::load_domain_model(data_dir)?;
-    let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)
+    let found = crate::commands::charter::resolve_charter(&model.charters, charter_query)?
         .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", charter_query))?;
 
     let key = found.alias.as_deref().unwrap_or(&found.title);

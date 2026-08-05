@@ -66,7 +66,7 @@ fn find_target_charter<'a>(
     }
     if let Some(q) = query {
         let charters: Vec<Charter> = mcs.iter().cloned().map(Charter::from).collect();
-        let mc = resolve_charter(&charters, q)
+        let mc = resolve_charter(&charters, q)?
             .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", q))?;
         return mcs
             .iter()
@@ -234,51 +234,52 @@ fn open_act_count(charter: &Charter) -> usize {
 pub fn show_charter(ctx: &CommandContext, query: &str) -> anyhow::Result<()> {
     let models = ctx.all_domain_models()?;
 
-    let found = models
+    let candidates: Vec<&Charter> = models
         .iter()
-        .flat_map(|(_, m)| m.charters.iter())
-        .find(|c| resolve_charter(std::slice::from_ref(c), query).is_some())
+        .flat_map(|(_, model)| &model.charters)
+        .collect();
+    let found = resolve_charter(&candidates, query)?
         .ok_or_else(|| anyhow::anyhow!("No charter found matching '{}'", query))?;
 
     println!("{}", crate::display::render_charter_detail(found));
     Ok(())
 }
 
-/// Resolve a charter by UUID prefix, alias, or name from a slice of charters.
-pub fn resolve_charter<'a>(charters: &'a [Charter], query: &str) -> Option<&'a Charter> {
+/// Resolve a charter by canonical UUID/alias reference, with partial-title
+/// matching retained as an explicit human-friendly command search fallback.
+pub fn resolve_charter<'a, T>(charters: &'a [T], query: &str) -> anyhow::Result<Option<&'a Charter>>
+where
+    T: std::borrow::Borrow<Charter> + clearhead_core::ReferenceEntity,
+{
     let query = query.trim_start_matches('/');
-    let query_lower = query.to_lowercase();
-
-    // 1. Full UUID match
-    if let Ok(uuid) = uuid::Uuid::parse_str(query)
-        && let Some(c) = charters.iter().find(|c| c.id == uuid)
-    {
-        return Some(c);
+    match clearhead_core::select_reference(charters, query) {
+        clearhead_core::ReferenceSelection::Unique { index, .. } => {
+            Ok(Some(charters[index].borrow()))
+        }
+        clearhead_core::ReferenceSelection::Ambiguous { indices, .. } => {
+            let candidates = indices
+                .into_iter()
+                .map(|index| charters[index].borrow().id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!(
+                "Ambiguous charter reference '{}'; candidates: {}",
+                query,
+                candidates
+            )
+        }
+        clearhead_core::ReferenceSelection::NotFound => {
+            let query_lower = query.to_lowercase();
+            Ok(charters.iter().find_map(|candidate| {
+                let charter = candidate.borrow();
+                charter
+                    .title
+                    .to_lowercase()
+                    .contains(&query_lower)
+                    .then_some(charter)
+            }))
+        }
     }
-
-    // 2. Short UUID prefix (8 hex chars)
-    if query.len() >= 4
-        && query.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-        && let Some(c) = charters
-            .iter()
-            .find(|c| c.id.to_string().starts_with(query))
-    {
-        return Some(c);
-    }
-
-    // 3. Alias match (case-insensitive, exact)
-    if let Some(c) = charters.iter().find(|c| {
-        c.alias
-            .as_ref()
-            .is_some_and(|a| a.to_lowercase() == query_lower)
-    }) {
-        return Some(c);
-    }
-
-    // 4. Title match (case-insensitive, partial)
-    charters
-        .iter()
-        .find(|c| c.title.to_lowercase().contains(&query_lower))
 }
 
 pub fn add_charter(

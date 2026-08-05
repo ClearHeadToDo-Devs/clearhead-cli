@@ -64,6 +64,11 @@ impl VerbOutcome {
 pub enum VerbError {
     /// Nothing open or closed matches the query.
     NotFound { query: String },
+    /// More than one action matched the strongest canonical reference tier.
+    Ambiguous {
+        query: String,
+        candidates: Vec<String>,
+    },
     /// The query resolves, but to an action already in a completed archive —
     /// an idempotent loop can branch on this as effectively-done.
     AlreadyClosed {
@@ -79,6 +84,15 @@ impl std::fmt::Display for VerbError {
             VerbError::NotFound { query } => {
                 write!(f, "No open action found matching '{query}'")
             }
+            VerbError::Ambiguous { query, candidates } => write!(
+                f,
+                "Ambiguous action reference '{query}'; candidates: {}",
+                candidates
+                    .iter()
+                    .map(|id| bare(id))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             VerbError::AlreadyClosed { id, state, .. } => {
                 write!(f, "Action {} is already closed ({state})", bare(id))
             }
@@ -110,6 +124,16 @@ mod tests {
     fn errors_serialize_branchable_kinds() {
         let not_found = serde_json::to_string(&VerbError::NotFound { query: "x".into() }).unwrap();
         assert_eq!(not_found, r#"{"kind":"not-found","query":"x"}"#);
+
+        let ambiguous = serde_json::to_string(&VerbError::Ambiguous {
+            query: "dead".into(),
+            candidates: vec![
+                "urn:uuid:dead0000-0000-7000-8000-000000000001".into(),
+                "urn:uuid:deadffff-0000-7000-8000-000000000002".into(),
+            ],
+        })
+        .unwrap();
+        assert!(ambiguous.starts_with(r#"{"kind":"ambiguous""#));
 
         let closed = serde_json::to_string(&VerbError::AlreadyClosed {
             id: "urn:uuid:01951111-0000-7000-8000-000000000001".into(),
