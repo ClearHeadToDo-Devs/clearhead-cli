@@ -12,7 +12,7 @@ name = "clearhead"
 path = "src/main.rs"
 
 [dependencies]
-# Core library with pure business logic
+# Shared domain, workspace, persistence, and configuration services
 clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
 
 # CLI-specific dependencies

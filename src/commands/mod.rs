@@ -88,17 +88,6 @@ impl CommandContext {
         )
     }
 
-    /// Build a `WorkspaceConfig` from the loaded CLI config.
-    ///
-    /// Includes `workspace_id` (for named graph isolation), `tag_hierarchies`,
-    /// and `additional_workspaces` (resolved to absolute paths so core never
-    /// has to reason about the config-file directory).  Expansion config is
-    /// also forwarded but only affects file expansion, not graph queries.
-    /// All workspace (name, data-dir) pairs: primary first, then additional.
-    ///
-    /// This is the single place that knows about multi-workspace layout.
-    /// Commands that need to fan out across workspaces should use this instead
-    /// of re-reading `workspace_config().additional_workspaces` themselves.
     /// Return the workspace root from the configured list that owns `file`.
     ///
     /// Checks each workspace's charter tree (`<root>/.clearhead/charters/`).
@@ -116,6 +105,11 @@ impl CommandContext {
         self.data_dir.clone()
     }
 
+    /// Return all configured workspace names and roots, primary first.
+    ///
+    /// This is the CLI orchestration point for multi-workspace fan-out. Core
+    /// supplies canonical workspace identity, path, and configuration helpers;
+    /// the CLI applies the invocation's optional workspace filter here.
     pub fn workspace_dirs(&self) -> Vec<(String, PathBuf)> {
         // Identity (including the display name) is a property of the workspace,
         // read from its manifest — not the layered config.
@@ -160,6 +154,10 @@ impl CommandContext {
         Ok(models)
     }
 
+    /// Project the loaded CLI configuration into Core's shared semantic type.
+    ///
+    /// Tool-specific `cli_*` fields stay in [`Config`], while shared tag,
+    /// expansion, workspace, and Plan-path settings cross the Core boundary.
     pub fn workspace_config(&self) -> clearhead_core::WorkspaceConfig {
         // Resolve relative additional_workspaces paths against the project
         // config location (<root>/.clearhead/).  config_path always holds the
