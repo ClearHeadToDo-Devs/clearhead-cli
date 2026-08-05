@@ -14,7 +14,7 @@ expression: actions
       "DevOps",
       "Release",
     ]),
-    scheduled_at: Some("2026-02-01T09:00:00-08:00"),
+    scheduled_at: Some("2026-02-01T09:00:00[local-offset]"),
     duration: None,
     due_date: None,
     completed_at: None,

@@ -11,7 +11,7 @@ expression: actions
     description: None,
     priority: None,
     contexts: None,
-    scheduled_at: Some("2025-01-20T14:30:00-08:00"),
+    scheduled_at: Some("2025-01-20T14:30:00[local-offset]"),
     duration: Some(90),
     due_date: None,
     completed_at: None,

@@ -15,11 +15,11 @@ expression: actions
       "DevOps",
       "Critical",
     ]),
-    scheduled_at: Some("2025-02-15T14:00:00-08:00"),
+    scheduled_at: Some("2025-02-15T14:00:00[local-offset]"),
     duration: Some(30),
     due_date: None,
     completed_at: None,
-    created_at: Some("2026-01-24T17:48:00-08:00"),
+    created_at: Some("2026-01-24T17:48:00[local-offset]"),
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -45,11 +45,11 @@ expression: actions
       "Work",
       "Testing",
     ]),
-    scheduled_at: Some("2025-02-15T10:00:00-08:00"),
+    scheduled_at: Some("2025-02-15T10:00:00[local-offset]"),
     duration: Some(90),
     due_date: None,
     completed_at: None,
-    created_at: Some("2026-01-24T17:48:00-08:00"),
+    created_at: Some("2026-01-24T17:48:00[local-offset]"),
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -72,11 +72,11 @@ expression: actions
       "Work",
       "CodeReview",
     ]),
-    scheduled_at: Some("2025-02-15T11:00:00-08:00"),
+    scheduled_at: Some("2025-02-15T11:00:00[local-offset]"),
     duration: Some(60),
     due_date: None,
     completed_at: None,
-    created_at: Some("2026-01-24T17:48:00-08:00"),
+    created_at: Some("2026-01-24T17:48:00[local-offset]"),
     predecessors: Some([
       PredecessorRef(
         raw_ref: "[predecessor_ref]",
@@ -98,11 +98,11 @@ expression: actions
     contexts: Some([
       "Work",
     ]),
-    scheduled_at: Some("2025-02-14T17:00:00-08:00"),
+    scheduled_at: Some("2025-02-14T17:00:00[local-offset]"),
     duration: None,
     due_date: None,
     completed_at: None,
-    created_at: Some("2026-01-24T17:48:00-08:00"),
+    created_at: Some("2026-01-24T17:48:00[local-offset]"),
     predecessors: None,
     charter: Some("Release Management"),
     alias: None,

@@ -12,11 +12,14 @@ fn test_snapshots_from_grammar_examples() {
         // Use insta to assert against a RON snapshot
         insta::with_settings!({
             sort_maps => true,
+            // Naive DSL timestamps intentionally use the machine's local zone.
+            // Preserve the date/time assertion while making snapshots portable
+            // across developer and CI timezone offsets.
+            filters => vec![(r"(T\d{2}:\d{2}:\d{2})(?:Z|[+-]\d{2}:\d{2})", "$1[local-offset]")],
         }, {
             insta::assert_ron_snapshot!(example_name, actions, {
                 "[].id" => "[uuid]",
                 "[].parent_id" => "[uuid]",
-                "[].createdDate" => "[timestamp]",
                 "[].predecessors[].resolved_uuid" => "[uuid]",
                 "[].predecessors[].raw_ref" => "[predecessor_ref]"
             });

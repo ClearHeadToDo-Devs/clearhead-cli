@@ -14,7 +14,7 @@ expression: actions
     scheduled_at: None,
     duration: None,
     due_date: None,
-    completed_at: Some("2025-01-19T16:45:00-08:00"),
+    completed_at: Some("2025-01-19T16:45:00[local-offset]"),
     created_at: None,
     predecessors: None,
     charter: None,
