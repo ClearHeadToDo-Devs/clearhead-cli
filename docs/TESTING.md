@@ -75,7 +75,8 @@ We maintain a suite of shared test helpers in `tests/common/mod.rs` to keep test
 - **`ActionBuilder`**: A fluent interface for constructing `Action` structs in code. Use this instead of manual struct literals to keep tests resilient to changes in the data model.
 - **`read_example` / `get_examples`**: Standardized functions for accessing the vendored specification examples.
 
-### Snapshot Testing 
+### Snapshot Testing
+
 Another interesting approach we use is snapshot testing with `insta`. We do this by actually working through the individual examples provided by the `tree-sitter-actions` grammar tests, parsing them into our IR, and then generating snapshots of the resulting data structures.
 
 You can actually see the snapshots themselves in the `snapshots` directory within the `tests` folder. These snapshots are stored in RON (Rusty Object Notation) format, which is a human-readable serialization format similar to JSON but more Rust-friendly.
@@ -84,8 +85,9 @@ With this, one can both see the structure and data of the parsed actions, and al
 
 While this does mean new examples added to the grammar tests will need corresponding snapshots, it provides a very robust way to ensure the integrity of the parsing logic over time. and to ensure that changes on the tree-sitter side are caught by the test suite if they arent caught by the other tests.
 
-### Example Vendoring 
-We vendor the examples hosted at the [specification repo](https://github.com/ClearHeadToDo-Devs/specifications.git) directly to reduce explicit coupling between depenencies. 
+### Example Vendoring
+
+We vendor the examples hosted at the [specification repo](https://github.com/ClearHeadToDo-Devs/specifications.git) directly to reduce explicit coupling between depenencies.
 
 Instead, new tests and test modifications will be brought over as commits to ensure that the overview is done well while still having everything we need
 
@@ -94,6 +96,7 @@ Instead, new tests and test modifications will be brought over as commits to ens
 ### Adding a New Output Format
 
 1. Add variant to `OutputFormat` enum in `src/format.rs`:
+
 ```rust
 pub enum OutputFormat {
     Actions,
@@ -104,14 +107,16 @@ pub enum OutputFormat {
 }
 ```
 
-2. Implement formatter function:
+1. Implement formatter function:
+
 ```rust
 fn format_as_csv(list: &ActionList) -> Result<String, String> {
     // Implementation
 }
 ```
 
-3. Add to dispatcher:
+1. Add to dispatcher:
+
 ```rust
 pub fn format(list: &ActionList, format: OutputFormat) -> Result<String, String> {
     match format {
@@ -121,7 +126,8 @@ pub fn format(list: &ActionList, format: OutputFormat) -> Result<String, String>
 }
 ```
 
-4. Update CLI enum in `src/argparser.rs`:
+1. Update CLI enum in `src/argparser.rs`:
+
 ```rust
 pub enum Format {
     // ...
@@ -138,11 +144,12 @@ impl From<Format> for clearhead_cli::OutputFormat {
 }
 ```
 
-5. Write tests!
+1. Write tests!
 
 ### Adding a New Command
 
 1. Add command to `src/argparser.rs`:
+
 ```rust
 pub enum Commands {
     Read { ... },
@@ -154,7 +161,8 @@ pub enum Commands {
 }
 ```
 
-2. Handle in `src/main.rs`:
+1. Handle in `src/main.rs`:
+
 ```rust
 match &cli.command {
     Commands::Read { ... } => { ... }
@@ -164,5 +172,4 @@ match &cli.command {
 }
 ```
 
-3. Write E2E tests in `tests/integration.rs`
-
+1. Write E2E tests in `tests/integration.rs`
