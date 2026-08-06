@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared domain, workspace, persistence, and configuration services
-clearhead_core = { path = "../clearhead-core", version = "0.2.0" }
+clearhead_core = { path = "../clearhead-core", version = "0.2.0", default-features = false, features = ["formatting"] }
 
 # CLI-specific dependencies
 clap = { version = "4.0", features = ["derive"] }
