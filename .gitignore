@@ -2,3 +2,4 @@ Cargo.lock
 target/*
 .aider*
 .clearhead/*.archive.ttl
+mutants.out
