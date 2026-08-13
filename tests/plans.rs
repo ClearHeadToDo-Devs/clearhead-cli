@@ -563,6 +563,42 @@ fn test_sync_calendar_imports_calendar_created_vtodo_with_arbitrary_uid() {
 }
 
 #[test]
+fn test_sync_calendar_routes_next_collection_to_root_not_nested_primary_file() {
+    let env = TestEnv::new();
+    env.write_actions(
+        "next.actions",
+        "[ ] Root sentinel #019baaec-00b6-7991-be34-94b6821261a0",
+    );
+    env.write_actions(
+        "linux/next.actions",
+        "[ ] Nested sentinel #019baaec-00b6-7991-be34-94b6821261a1",
+    );
+    env.write_text(
+        "plans/next/client-resource.ics",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Calendar Client//EN\r\nBEGIN:VTODO\r\nUID:root-capture@example.test\r\nSUMMARY:Captured in root collection\r\nSTATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+    );
+
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pull calendar → new action"));
+
+    let root = fs::read_to_string(env.data_dir.join("charters/next.actions")).unwrap();
+    let nested = fs::read_to_string(env.data_dir.join("charters/linux/next.actions")).unwrap();
+    assert!(root.contains("Captured in root collection"), "{root}");
+    assert!(!nested.contains("Captured in root collection"), "{nested}");
+
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already in sync."));
+}
+
+#[test]
 fn test_sync_calendar_import_creates_implicit_charter_action_file() {
     let env = TestEnv::new();
     env.write_text(
