@@ -255,11 +255,11 @@ pub enum Verb {
         #[arg(long, conflicts_with = "fix")]
         json: bool,
 
-        /// Remove fixable orphaned sidecar state, then diagnose again
+        /// Remove fixable unowned sidecar state and calendar collections, then diagnose again
         #[arg(long)]
         fix: bool,
 
-        /// Preview sidecar cleanup without writing (requires --fix)
+        /// Preview cleanup without writing (requires --fix)
         #[arg(long, requires = "fix")]
         dry_run: bool,
     },

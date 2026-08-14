@@ -221,7 +221,12 @@ impl CommandContext {
         let quarantined: Vec<_> = read
             .findings
             .iter()
-            .filter(|finding| finding.code == "syntax-errors")
+            .filter(|finding| {
+                matches!(
+                    finding.code.as_str(),
+                    "syntax-errors" | "unowned-plans-collection"
+                )
+            })
             .collect();
         if !quarantined.is_empty() {
             for finding in &quarantined {
@@ -233,7 +238,7 @@ impl CommandContext {
                 );
             }
             anyhow::bail!(
-                "{} refused: fix parser integrity errors in {} action file(s) first",
+                "{} refused: repair {} quarantined workspace source(s) first",
                 command,
                 quarantined.len()
             );

@@ -140,6 +140,7 @@ fn test_read_plans_honors_ids_and_jsonld_formats() {
 #[test]
 fn test_import_plans_splits_multi_vtodo_ics_into_vdir_files() {
     let env = TestEnv::new();
+    env.write_actions("bulk-export.actions", "");
     let source = env.data_dir.join("bulk-export.ics");
     fs::write(
         &source,
@@ -170,6 +171,7 @@ fn test_import_plans_splits_multi_vtodo_ics_into_vdir_files() {
 #[test]
 fn test_import_plans_honors_explicit_charter_flag() {
     let env = TestEnv::new();
+    env.write_actions("inbox.actions", "");
     let source = env.data_dir.join("calendar.ics");
     fs::write(
         &source,
@@ -198,6 +200,7 @@ fn test_import_plans_honors_explicit_charter_flag() {
 #[test]
 fn test_import_plans_errors_on_existing_uid_without_overwrite() {
     let env = TestEnv::new();
+    env.write_actions("inbox.actions", "");
     let existing = env
         .data_dir
         .join("plans")
@@ -226,6 +229,7 @@ fn test_import_plans_errors_on_existing_uid_without_overwrite() {
 #[test]
 fn test_import_plans_overwrites_existing_uid_with_flag() {
     let env = TestEnv::new();
+    env.write_actions("inbox.actions", "");
     let existing = env
         .data_dir
         .join("plans")
@@ -267,6 +271,7 @@ fn test_error_on_missing_ics_file() {
 #[test]
 fn test_add_command_with_options() {
     let env = TestEnv::new();
+    env.write_actions("inbox.actions", "");
     env.command()
         .arg("add")
         .arg("plan")
@@ -599,15 +604,19 @@ fn test_sync_calendar_routes_next_collection_to_root_not_nested_primary_file() {
 }
 
 #[test]
-fn test_sync_calendar_import_creates_implicit_charter_action_file() {
+fn test_sync_calendar_refuses_to_invent_a_charter_for_an_unowned_collection() {
     let env = TestEnv::new();
     env.write_text(
         "plans/fresh/client.ics",
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:fresh-task@example.test\r\nSUMMARY:Fresh capture\r\nSTATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
     );
-    env.command().arg("sync").arg("calendar").assert().success();
-    let actions = fs::read_to_string(env.data_dir.join("charters/fresh.actions")).unwrap();
-    assert!(actions.contains("[ ] Fresh capture"), "{actions}");
+    env.command()
+        .arg("sync")
+        .arg("calendar")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("has no owning charter"));
+    assert!(!env.data_dir.join("charters/fresh.actions").exists());
 }
 
 #[test]

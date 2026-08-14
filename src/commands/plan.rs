@@ -313,27 +313,6 @@ pub fn show_plan(
     Ok(())
 }
 
-fn synthetic_charter(
-    title: impl Into<String>,
-    parent: Option<String>,
-    actions_file: Option<PathBuf>,
-) -> clearhead_core::MarkdownCharter {
-    clearhead_core::MarkdownCharter {
-        id: uuid::Uuid::nil(),
-        title: title.into(),
-        description: None,
-        alias: None,
-        parent,
-        objectives: None,
-        state: None,
-        plans: Vec::new(),
-        actions: Vec::new(),
-        md_file: None,
-        actions_file,
-        plans_dir: None,
-    }
-}
-
 fn resolve_plans_dir(
     ctx: &CommandContext,
     file: &Option<PathBuf>,
@@ -346,30 +325,27 @@ fn resolve_plans_dir(
     let plans_root = ctx.plans_root();
     let charter_root = clearhead_core::charter_root(&ctx.data_dir);
 
+    let charters = ctx.load_charters()?;
     if let Some(query) = charter {
-        let charters = ctx.load_charters()?;
-        if let Some(charter) = resolve_markdown_charter(&charters, query)? {
-            return Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(charter)));
-        }
-
-        return Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(
-            &synthetic_charter(query.clone(), None, None),
-        )));
+        let charter = resolve_markdown_charter(&charters, query)?
+            .ok_or_else(|| anyhow::anyhow!("No charter found matching '{query}'"))?;
+        return Ok(plans_root.join(&charter.plans_dir));
     }
 
     let default_actions = ctx.resolve_action_file(None);
     let relative = default_actions
         .strip_prefix(&charter_root)
         .unwrap_or(default_actions.as_path());
-    let charter_name = clearhead_core::infer_charter_name(relative).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Cannot infer charter name from '{}'",
-            default_actions.display()
-        )
-    })?;
-    Ok(plans_root.join(clearhead_core::charter_plans_dir_relative(
-        &synthetic_charter(charter_name, None, Some(relative.to_path_buf())),
-    )))
+    let charter = charters
+        .iter()
+        .find(|charter| charter.actions_file.as_deref() == Some(relative))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No charter owns default action file '{}'; initialize or create the charter first",
+                default_actions.display()
+            )
+        })?;
+    Ok(plans_root.join(&charter.plans_dir))
 }
 
 fn resolve_add_plan_output_path(
@@ -390,17 +366,11 @@ fn resolve_add_plan_output_path(
 
     if let Some(query) = charter {
         let charters = ctx.load_charters()?;
-        if let Some(charter) = resolve_markdown_charter(&charters, query)? {
-            return Ok(clearhead_core::plan_output_path(
-                &ctx.plans_root(),
-                charter,
-                plan,
-            ));
-        }
-        let synthetic = synthetic_charter(query.clone(), None, None);
+        let charter = resolve_markdown_charter(&charters, query)?
+            .ok_or_else(|| anyhow::anyhow!("No charter found matching '{query}'"))?;
         return Ok(clearhead_core::plan_output_path(
             &ctx.plans_root(),
-            &synthetic,
+            charter,
             plan,
         ));
     }

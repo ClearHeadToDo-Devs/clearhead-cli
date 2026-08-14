@@ -44,6 +44,47 @@ fn doctor_fix_previews_then_prunes_orphaned_sidecar_state() {
 }
 
 #[test]
+fn doctor_fix_previews_then_removes_an_unowned_calendar_collection() {
+    let env = TestEnv::new();
+    env.write_text(
+        "workspace.json",
+        r#"{"workspace_id":"019e0000-0000-7000-8000-000000000002","workspace_name":"test"}"#,
+    );
+    env.write_actions(
+        "next.actions",
+        "[ ] Root #019e0000-0000-7000-8000-000000000012\n",
+    );
+    let collection = env.data_dir.join("plans/surprise");
+    fs::create_dir_all(&collection).unwrap();
+
+    env.command()
+        .args(["doctor", "--fix", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Would remove unowned calendar collection surprise",
+        ))
+        .stdout(predicate::str::contains(
+            "vdirsyncer may propagate this deletion",
+        ));
+    assert!(collection.exists());
+
+    env.command()
+        .args(["sync", "calendar"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("has no owning charter"))
+        .stderr(predicate::str::contains("sync calendar refused"));
+
+    env.command()
+        .args(["doctor", "--fix"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("workspace clean"));
+    assert!(!collection.exists());
+}
+
+#[test]
 fn test_workspace_read_succeeds_when_empty() {
     let env = TestEnv::new();
     env.command().arg("read").arg("plans").assert().success();

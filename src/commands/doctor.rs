@@ -1,13 +1,13 @@
-//! `clearhead doctor` — workspace fsck and narrowly-scoped sidecar repair.
+//! `clearhead doctor` — workspace fsck and explicit repair.
 //!
-//! Diagnosis remains read-only by default. `--fix` removes only the two states
-//! doctor can prove have no owner: stale per-action entries and sidecar files
-//! whose companion `.actions` file no longer exists.
+//! Diagnosis remains read-only by default. `--fix` removes states doctor can
+//! prove have no workspace owner: stale sidecar metadata and unowned calendar
+//! collections. Removing a vdir collection may propagate through vdirsyncer.
 
 use crate::commands::CommandContext;
 use anyhow::Context;
 use clearhead_core::workspace::{Diagnosis, FindingSeverity, diagnose};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 pub fn run(ctx: &CommandContext, json: bool, fix: bool, dry_run: bool) -> anyhow::Result<()> {
@@ -15,7 +15,7 @@ pub fn run(ctx: &CommandContext, json: bool, fix: bool, dry_run: bool) -> anyhow
         diagnose(&ctx.data_dir, ctx.plan_override().as_deref()).context("doctor")?;
 
     if fix {
-        prune_sidecars(ctx, &diagnosis, dry_run)?;
+        repair_unowned_state(ctx, &diagnosis, dry_run)?;
         if dry_run {
             return Ok(());
         }
@@ -36,13 +36,14 @@ pub fn run(ctx: &CommandContext, json: bool, fix: bool, dry_run: bool) -> anyhow
     }
 }
 
-fn prune_sidecars(
+fn repair_unowned_state(
     ctx: &CommandContext,
     diagnosis: &Diagnosis,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut entries: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
     let mut files = Vec::new();
+    let mut collections = BTreeSet::new();
 
     for finding in &diagnosis.findings {
         match finding.code.as_str() {
@@ -61,12 +62,15 @@ fn prune_sidecars(
                 entries.entry(finding.path.clone()).or_default().push(id);
             }
             "orphaned-sidecar" => files.push(finding.path.clone()),
+            "unowned-plans-collection" => {
+                collections.insert(finding.path.clone());
+            }
             _ => {}
         }
     }
 
-    if entries.is_empty() && files.is_empty() {
-        println!("No fixable sidecar state found.");
+    if entries.is_empty() && files.is_empty() && collections.is_empty() {
+        println!("No fixable unowned state found.");
         return Ok(());
     }
 
@@ -91,16 +95,30 @@ fn prune_sidecars(
             println!("Removed orphaned sidecar {}", relative.display());
         }
     }
+    for relative in &collections {
+        if dry_run {
+            println!(
+                "Would remove unowned calendar collection {} (vdirsyncer may propagate this deletion)",
+                relative.display()
+            );
+        } else {
+            println!(
+                "Removed unowned calendar collection {} (vdirsyncer may propagate this deletion)",
+                relative.display()
+            );
+        }
+    }
     if dry_run {
         println!(
-            "Dry run: {} entr{} and {} file(s) would be removed.",
+            "Dry run: {} entr{}, {} file(s), and {} calendar collection(s) would be removed.",
             entries.values().map(Vec::len).sum::<usize>(),
             if entries.values().map(Vec::len).sum::<usize>() == 1 {
                 "y"
             } else {
                 "ies"
             },
-            files.len()
+            files.len(),
+            collections.len()
         );
         return Ok(());
     }
@@ -121,6 +139,20 @@ fn prune_sidecars(
     for relative in files {
         let path = charter_root.join(relative);
         match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let plans_root = ctx.plans_root();
+    for relative in collections {
+        anyhow::ensure!(
+            relative.components().count() == 1 && relative.is_relative(),
+            "doctor refused unsafe calendar collection path '{}'",
+            relative.display()
+        );
+        let path = plans_root.join(relative);
+        match std::fs::remove_dir_all(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),

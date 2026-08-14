@@ -66,6 +66,13 @@ plans/
     └── <resource>.ics
 ```
 
+ClearHead calculates this collection topology from the workspace's charter
+anchors. A new resource in a known collection is expected; an unknown immediate
+child directory is quarantined rather than silently creating a charter. Inspect
+it with `clearhead doctor`. `clearhead doctor --fix --dry-run` previews removal,
+and `clearhead doctor --fix` removes it locally with a warning because
+vdirsyncer may propagate that deletion to the CalDAV server.
+
 To use a different location, set `plan_path` in
 `~/.config/clearhead/config.json`:
 
