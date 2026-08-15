@@ -682,6 +682,14 @@ pub fn read_actions_cmd(
                 .map_err(|e| anyhow::anyhow!("Failed to serialize JSON-LD: {e}"))?;
             println!("{}", jsonld);
         }
+        Some(crate::argparser::OutputMode::Json) => {
+            // Canonical schema projection — the same shape Core validates against
+            // the specifications actions schema. --charter/--context/--open-only/
+            // --state narrow it just as they narrow the table and tree.
+            let actions: Vec<Action> = filtered.iter().map(|(_, a)| (*a).clone()).collect();
+            let document = clearhead_core::schema_export::to_schema_document(&actions);
+            println!("{}", serde_json::to_string_pretty(&document)?);
+        }
         Some(crate::argparser::OutputMode::Ids) => {
             for (_, action) in &filtered {
                 println!("{}", action.id);

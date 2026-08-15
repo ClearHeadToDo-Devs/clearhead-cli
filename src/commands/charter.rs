@@ -112,6 +112,13 @@ pub fn read_charters(
                 println!("{}", jsonld);
             }
         }
+        Some(argparser::OutputMode::Json) => {
+            // Charters have no canonical actions-schema shape yet; emit plain
+            // structured JSON of the domain charters until a charter schema exists.
+            for (_, model) in &models {
+                println!("{}", serde_json::to_string_pretty(&model.charters)?);
+            }
+        }
         Some(argparser::OutputMode::Ids) => {
             for (_, model) in &models {
                 for charter in &model.charters {

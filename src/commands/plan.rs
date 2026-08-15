@@ -178,6 +178,12 @@ pub fn read_plans(
                 .map_err(|e| anyhow::anyhow!("Failed to serialize JSON-LD: {e}"))?;
             println!("{}", jsonld);
         }
+        Some(argparser::OutputMode::Json) => {
+            // Plans have no canonical actions-schema shape yet; emit plain
+            // structured JSON of the domain plans until a plan schema exists.
+            let plans: Vec<_> = plans.iter().map(|(_, plan)| plan).collect();
+            println!("{}", serde_json::to_string_pretty(&plans)?);
+        }
         Some(argparser::OutputMode::Ids) => {
             for (_, plan) in &plans {
                 println!("{}", plan.id);
