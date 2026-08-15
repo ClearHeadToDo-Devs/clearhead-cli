@@ -49,7 +49,7 @@ pub fn add_action(
         .as_deref()
         .map(|query| {
             find_best_match(&list, query, is_open_action)?
-                .map(clearhead_core::CloseActionSelector::from)
+                .map(clearhead_core::ActionSelector::from)
                 .ok_or_else(|| anyhow::anyhow!("No action found matching parent '{}'", query))
         })
         .transpose()?;
@@ -205,10 +205,7 @@ fn close_action_subtree(
     };
 
     let (action_id, selector) = match find_action_mut(&mut open_actions, query)? {
-        Some(action) => (
-            action.id,
-            clearhead_core::CloseActionSelector::from(&*action),
-        ),
+        Some(action) => (action.id, clearhead_core::ActionSelector::from(&*action)),
         None => return Err(verb_target_error(ctx, query)?.into()),
     };
 
@@ -472,10 +469,7 @@ pub fn update_action(
     // Client-side read resolves the fuzzy query to a stable selector; core
     // re-reads under the lock and applies the update there.
     let (action_id, selector) = match find_action_mut(&mut open_actions, query)? {
-        Some(action) => (
-            action.id,
-            clearhead_core::CloseActionSelector::from(&*action),
-        ),
+        Some(action) => (action.id, clearhead_core::ActionSelector::from(&*action)),
         None => return Err(verb_target_error(ctx, query)?.into()),
     };
 
