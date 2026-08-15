@@ -120,19 +120,23 @@ impl TestEnv {
     }
 }
 
-/// Helper to read a specific example file content
+fn specification_examples_dir() -> PathBuf {
+    std::env::var("CLEARHEAD_SPEC_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../specifications"))
+        .join("examples/actions")
+}
+
+/// Read one canonical DSL example from the inert specifications checkout.
 pub fn read_example(filename: &str) -> String {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let example_path = manifest_dir.join("examples").join(filename);
+    let example_path = specification_examples_dir().join(filename);
     fs::read_to_string(&example_path)
-        .unwrap_or_else(|_| panic!("Failed to read example file: {}", filename))
+        .unwrap_or_else(|_| panic!("Failed to read specification example: {}", filename))
 }
 
 pub fn get_examples() -> HashMap<String, String> {
     let mut examples = HashMap::new();
-    // Get the project root directory
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let examples_dir = manifest_dir.join("examples");
+    let examples_dir = specification_examples_dir();
 
     // Read all files in the examples directory
     let entries = fs::read_dir(&examples_dir).expect("Failed to read examples directory");

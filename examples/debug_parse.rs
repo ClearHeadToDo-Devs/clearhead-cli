@@ -1,8 +1,13 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 fn main() {
-    let content =
-        fs::read_to_string("../tree-sitter-actions/examples/conformance_test.actions").unwrap();
+    let spec_root = std::env::var_os("CLEARHEAD_SPEC_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("../specifications"));
+    let fixture =
+        spec_root.join("examples/conformance/syntax/description_unescaped_bracket.actions");
+    let content = fs::read_to_string(&fixture)
+        .unwrap_or_else(|error| panic!("failed to read {fixture:?}: {error}"));
     println!("Content length: {} bytes", content.len());
     println!("Line count: {}", content.lines().count());
 

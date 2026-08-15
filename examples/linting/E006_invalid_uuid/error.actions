@@ -1,4 +1,0 @@
-
-[ ] Task with short ID #123
-[ ] Task with wrong pattern #abc-def-abc-def
-[ ] Task with non-hex garbage #not-a-uuid

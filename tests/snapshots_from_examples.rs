@@ -3,7 +3,7 @@ use clearhead_cli::get_action_list_struct;
 use common::get_examples;
 
 #[test]
-fn test_snapshots_from_grammar_examples() {
+fn test_snapshots_from_specification_examples() {
     for (example_name, content) in get_examples() {
         // Parse the content into our ActionList struct
         let actions = get_action_list_struct(&content)

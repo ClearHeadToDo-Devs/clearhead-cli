@@ -5,7 +5,7 @@ use common::read_example;
 
 /// Test parsing a minimal action
 #[test]
-fn parse_minimal_action_from_grammar_examples() {
+fn parse_minimal_action_from_specification_examples() {
     let test_action = read_example("minimal.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -18,7 +18,7 @@ fn parse_minimal_action_from_grammar_examples() {
 
 /// Test parsing an action with children hierarchy
 #[test]
-fn parse_action_with_children_from_grammar_examples() {
+fn parse_action_with_children_from_specification_examples() {
     let test_action = read_example("with_children.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -53,7 +53,7 @@ fn parse_action_with_children_from_grammar_examples() {
 
 /// Test parsing action with description
 #[test]
-fn parse_action_with_description_from_grammar_examples() {
+fn parse_action_with_description_from_specification_examples() {
     let test_action = read_example("with_description.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -69,7 +69,7 @@ fn parse_action_with_description_from_grammar_examples() {
 
 /// Test parsing action with priority
 #[test]
-fn parse_action_with_priority_from_grammar_examples() {
+fn parse_action_with_priority_from_specification_examples() {
     let test_action = read_example("with_priority.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -82,7 +82,7 @@ fn parse_action_with_priority_from_grammar_examples() {
 
 /// Test parsing action with story/project
 #[test]
-fn parse_action_with_story_from_grammar_examples() {
+fn parse_action_with_story_from_specification_examples() {
     let test_action = read_example("with_story.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -98,7 +98,7 @@ fn parse_action_with_story_from_grammar_examples() {
 
 /// Test parsing action with context tags
 #[test]
-fn parse_action_with_context_from_grammar_examples() {
+fn parse_action_with_context_from_specification_examples() {
     let test_action = read_example("with_context.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -115,7 +115,7 @@ fn parse_action_with_context_from_grammar_examples() {
 
 /// Test parsing action with ID
 #[test]
-fn parse_action_with_id_from_grammar_examples() {
+fn parse_action_with_id_from_specification_examples() {
     let test_action = read_example("with_id_no_dash.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
@@ -128,7 +128,7 @@ fn parse_action_with_id_from_grammar_examples() {
 
 /// Test parsing comprehensive action with all metadata
 #[test]
-fn parse_action_with_everything_from_grammar_examples() {
+fn parse_action_with_everything_from_specification_examples() {
     let test_action = read_example("with_everything.actions");
 
     let actions = get_action_list_struct(&test_action).unwrap();
