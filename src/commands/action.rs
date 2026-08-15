@@ -100,7 +100,11 @@ pub fn add_action(
     )?;
 
     info!(id = %result.action_id, name = %name, "Action added");
-    println!("Added action {} ({})", &result.action_id.to_string()[..8], name);
+    println!(
+        "Added action {} ({})",
+        &result.action_id.to_string()[..8],
+        name
+    );
     Ok(())
 }
 
@@ -465,48 +469,56 @@ pub fn update_action(
         return Err(verb_target_error(ctx, query)?.into());
     };
 
-    let action_id = {
-        let Some(action) = find_action_mut(&mut open_actions, query)? else {
-            return Err(verb_target_error(ctx, query)?.into());
-        };
-        let id = action.id;
-        if !dry_run {
-            clearhead_cli::mutations::apply_updates(
-                action,
-                clearhead_cli::mutations::ActionUpdate {
-                    name: name.clone(),
-                    description: description.clone(),
-                    priority,
-                    state: state.map(Into::into),
-                    context: if context.is_empty() {
-                        None
-                    } else {
-                        Some(context.to_vec())
-                    },
-                    predecessors: if predecessor.is_empty() {
-                        None
-                    } else {
-                        Some(predecessor_refs(predecessor))
-                    },
-                    is_sequential: if sequential { Some(true) } else { None },
-                    scheduled_at: new_scheduled,
-                    duration: *duration,
-                    ..Default::default()
-                },
-            );
-        }
-        id
+    // Client-side read resolves the fuzzy query to a stable selector; core
+    // re-reads under the lock and applies the update there.
+    let (action_id, selector) = match find_action_mut(&mut open_actions, query)? {
+        Some(action) => (
+            action.id,
+            clearhead_core::CloseActionSelector::from(&*action),
+        ),
+        None => return Err(verb_target_error(ctx, query)?.into()),
     };
+
+    let update = clearhead_core::ActionUpdate {
+        name: name.clone(),
+        description: description.clone(),
+        priority,
+        state: state.map(Into::into),
+        context: if context.is_empty() {
+            None
+        } else {
+            Some(context.to_vec())
+        },
+        predecessors: if predecessor.is_empty() {
+            None
+        } else {
+            Some(predecessor_refs(predecessor))
+        },
+        is_sequential: if sequential { Some(true) } else { None },
+        scheduled_at: new_scheduled,
+        duration: *duration,
+        ..Default::default()
+    };
+
+    // Fail fast — and honestly under --dry-run — on a terminal state before
+    // touching the file. Core enforces the same rule at its boundary.
+    if let Some(state) = clearhead_core::disallowed_terminal_update(&update) {
+        anyhow::bail!(
+            "cannot set state to {state:?} via update; use complete/cancel, \
+             which cascade to the subtree and archive it"
+        );
+    }
 
     if dry_run {
         println!("Would update action {}", &action_id.to_string()[..8]);
         return Ok(());
     }
 
-    super::save_file(&actions_path, &open_actions)?;
-    info!(%action_id, "Action updated");
+    let workspace_root = ctx.workspace_for_file(&actions_path);
+    let result = clearhead_core::update_action(&workspace_root, &actions_path, &selector, update)?;
+    info!(action_id = %result.action_id, "Action updated");
     VerbOutcome::Updated {
-        id: canonical_id(action_id),
+        id: canonical_id(result.action_id),
     }
     .emit();
     Ok(())

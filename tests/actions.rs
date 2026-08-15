@@ -313,6 +313,49 @@ fn test_add_and_update_action_predecessors() {
 }
 
 #[test]
+fn test_update_rejects_terminal_state_but_allows_non_terminal() {
+    let env = TestEnv::new();
+    let path = env.data_dir.join("charters/work.actions");
+    env.write_actions("work.actions", "[ ] Task\n");
+
+    // A terminal state is not a field edit: it must go through complete/cancel,
+    // which cascade and archive. update refuses it and leaves the file untouched.
+    for terminal in ["completed", "cancelled"] {
+        env.command()
+            .arg("update")
+            .arg("action")
+            .arg("Task")
+            .arg("--state")
+            .arg(terminal)
+            .arg("--file")
+            .arg(&path)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("use complete/cancel"));
+
+        let actions = clearhead_core::read_actions(&path).unwrap();
+        let task = actions.iter().find(|a| a.name == "Task").unwrap();
+        assert_eq!(task.state, clearhead_core::ActionState::NotStarted);
+    }
+
+    // A non-terminal transition is an ordinary field edit and still succeeds.
+    env.command()
+        .arg("update")
+        .arg("action")
+        .arg("Task")
+        .arg("--state")
+        .arg("in-progress")
+        .arg("--file")
+        .arg(&path)
+        .assert()
+        .success();
+
+    let actions = clearhead_core::read_actions(&path).unwrap();
+    let task = actions.iter().find(|a| a.name == "Task").unwrap();
+    assert_eq!(task.state, clearhead_core::ActionState::InProgress);
+}
+
+#[test]
 fn test_add_action_without_target_errors_when_ambiguous() {
     let env = TestEnv::new();
     env.write_actions("one.actions", "[ ] One\n");
