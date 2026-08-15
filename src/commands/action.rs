@@ -40,13 +40,16 @@ pub fn add_action(
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let actions_path = resolve_acts_file(ctx, charter, file)?;
-    let mut list = action_files::read_actions(&actions_path)?;
+    // Client-side read: resolve the fuzzy parent query to a stable selector and
+    // support the dry-run preview. Core re-reads under the lock and re-resolves
+    // the parent there, so this read is never the one that's written against.
+    let list = action_files::read_actions(&actions_path)?;
 
-    let parent_id = parent
+    let parent_selector = parent
         .as_deref()
         .map(|query| {
             find_best_match(&list, query, is_open_action)?
-                .map(|action| action.id)
+                .map(clearhead_core::CloseActionSelector::from)
                 .ok_or_else(|| anyhow::anyhow!("No action found matching parent '{}'", query))
         })
         .transpose()?;
@@ -62,7 +65,6 @@ pub fn add_action(
 
     let action = Action {
         name: name.to_string(),
-        parent_id,
         priority,
         state: state.map(Into::into).unwrap_or(ActionState::NotStarted),
         alias: alias.clone(),
@@ -89,14 +91,16 @@ pub fn add_action(
         return Ok(());
     }
 
-    let insertion_index = parent_id
-        .map(|id| index_after_subtree(&list, id))
-        .unwrap_or(list.len());
-    list.insert(insertion_index, action.clone());
-    super::save_file(&actions_path, &list)?;
+    let workspace_root = ctx.workspace_for_file(&actions_path);
+    let result = clearhead_core::insert_action(
+        &workspace_root,
+        &actions_path,
+        action,
+        parent_selector.as_ref(),
+    )?;
 
-    info!(id = %action.id, name = %name, "Action added");
-    println!("Added action {} ({})", &action.id.to_string()[..8], name);
+    info!(id = %result.action_id, name = %name, "Action added");
+    println!("Added action {} ({})", &result.action_id.to_string()[..8], name);
     Ok(())
 }
 
@@ -108,18 +112,6 @@ fn predecessor_refs(references: &[String]) -> Vec<PredecessorRef> {
             resolved_uuid: None,
         })
         .collect()
-}
-
-/// Return the insertion point immediately after `parent_id`'s full subtree.
-fn index_after_subtree(actions: &[Action], parent_id: uuid::Uuid) -> usize {
-    let subtree = clearhead_core::collect_subtree_ids(actions, parent_id);
-    actions
-        .iter()
-        .enumerate()
-        .filter(|(_, action)| subtree.contains(&action.id))
-        .map(|(index, _)| index + 1)
-        .max()
-        .unwrap_or(actions.len())
 }
 
 /// Resolve the `.actions` file path from a charter query or explicit file path.
