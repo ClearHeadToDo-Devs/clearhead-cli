@@ -8,6 +8,7 @@ pub mod plan;
 pub mod resolver;
 pub mod service;
 pub mod template;
+pub mod transact;
 pub mod verb_result;
 
 use anyhow::Context;

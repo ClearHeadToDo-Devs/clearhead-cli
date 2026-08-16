@@ -281,6 +281,7 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
                 dry_run,
             } => commands::action::delete_action(ctx, query, charter, file, *dry_run),
         },
+        Verb::Transact { file, dry_run } => commands::transact::run(ctx, file, *dry_run),
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {
                 path,

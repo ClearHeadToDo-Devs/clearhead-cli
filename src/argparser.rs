@@ -174,6 +174,15 @@ pub enum Verb {
         target: DeleteTarget,
     },
 
+    /// Apply an ordered batch of action operations atomically
+    Transact {
+        /// JSON request file; reads stdin when omitted
+        file: Option<PathBuf>,
+        /// Validate and report the result without writing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Format a file
     Format {
         #[command(subcommand)]
