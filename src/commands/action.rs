@@ -11,7 +11,7 @@ use clearhead_core::workspace::action_files;
 use clearhead_core::{Action, ActionList, ActionState, PredecessorRef};
 
 use super::CommandContext;
-use super::verb_result::{VerbError, VerbOutcome, canonical_id};
+use super::verb_result::{VerbError, VerbOutcome, canonical_id, emit};
 
 // ============================================================================
 // expand actions — ICS schedule → .actions file
@@ -267,7 +267,7 @@ fn close_action_subtree(
         },
     };
     info!(%action_id, children, "Action subtree closed ({:?})", closing_state);
-    outcome.emit();
+    emit(&outcome);
     Ok(())
 }
 
@@ -344,7 +344,7 @@ fn try_close_occurrence(
         },
     };
     info!(%occurrence.id, %plan_id, "Occurrence deviation written ({:?})", closing_state);
-    outcome.emit();
+    emit(&outcome);
     Ok(true)
 }
 
@@ -410,10 +410,9 @@ fn try_reschedule_occurrence(
         },
     )?;
     info!(%occurrence.id, %plan_id, "Occurrence rescheduled via deviation");
-    VerbOutcome::Updated {
+    emit(&VerbOutcome::Updated {
         id: canonical_id(occurrence.id),
-    }
-    .emit();
+    });
     Ok(true)
 }
 
@@ -511,10 +510,9 @@ pub fn update_action(
     let workspace_root = ctx.workspace_for_file(&actions_path);
     let result = clearhead_core::update_action(&workspace_root, &actions_path, &selector, update)?;
     info!(action_id = %result.action_id, "Action updated");
-    VerbOutcome::Updated {
+    emit(&VerbOutcome::Updated {
         id: canonical_id(result.action_id),
-    }
-    .emit();
+    });
     Ok(())
 }
 
