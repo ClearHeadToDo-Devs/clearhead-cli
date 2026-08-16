@@ -1031,6 +1031,15 @@ fn verb_target_error(ctx: &CommandContext, query: &str) -> anyhow::Result<VerbEr
     })
 }
 
+/// Resolve a fuzzy action query to its canonical id for the query facade's
+/// chain adapter, which forwards a canonical IRI to graphd rather than a name.
+pub(crate) fn resolve_action_id(ctx: &CommandContext, query: &str) -> anyhow::Result<uuid::Uuid> {
+    let actions = collect_all_actions(ctx, &None, true)?;
+    let action = find_best_match(&actions, query, |_| true)?
+        .ok_or_else(|| anyhow::anyhow!("No open action found matching '{}'", query))?;
+    Ok(action.id)
+}
+
 /// Resolve canonical UUID/alias references in core, then apply the CLI-only
 /// partial-name search when no reference matches. Ambiguous canonical matches
 /// are errors and report candidate identities rather than choosing file order.

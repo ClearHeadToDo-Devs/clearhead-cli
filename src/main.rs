@@ -282,6 +282,32 @@ fn dispatch(cli: &argparser::Cli, ctx: &CommandContext) -> anyhow::Result<()> {
             } => commands::action::delete_action(ctx, query, charter, file, *dry_run),
         },
         Verb::Transact { file, dry_run } => commands::transact::run(ctx, file, *dry_run),
+        Verb::Query { target } => match target {
+            argparser::QueryTarget::Raw {
+                sparql,
+                where_clause,
+                format,
+            } => commands::query::raw(ctx, sparql.as_deref(), where_clause.as_deref(), *format),
+            argparser::QueryTarget::Named {
+                name,
+                status,
+                format,
+            } => commands::query::named(ctx, name, status.as_deref(), *format),
+            argparser::QueryTarget::Index { name, format } => {
+                commands::query::index(ctx, name.as_deref(), *format)
+            }
+            argparser::QueryTarget::Tree { name, format } => {
+                commands::query::tree(ctx, name.as_deref(), *format)
+            }
+            argparser::QueryTarget::Graph { name, format } => {
+                commands::query::graph(ctx, name.as_deref(), *format)
+            }
+            argparser::QueryTarget::Chain { query, format } => {
+                commands::query::chain(ctx, query, *format)
+            }
+            argparser::QueryTarget::Show { name } => commands::query::show(ctx, name),
+            argparser::QueryTarget::List => commands::query::list(ctx),
+        },
         Verb::Format { target } => match target {
             argparser::FormatTarget::File {
                 path,

@@ -183,6 +183,12 @@ pub enum Verb {
         dry_run: bool,
     },
 
+    /// Query the workspace graph, forwarding to clearhead-graphd
+    Query {
+        #[command(subcommand)]
+        target: QueryTarget,
+    },
+
     /// Format a file
     Format {
         #[command(subcommand)]
@@ -711,6 +717,89 @@ pub enum DeleteTarget {
         #[arg(long)]
         dry_run: bool,
     },
+}
+
+// =============================================================================
+// Query targets — forwarded to clearhead-graphd
+// =============================================================================
+
+/// Explicit query output format. Without an override, graphd chooses from the
+/// query family and whether stdout is a terminal. Mirrors graphd's own set.
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum QueryFormat {
+    /// Pretty-printed human table
+    Table,
+    /// JSON array of objects
+    Json,
+    /// One JSON object per line
+    Ndjson,
+    /// Semantic JSON-LD document (shaped query families)
+    Jsonld,
+    /// Bare canonical ids, one per line (feeds `clearhead transact`)
+    Ids,
+    /// RDF Turtle (graph families)
+    Turtle,
+    /// Graphviz DOT (graph families)
+    Dot,
+}
+
+#[derive(Subcommand)]
+pub enum QueryTarget {
+    /// Run a raw SPARQL query, or a WHERE clause via --where
+    Raw {
+        /// Full SPARQL SELECT query
+        #[arg(conflicts_with = "where_clause")]
+        sparql: Option<String>,
+        /// SPARQL WHERE clause (graphd auto-injects prefixes, selects all vars)
+        #[arg(short = 'w', long = "where", conflicts_with = "sparql")]
+        where_clause: Option<String>,
+        #[arg(long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+    /// Run a named query from the queries/ registry
+    #[command(name = "named")]
+    Named {
+        /// Name of the query (stem of the .sparql file)
+        name: String,
+        /// Value substituted for ?STATUS_FILTER (graphd owns its interpretation)
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+    /// Run an index view (ordered, addressable rows). Omit name for "default".
+    Index {
+        name: Option<String>,
+        #[arg(long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+    /// Run a tree view. Omit name for "work-map".
+    Tree {
+        name: Option<String>,
+        #[arg(long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+    /// Run a CONSTRUCT graph view. Omit name for "dependencies".
+    Graph {
+        name: Option<String>,
+        #[arg(long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+    /// Walk one action's predecessor chain; the fuzzy query is resolved to a
+    /// canonical id here, then forwarded as `index chain --target <iri>`.
+    Chain {
+        /// UUID, short UUID, alias, or name of the starting action
+        query: String,
+        #[arg(long, value_enum)]
+        format: Option<QueryFormat>,
+    },
+    /// Print a named or built-in query's SPARQL to stdout
+    Show {
+        /// Name of the query (index, typed, or freeform)
+        name: String,
+    },
+    /// List available named queries
+    List,
 }
 
 // =============================================================================

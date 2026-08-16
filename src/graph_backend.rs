@@ -9,8 +9,9 @@ use std::process::{Command, Stdio};
 
 const GRAPHD_ENV: &str = "CLEARHEAD_GRAPHD";
 
-/// Locate graphd for the JSON-LD export bridge.
-fn graphd_command() -> Command {
+/// Locate the graphd executable — the JSON-LD export bridge and the query
+/// facade both spawn it (the facade forwards `query …` with inherited stdio).
+pub fn graphd_command() -> Command {
     let executable = std::env::var_os(GRAPHD_ENV).unwrap_or_else(|| "clearhead-graphd".into());
     Command::new(executable)
 }
