@@ -546,43 +546,56 @@ pub fn delete_action(
     };
 
     for actions_path in &action_files {
-        let mut open = action_files::read_actions(actions_path)?;
-        if let Some(action_id) = find_best_match(&open, query, |_| true)?.map(|a| a.id) {
-            let subtree_ids = clearhead_core::collect_subtree_ids(&open, action_id);
-            if dry_run {
-                println!(
-                    "Would delete action {} (+{} children)",
-                    &action_id.to_string()[..8],
-                    subtree_ids.len() - 1,
-                );
-                return Ok(());
+        // Resolve the target in the active file first, then the completed file —
+        // delete reaches an action wherever it lives. Either way the mutation is
+        // handed to core, which re-resolves under the lock, cascades the subtree
+        // in the owning file, and prunes the matching sidecar entries.
+        let open = action_files::read_actions(actions_path)?;
+        let resolved = match find_best_match(&open, query, |_| true)? {
+            Some(action) => Some((
+                clearhead_core::ActionSelector::from(action),
+                clearhead_core::collect_subtree_ids(&open, action.id),
+            )),
+            None => {
+                let completed_path = action_files::completed_actions_path(actions_path);
+                let closed = action_files::read_actions(&completed_path)?;
+                find_best_match(&closed, query, |_| true)?.map(|action| {
+                    (
+                        clearhead_core::ActionSelector::from(action),
+                        clearhead_core::collect_subtree_ids(&closed, action.id),
+                    )
+                })
             }
-            open.retain(|a| !subtree_ids.contains(&a.id));
-            super::save_file(actions_path, &open)?;
-            info!(%action_id, children = subtree_ids.len() - 1, "Action subtree deleted");
+        };
+
+        let Some((selector, subtree_ids)) = resolved else {
+            continue;
+        };
+
+        if dry_run {
             println!(
-                "Deleted action {} (+{} children)",
-                &action_id.to_string()[..8],
-                subtree_ids.len() - 1
+                "Would delete action {} (+{} children)",
+                &selector.id.to_string()[..8],
+                subtree_ids.len().saturating_sub(1),
             );
             return Ok(());
         }
 
-        // Check completed file — single action only (no tree context in closed file)
-        let completed_path = action_files::completed_actions_path(actions_path);
-        let mut closed = action_files::read_actions(&completed_path)?;
-        if let Some(pos) = find_best_match_pos(&closed, query, |_| true)? {
-            let action_id = closed[pos].id;
-            if dry_run {
-                println!("Would delete action {}", &action_id.to_string()[..8]);
-                return Ok(());
-            }
-            closed.remove(pos);
-            action_files::write_actions(&closed, &completed_path)?;
-            info!(%action_id, "Action deleted from completed");
-            println!("Deleted action {}", &action_id.to_string()[..8]);
-            return Ok(());
-        }
+        let workspace_root = ctx.workspace_for_file(actions_path);
+        let result = clearhead_core::delete_action(&workspace_root, actions_path, &selector)?;
+        let children = result.deleted_count.saturating_sub(1);
+        info!(
+            action_id = %result.action_id,
+            children,
+            from_completed = result.from_completed,
+            "Action subtree deleted"
+        );
+        println!(
+            "Deleted action {} (+{} children)",
+            &result.action_id.to_string()[..8],
+            children
+        );
+        return Ok(());
     }
 
     anyhow::bail!("No action found matching '{}'", query)

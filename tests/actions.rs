@@ -356,6 +356,41 @@ fn test_update_rejects_terminal_state_but_allows_non_terminal() {
 }
 
 #[test]
+fn test_delete_reaches_an_action_in_the_completed_file() {
+    let env = TestEnv::new();
+    let completed = env.data_dir.join("charters/work.completed.actions");
+    env.write_actions("work.actions", "[ ] Live\n");
+    env.write_actions(
+        "work.completed.actions",
+        "[x] Archived thing #019f733d-45b2-7f21-bcad-5610887b7230\n",
+    );
+
+    // Given only the active file, delete still finds and removes an action that
+    // lives in the completed sibling — deletion reaches an action anywhere.
+    env.command()
+        .arg("delete")
+        .arg("action")
+        .arg("Archived thing")
+        .arg("--file")
+        .arg(env.data_dir.join("charters/work.actions"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted action"));
+
+    assert!(
+        clearhead_core::read_actions(&completed).unwrap().is_empty(),
+        "the completed action should be gone"
+    );
+    assert_eq!(
+        clearhead_core::read_actions(&env.data_dir.join("charters/work.actions"))
+            .unwrap()
+            .len(),
+        1,
+        "the active file is untouched"
+    );
+}
+
+#[test]
 fn test_add_action_without_target_errors_when_ambiguous() {
     let env = TestEnv::new();
     env.write_actions("one.actions", "[ ] One\n");
